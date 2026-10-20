@@ -1,0 +1,36 @@
+{
+  "name": "@calendar/deploy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "pnpm run typecheck",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@calendar/capability": "workspace:*",
+    "@calendar/check-harness": "workspace:*",
+    "@calendar/core": "workspace:*",
+    "@distilled.cloud/cloudflare": "1.0.0-rc.15",
+    "@effect/platform-node": "4.0.0",
+    "@xstate/effect": "1.0.0-alpha.8",
+    "alchemy": "2.0.0-beta.83",
+    "effect": "4.0.0",
+    "xstate": "6.0.0-alpha.69"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "@types/node": "24.13.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

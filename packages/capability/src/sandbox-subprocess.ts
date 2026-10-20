@@ -1,0 +1,345 @@
+import { Duration, Effect, Layer, Option, Queue, Schema, Stream } from "effect";
+import type { Cause } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+
+import { SandboxError } from "./sandbox-error.js";
+import {
+  Sandbox,
+  SandboxDiagnostic,
+  sandboxRunner,
+} from "./sandbox-service.js";
+import type {
+  Invoke,
+  InvokeOutcome,
+  SandboxRun,
+  SandboxLimits,
+} from "./sandbox-service.js";
+
+export const RUNNER_SOURCE = String.raw`
+import { createInterface } from "node:readline";
+import { createContext, Script } from "node:vm";
+const logs = [];
+const parentPid = process.ppid;
+const exitIfOrphaned = () => {
+  if (process.ppid === 1 || process.ppid !== parentPid) process.exit(1);
+};
+exitIfOrphaned();
+setInterval(exitIfOrphaned, 250).unref();
+process.stdin.on("end", () => process.exit(1));
+process.stdin.on("close", () => process.exit(1));
+const evaluationOptions = { timeout: 1000 };
+let deadline;
+let expiresAt = 0;
+const evaluationTimeout = () => Math.max(1, Math.min(evaluationOptions.timeout, expiresAt - Date.now()));
+const send = (message) => new Promise((resolve, reject) => {
+  process.stdout.write(JSON.stringify(message) + "\n", (error) => {
+    if (error) reject(error);
+    else resolve();
+  });
+});
+const context = createContext(Object.create(null), {
+  codeGeneration: { strings: false, wasm: false },
+  microtaskMode: "afterEvaluate",
+});
+context.__hostCall = (id, name, input) => {
+  send({ type: "call", id, name, input: JSON.parse(input) }).catch(() => process.exit(1));
+};
+context.__hostLog = (level, text) => {
+  logs.push(level + ": " + text);
+};
+context.__hostDone = (encoded) => {
+  const outcome = JSON.parse(encoded);
+  send({ ...outcome, logs }).then(
+    () => process.exit(0),
+    () => process.exit(1)
+  );
+};
+const bridge = new Script([
+  "(() => {",
+  "  const hostCall = globalThis.__hostCall;",
+  "  const hostLog = globalThis.__hostLog;",
+  "  const hostDone = globalThis.__hostDone;",
+  "  delete globalThis.__hostCall;",
+  "  delete globalThis.__hostLog;",
+  "  delete globalThis.__hostDone;",
+  "  const parse = JSON.parse;",
+  "  const stringify = JSON.stringify;",
+  "  const ContextError = Error;",
+  "  const assign = Object.assign;",
+  "  const pending = new Map();",
+  "  let nextId = 1;",
+  "  const names = [];",
+  "  const configure = (encoded) => names.push(...parse(encoded));",
+  "  const tools = new Proxy(Object.create(null), {",
+  "    ownKeys: () => names,",
+  "    getOwnPropertyDescriptor: (_target, name) => names.includes(name) ? { configurable: true, enumerable: true } : undefined,",
+  "    get: (_target, name) => {",
+  '      if (typeof name !== "string") return undefined;',
+  '      if (name === "$codemode") return Object.freeze({ search: (input) => tools["$codemode.search"](input) });',
+  "      return (input) => new Promise((resolve, reject) => {",
+  "        const id = nextId++;",
+  "        pending.set(id, { resolve, reject });",
+  "        hostCall(id, name, stringify(input === undefined ? {} : input));",
+  "      });",
+  "    },",
+  "  });",
+  '  const capture = (level) => (...parts) => hostLog(level, parts.map((part) => typeof part === "string" ? part : stringify(part)).join(" "));',
+  '  const console = Object.freeze({ debug: capture("debug"), error: capture("error"), info: capture("info"), log: capture("log"), warn: capture("warn") });',
+  "  const deliver = (id, encoded) => {",
+  "    const waiter = pending.get(id);",
+  "    pending.delete(id);",
+  "    if (waiter === undefined) return;",
+  "    const message = parse(encoded);",
+  "    if (message.ok) waiter.resolve(message.value);",
+  "    else {",
+  '      const error = new ContextError((message.error && message.error.message) || "capability failed");',
+  "      assign(error, message.error);",
+  "      assign(error, { __ratDiagnostic: message.diagnostic });",
+  "      waiter.reject(error);",
+  "    }",
+  "  };",
+  "  const execute = async (program) => {",
+  "    try {",
+  "      const result = await program(tools, console);",
+  '      hostDone(stringify({ type: "done", result: result === undefined ? null : result }));',
+  "    } catch (error) {",
+  '      hostDone(stringify({ type: "error", diagnostic: error?.__ratDiagnostic, message: error instanceof Error ? error.message : String(error) }));',
+  "    }",
+  "  };",
+  "  return { tools, console, deliver, execute, configure };",
+  "})()",
+].join(String.fromCharCode(10))).runInContext(context, evaluationOptions);
+const rl = createInterface({ input: process.stdin });
+rl.on("close", () => process.exit(1));
+process.stdin.on("error", () => process.exit(1));
+process.stdout.on("error", () => process.exit(1));
+rl.on("line", (line) => {
+  if (line.trim() === "") return;
+  const message = JSON.parse(line);
+  if (message.type === "result") {
+    try {
+      context.__deliver = bridge.deliver;
+      context.__deliveryId = message.id;
+      context.__delivery = JSON.stringify(message);
+      new Script("(() => { const deliver = globalThis.__deliver; const id = globalThis.__deliveryId; const encoded = globalThis.__delivery; delete globalThis.__deliver; delete globalThis.__deliveryId; delete globalThis.__delivery; deliver(id, encoded); })()").runInContext(context, { timeout: evaluationTimeout() });
+    } catch (error) {
+      send({ type: "error", reason: error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT" ? "timeout" : "threw", message: error.message, logs }).then(() => process.exit(0), () => process.exit(1));
+    }
+    return;
+  }
+  if (message.type !== "run") return;
+  if (deadline !== undefined) return;
+  const timeoutMillis = Math.max(1, Math.floor(Math.min(message.timeoutMillis, 2147483647)));
+  expiresAt = Date.now() + timeoutMillis;
+  deadline = setTimeout(() => process.exit(1), timeoutMillis);
+  try {
+    bridge.configure(JSON.stringify(message.names));
+    context.__execute = bridge.execute;
+    new Script("(() => { const execute = globalThis.__execute; delete globalThis.__execute; execute(async function(tools, console) {" + String.fromCharCode(10) + message.code + String.fromCharCode(10) + "}); })()").runInContext(context, { timeout: evaluationTimeout() });
+  } catch (error) {
+    const outcome = {
+      type: "error",
+      reason: error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT" ? "timeout" : "threw",
+      diagnostic: error.name === "SyntaxError" ? { kind: "ParseError", message: "The program has invalid JavaScript syntax" } : error.__ratDiagnostic,
+      message: error instanceof Error ? error.message : String(error),
+    };
+    send({ ...outcome, logs }).then(
+      () => process.exit(0),
+      () => process.exit(1)
+    );
+  }
+});
+`;
+
+const ChildMessage = Schema.Union([
+  Schema.Struct({
+    id: Schema.Finite,
+    input: Schema.Json,
+    name: Schema.String,
+    type: Schema.Literal("call"),
+  }),
+  Schema.Struct({
+    logs: Schema.Array(Schema.String),
+    result: Schema.Unknown,
+    type: Schema.Literal("done"),
+  }),
+  Schema.Struct({
+    diagnostic: Schema.optionalKey(SandboxDiagnostic),
+    logs: Schema.Array(Schema.String),
+    message: Schema.String,
+    reason: Schema.optional(Schema.Literals(["threw", "timeout"])),
+    type: Schema.Literal("error"),
+  }),
+]);
+
+const decodeChildMessage = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(ChildMessage)
+);
+
+type HostMessage =
+  | {
+      readonly code: string;
+      readonly names: readonly string[];
+      readonly timeoutMillis: number;
+      readonly type: "run";
+    }
+  | ({ readonly id: number; readonly type: "result" } & InvokeOutcome);
+
+const encoder = new TextEncoder();
+
+const isSandboxError = Schema.is(SandboxError);
+
+export interface SubprocessOptions extends SandboxLimits {
+  readonly timeout?: Duration.Input | undefined;
+  readonly nodePath?: string | undefined;
+}
+
+const makeSubprocess = (options?: SubprocessOptions) =>
+  Effect.gen(function* makeSubprocessSandbox() {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const timeout = Duration.fromInputUnsafe(options?.timeout ?? "10 seconds");
+    const nodePath = options?.nodePath ?? process.execPath;
+
+    const command = ChildProcess.make(
+      nodePath,
+      [
+        "--permission",
+        "--disallow-code-generation-from-strings",
+        "--input-type=module",
+        "-e",
+        RUNNER_SOURCE,
+      ],
+      {
+        detached: true,
+        env: {},
+        extendEnv: false,
+        forceKillAfter: "250 millis",
+        killSignal: "SIGTERM",
+      }
+    );
+
+    const run = Effect.fn("Sandbox.run")(function* run(
+      code: string,
+      invoke: Invoke,
+      names: readonly string[]
+    ) {
+      const handle = yield* spawner.spawn(command).pipe(
+        Effect.mapError(
+          (error) =>
+            new SandboxError({
+              logs: [],
+              message: error.message,
+              reason: "exited",
+            })
+        )
+      );
+
+      const outbox = yield* Queue.unbounded<Uint8Array, Cause.Done>();
+      yield* Stream.fromQueue(outbox).pipe(
+        Stream.run(handle.stdin),
+        Effect.ignore,
+        Effect.forkScoped
+      );
+
+      const send = (message: HostMessage) =>
+        Queue.offer(outbox, encoder.encode(`${JSON.stringify(message)}\n`));
+
+      yield* send({
+        code,
+        names,
+        timeoutMillis: Duration.toMillis(timeout),
+        type: "run",
+      });
+
+      const outcome = yield* Stream.decodeText(handle.stdout).pipe(
+        Stream.splitLines,
+        Stream.filter((line) => line.trim() !== ""),
+        Stream.mapEffect(
+          (line) =>
+            decodeChildMessage(line).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SandboxError({
+                    logs: [],
+                    message: `Unreadable sandbox message: ${error.message}`,
+                    reason: "protocol",
+                  })
+              ),
+              Effect.flatMap((message) => {
+                if (message.type === "call") {
+                  return invoke(message.name, message.input).pipe(
+                    Effect.flatMap((result: InvokeOutcome) =>
+                      send({ id: message.id, type: "result", ...result })
+                    ),
+                    Effect.andThen(Effect.succeedNone)
+                  );
+                }
+
+                return Effect.succeedSome<SandboxRun | SandboxError>(
+                  message.type === "done"
+                    ? { logs: message.logs, result: message.result }
+                    : new SandboxError({
+                        diagnostic: message.diagnostic,
+                        logs: message.logs,
+                        message: message.message,
+                        reason: message.reason ?? "threw",
+                      })
+                );
+              })
+            ),
+          { concurrency: 8 }
+        ),
+        Stream.filter(Option.isSome),
+        Stream.map((option) => option.value),
+        Stream.runHead,
+        Effect.mapError((error) =>
+          isSandboxError(error)
+            ? error
+            : new SandboxError({
+                logs: [],
+                message: error.message,
+                reason: "exited",
+              })
+        )
+      );
+
+      if (Option.isNone(outcome)) {
+        return yield* new SandboxError({
+          logs: [],
+          message: "The sandbox exited before finishing the program",
+          reason: "exited",
+        });
+      }
+
+      if (isSandboxError(outcome.value)) {
+        return yield* outcome.value;
+      }
+
+      return outcome.value;
+    }, Effect.scoped);
+
+    return {
+      run: sandboxRunner(
+        (code, invoke, names) =>
+          run(code, invoke, names).pipe(
+            Effect.timeoutOrElse({
+              duration: timeout,
+              orElse: () =>
+                Effect.fail(
+                  new SandboxError({
+                    logs: [],
+                    message: `The program did not finish within ${Duration.format(timeout)}`,
+                    reason: "timeout",
+                  })
+                ),
+            })
+          ),
+        options
+      ),
+    } as const;
+  });
+
+export const layerSubprocess = (
+  options?: SubprocessOptions
+): Layer.Layer<Sandbox, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Layer.effect(Sandbox, makeSubprocess(options));

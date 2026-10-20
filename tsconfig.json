@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["*.config.ts", "scripts/*.ts", "tools/oxlint/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".agent_sources",
+    ".agent-sources",
+    ".turbo"
+  ]
+}

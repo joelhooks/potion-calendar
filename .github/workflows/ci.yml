@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use Node.js 24.18.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - name: Enable corepack pnpm
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check and test
+        # Serialize Turbo tasks so concurrent Vitest pools do not contend on the CI runner.
+        run: pnpm turbo run check test build --concurrency=1

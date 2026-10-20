@@ -1,0 +1,68 @@
+{
+  "name": "calendar-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private Google Calendar app built with Effect, Foldkit, and Alchemy.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @calendar/web dev",
+    "alchemy": "pnpm --filter @calendar/infra exec alchemy",
+    "build": "turbo run build",
+    "check": "pnpm run lockfile:check && varlock load && turbo run typecheck lint:root",
+    "env:check": "varlock load",
+    "fix": "ultracite fix && oxfmt .",
+    "lint": "turbo run lint:root",
+    "lint:root": "ultracite check && oxfmt --check .",
+    "lockfile:check": "pnpm --config.optimistic-repeat-install=false install --frozen-lockfile --offline --lockfile-only --ignore-scripts",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "deploy:plan": "pnpm turbo run build --concurrency=1 && APP_ENV=production pnpm exec varlock run -- sh -c 'cd apps/infra && exec node --import ./node_modules/alchemy/bin/register-oxc.js ../../packages/deploy/dist/cli.js \"$@\"' deploy deployPlan",
+    "deploy:prod": "pnpm turbo run build --concurrency=1 && APP_ENV=production pnpm exec varlock run -- sh -c 'cd apps/infra && exec node --import ./node_modules/alchemy/bin/register-oxc.js ../../packages/deploy/dist/cli.js \"$@\"' deploy deployProd",
+    "deploy:rollback": "pnpm turbo run build --concurrency=1 && APP_ENV=production pnpm exec varlock run -- sh -c 'cd apps/infra && exec node --import ./node_modules/alchemy/bin/register-oxc.js ../../packages/deploy/dist/cli.js \"$@\"' deploy deployRollback",
+    "infra:deploy": "pnpm --filter @calendar/infra deploy",
+    "infra:destroy": "pnpm --filter @calendar/infra destroy",
+    "infra:dev": "pnpm --filter @calendar/infra dev",
+    "infra:plan": "pnpm --filter @calendar/infra plan",
+    "prepare": "effect-tsgo patch && if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "typecheck-scripts": "tsc --noEmit -p tsconfig.json",
+    "vendor:agent-sources": "./scripts/vendor-agent-sources.sh"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@effect/tsgo": "0.51.1",
+    "@foldkit/oxlint-plugin": "0.15.3",
+    "@oxlint/plugins": "1.88.0",
+    "@types/node": "24.13.6",
+    "effect": "4.0.0",
+    "lefthook": "2.1.14",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "portless": "0.15.6",
+    "turbo": "2.11.2",
+    "typescript": "7.0.2",
+    "ultracite": "7.12.0",
+    "varlock": "1.23.0",
+    "vitest": "5.0.3"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.3.0",
+      "onFail": "error"
+    },
+    "runtime": {
+      "name": "node",
+      "version": ">=24.18.0",
+      "onFail": "warn"
+    }
+  },
+  "engines": {
+    "node": ">=24.18.0",
+    "pnpm": ">=11.1.2"
+  },
+  "packageManager": "pnpm@11.3.0"
+}

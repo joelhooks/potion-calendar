@@ -1,0 +1,105 @@
+{
+  "name": "@calendar/capability",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./actor-watch": {
+      "types": "./src/actor-watch.ts",
+      "import": "./dist/actor-watch.js",
+      "default": "./dist/actor-watch.js"
+    },
+    "./call-watch": {
+      "types": "./src/call-watch.ts",
+      "import": "./dist/call-watch.js",
+      "default": "./dist/call-watch.js"
+    },
+    "./approval": {
+      "types": "./src/approval.ts",
+      "import": "./dist/approval.js",
+      "default": "./dist/approval.js"
+    },
+    "./contract": {
+      "types": "./src/contract.ts",
+      "import": "./dist/contract.js",
+      "default": "./dist/contract.js"
+    },
+    "./define": {
+      "types": "./src/define.ts",
+      "import": "./dist/define.js",
+      "default": "./dist/define.js"
+    },
+    "./implement": {
+      "types": "./src/implement.ts",
+      "import": "./dist/implement.js",
+      "default": "./dist/implement.js"
+    },
+    "./toolkit": {
+      "types": "./src/toolkit.ts",
+      "import": "./dist/toolkit.js",
+      "default": "./dist/toolkit.js"
+    },
+    "./http-api": {
+      "types": "./src/http-api.ts",
+      "import": "./dist/http-api.js",
+      "default": "./dist/http-api.js"
+    },
+    "./rpc": {
+      "types": "./src/rpc.ts",
+      "import": "./dist/rpc.js",
+      "default": "./dist/rpc.js"
+    },
+    "./rpc-group": {
+      "types": "./src/rpc-group.ts",
+      "import": "./dist/rpc-group.js",
+      "default": "./dist/rpc-group.js"
+    },
+    "./sandbox-port": {
+      "types": "./src/sandbox-port.ts",
+      "import": "./dist/sandbox-port.js",
+      "default": "./dist/sandbox-port.js"
+    },
+    "./sandbox": {
+      "types": "./src/sandbox-service.ts",
+      "import": "./dist/sandbox-service.js",
+      "default": "./dist/sandbox-service.js"
+    },
+    "./code-mode/execute": {
+      "types": "./src/to-code-mode.ts",
+      "import": "./dist/to-code-mode.js",
+      "default": "./dist/to-code-mode.js"
+    },
+    "./code-mode": {
+      "types": "./src/code-mode.ts",
+      "import": "./dist/code-mode.js",
+      "default": "./dist/code-mode.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck",
+    "pretest": "pnpm run --silent build"
+  },
+  "dependencies": {
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
+    "@types/node": "24.13.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

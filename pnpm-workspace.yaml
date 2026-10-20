@@ -1,0 +1,73 @@
+verifyDepsBeforeRun: error
+
+overrides:
+  vite: 8.0.7
+
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  "@google/genai": true
+  esbuild: true
+  lefthook: true
+  msgpackr-extract: true
+  protobufjs: true
+  workerd: true
+
+# Exact fresh pins that pnpm's release-age check would otherwise hold back.
+# One entry per version; a bump replaces its entry rather than adding one.
+minimumReleaseAgeExclude:
+  # Effect 4 unblock: stable runtime and adapters replace removed unstable imports.
+  - "@alchemy.run/better-auth@2.0.0-beta.83"
+  - alchemy@2.0.0-beta.83
+  - effect@4.0.0
+  - "@foldkit/oxlint-plugin@0.15.3"
+  - "@foldkit/devtools@0.167.0"
+  - "@foldkit/ui@0.167.0"
+  - "@foldkit/markdown@0.14.2"
+  - "@foldkit/vite-plugin@0.27.0"
+  - foldkit@0.167.0
+  - "@effect/platform-node@4.0.0"
+  - "@effect/platform-node-shared@4.0.0"
+  - "@effect/sql-pg@4.0.0"
+  - "@effect/sql-d1@4.0.0"
+  - "@effect/sql-sqlite-do@4.0.0"
+  - "@effect/vitest@4.0.0"
+  - xstate@6.0.0-alpha.69
+  - "@xstate/effect@1.0.0-alpha.8"
+  - "@earendil-works/chord@0.86.1"
+  - "@earendil-works/pi-agent-core@0.86.1"
+  - "@earendil-works/pi-ai@0.86.1"
+  - "@earendil-works/pi-coding-agent@0.86.1"
+  - "@earendil-works/pi-telemetry@0.86.1"
+  - "@earendil-works/pi-tui@0.86.1"
+  - better-auth@1.6.2
+  - satori@0.33.5
+  - shiki@3.23.0
+  - "@alchemy.run/cloudflare-runtime@2.0.0-beta.83"
+  - "@alchemy.run/floci@2.0.0-beta.83"
+  - "@alchemy.run/node-utils@2.0.0-beta.83"
+  - "@distilled.cloud/acme@1.0.0-rc.15"
+  - "@distilled.cloud/aws@1.0.0-rc.15"
+  - "@distilled.cloud/axiom@1.0.0-rc.15"
+  - "@distilled.cloud/cloudflare@1.0.0-rc.15"
+  - "@distilled.cloud/core@1.0.0-rc.15"
+  - "@distilled.cloud/doppler@1.0.0-rc.15"
+  - "@distilled.cloud/fly-io@1.0.0-rc.15"
+  - "@distilled.cloud/gcp@1.0.0-rc.15"
+  - "@distilled.cloud/hetzner@1.0.0-rc.15"
+  - "@distilled.cloud/iceberg@1.0.0-rc.15"
+  - "@distilled.cloud/infisical@1.0.0-rc.15"
+  - "@distilled.cloud/neon@1.0.0-rc.15"
+  - "@distilled.cloud/planetscale@1.0.0-rc.15"
+  - "@distilled.cloud/prisma@1.0.0-rc.15"
+  - "@distilled.cloud/railway@1.0.0-rc.15"
+  - "@distilled.cloud/stripe@1.0.0-rc.15"
+  - "@distilled.cloud/turso@1.0.0-rc.15"
+  - "@distilled.cloud/zerossl@1.0.0-rc.15"
+  - "@varlock/native-helper-darwin@1.23.0"
+  - "@varlock/native-helper-linux-arm64@1.23.0"
+  - "@varlock/native-helper-linux-x64@1.23.0"
+  - "@varlock/native-helper-win32-x64@1.23.0"
+  - varlock@1.23.0

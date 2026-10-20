@@ -1,0 +1,55 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "test": { "dependsOn": ["build"], "outputs": [] },
+    "//#lint:root": {
+      "dependsOn": ["@calendar/capability#build"],
+      "outputs": []
+    },
+    "//#typecheck-scripts": { "outputs": [] },
+    "//#lockfile:check": { "cache": false, "outputs": [] },
+    "check": {
+      "dependsOn": [
+        "//#lockfile:check",
+        "typecheck",
+        "//#lint:root",
+        "//#typecheck-scripts"
+      ],
+      "outputs": []
+    },
+    "@calendar/core#test": {
+      "dependsOn": ["build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/**",
+        "$TURBO_ROOT$/tools/oxlint/**",
+        "$TURBO_ROOT$/oxlint.config.ts",
+        "$TURBO_ROOT$/README.md",
+        "$TURBO_ROOT$/AGENTS.md",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/apps/*/package.json"
+      ],
+      "outputs": []
+    },
+    "@calendar/infra#test": { "dependsOn": ["^build"], "outputs": [] },
+    "@calendar/web#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/tsconfig.base.json",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/*/migrations/**"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@calendar/web#typecheck": {
+      "dependsOn": ["^build", "^typecheck"],
+      "outputs": []
+    }
+  }
+}

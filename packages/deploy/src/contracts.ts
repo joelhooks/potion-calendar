@@ -1,0 +1,161 @@
+import { VerdictSchema } from "@calendar/check-harness";
+import { Schema } from "effect";
+
+import { PlanRowsSchema, PlanRowSchema } from "./plan.js";
+import { CheckoutStateSchema, CommitShaSchema } from "./source.js";
+
+export const DeployInputSchema = Schema.Struct({
+  allow: Schema.Array(PlanRowSchema),
+  expectSha: Schema.optionalKey(CommitShaSchema),
+  mode: Schema.Literals(["plan", "prod"]),
+  ownerApproved: Schema.optionalKey(Schema.Boolean),
+  profile: Schema.NonEmptyString,
+});
+
+export type DeployInput = typeof DeployInputSchema.Type;
+
+export const ProviderErrorSchema = Schema.Struct({
+  code: Schema.NullOr(Schema.Int),
+  message: Schema.String,
+  resource: Schema.NullOr(Schema.String),
+});
+
+export type ProviderError = typeof ProviderErrorSchema.Type;
+
+export const ApplyReceiptSchema = Schema.Struct({
+  appliedAt: Schema.optionalKey(Schema.Natural),
+  contentGeneration: Schema.optionalKey(Schema.NonEmptyString),
+  notUpdated: Schema.Array(Schema.String),
+  outcome: Schema.Literals([
+    "prepared",
+    "applied",
+    "failed",
+    "partial",
+    "crashed",
+  ]),
+  previousContentGeneration: Schema.optional(Schema.NonEmptyString),
+  previousVersions: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String)
+  ),
+  profile: Schema.optionalKey(Schema.NonEmptyString),
+  providerErrors: Schema.optionalKey(Schema.Array(ProviderErrorSchema)),
+  retainedOrphans: Schema.Array(Schema.String),
+  updated: Schema.Array(Schema.String),
+  versionReadbacks: Schema.optionalKey(Schema.Array(VerdictSchema)),
+  versions: Schema.Record(Schema.String, Schema.String),
+});
+
+export type ApplyReceipt = typeof ApplyReceiptSchema.Type;
+
+export const PreparedPlanSchema = Schema.Struct({
+  receipt: ApplyReceiptSchema,
+  rows: PlanRowsSchema,
+});
+
+export type PreparedPlan = typeof PreparedPlanSchema.Type;
+
+export class DeployStepError extends Schema.TaggedError<DeployStepError>()(
+  "DeployStepError",
+  {
+    keys: Schema.Array(Schema.String),
+    reason: Schema.String,
+    step: Schema.Literals([
+      "source",
+      "preflight",
+      "plan",
+      "quietWindow",
+      "apply",
+      "checks",
+    ]),
+  }
+) {}
+
+export const DeployVerdictSchema = Schema.Struct({
+  checkout: Schema.optionalKey(CheckoutStateSchema),
+  checks: Schema.Array(VerdictSchema),
+  keys: Schema.Array(Schema.String),
+  outcome: Schema.Literals([
+    "planned",
+    "healthy",
+    "refused",
+    "failed",
+    "partial",
+    "crashed",
+    "unknown",
+  ]),
+  providerErrors: Schema.optionalKey(Schema.Array(ProviderErrorSchema)),
+  reason: Schema.optional(Schema.String),
+  receipt: Schema.optional(ApplyReceiptSchema),
+  resources: Schema.optionalKey(Schema.Array(Schema.String)),
+  rows: Schema.Array(PlanRowSchema),
+  step: Schema.String,
+});
+
+export type DeployVerdict = typeof DeployVerdictSchema.Type;
+
+export const DeployReportSchema = Schema.Struct({
+  checks: Schema.Array(
+    Schema.Struct({
+      check: Schema.String,
+      counts: Schema.Record(Schema.String, Schema.Natural),
+      outcome: Schema.String,
+      reason: Schema.String,
+    })
+  ),
+  keys: Schema.Array(Schema.String),
+  outcome: DeployVerdictSchema.fields.outcome,
+  profile: Schema.String,
+  providerErrors: Schema.optionalKey(Schema.Array(ProviderErrorSchema)),
+  reason: Schema.optional(Schema.String),
+  resources: Schema.optionalKey(Schema.Array(Schema.String)),
+  rollbackReceipt: Schema.optionalKey(Schema.String),
+  step: Schema.String,
+  verdictPath: Schema.optionalKey(Schema.String).annotateKey({
+    description:
+      "Absolute path of the full verdict JSON. Absent when the verdict could not be written.",
+  }),
+});
+
+export type DeployReport = typeof DeployReportSchema.Type;
+
+export const deployReport = (
+  profile: string,
+  verdict: DeployVerdict,
+  verdictPath: string | undefined
+): DeployReport => {
+  const report: DeployReport = {
+    checks: verdict.checks.map((row) => ({
+      check: row.check,
+      counts: row.counts,
+      outcome: row.outcome,
+      reason: row.reason,
+    })),
+    keys: verdict.keys,
+    outcome: verdict.outcome,
+    profile,
+    reason: verdict.reason,
+    step: verdict.step,
+  };
+
+  const withProviderErrors =
+    verdict.providerErrors === undefined
+      ? report
+      : { ...report, providerErrors: verdict.providerErrors };
+
+  const withResources =
+    verdict.resources === undefined
+      ? withProviderErrors
+      : { ...withProviderErrors, resources: verdict.resources };
+
+  const withReceipt =
+    verdict.receipt?.profile === undefined
+      ? withResources
+      : {
+          ...withResources,
+          rollbackReceipt: `.rat/deploy/${encodeURIComponent(verdict.receipt.profile)}/last-apply.json`,
+        };
+
+  return verdictPath === undefined
+    ? withReceipt
+    : { ...withReceipt, verdictPath };
+};

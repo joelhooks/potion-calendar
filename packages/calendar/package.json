@@ -1,0 +1,49 @@
+{
+  "name": "@calendar/calendar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./contracts": {
+      "types": "./src/contracts.ts",
+      "import": "./dist/contracts.js"
+    },
+    "./google-tokens": {
+      "types": "./src/google-tokens.ts",
+      "import": "./dist/google-tokens.js"
+    },
+    "./memory": {
+      "types": "./src/memory.ts",
+      "import": "./dist/memory.js"
+    },
+    "./testing": {
+      "types": "./test/store-contract.ts",
+      "import": "./test/store-contract.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "pnpm run typecheck",
+    "build": "tsc -p tsconfig.build.json",
+    "pretest": "pnpm run --silent build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@calendar/auth": "workspace:*",
+    "@calendar/capability": "workspace:*",
+    "@xstate/effect": "1.0.0-alpha.8",
+    "effect": "4.0.0",
+    "xstate": "6.0.0-alpha.69"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0",
+    "@types/node": "24.13.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}
