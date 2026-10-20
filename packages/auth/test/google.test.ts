@@ -8,6 +8,7 @@ import type { BetterAuthOptions } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { symmetricDecrypt } from "better-auth/crypto";
 import {
+  Cause,
   DateTime,
   Effect,
   Layer,
@@ -68,13 +69,21 @@ const cookies = (response: Response, existing = "") => {
     .join("; ");
 };
 
-const fixture = (sqlite?: DatabaseSync) => {
+const fixture = (
+  sqlite?: DatabaseSync,
+  cleanup?: (personId: string, accountId: string) => Promise<void>
+) => {
+  const authConfig =
+    cleanup === undefined
+      ? config
+      : { ...config, beforeAccountDelete: cleanup };
+
   const fake = makeFakeGoogle(config.baseURL);
 
   const auth =
     sqlite === undefined
       ? createGoogleAuth(
-          config,
+          authConfig,
           memoryAdapter({
             account: [],
             session: [],
@@ -84,7 +93,7 @@ const fixture = (sqlite?: DatabaseSync) => {
           fake.provider
         )
       : betterAuth<BetterAuthOptions>({
-          ...googleAuthOptions(config, fake.provider),
+          ...googleAuthOptions(authConfig, fake.provider),
           database: sqlite,
         });
 
@@ -142,8 +151,189 @@ const fixture = (sqlite?: DatabaseSync) => {
     return { cookie: cookies(response, cookies(start, cookie)), response };
   });
 
-  return { auth, authorize };
+  const unlink = (cookie: string, accountId: string) =>
+    Effect.tryPromise({
+      catch: (cause) =>
+        new Cause.UnknownError(cause, "Native Promise adapter failed"),
+
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+      try: () =>
+        auth.api.unlinkAccount({
+          asResponse: true,
+          body: { accountId, providerId: "google" },
+          headers: new Headers({ cookie, origin: config.baseURL }),
+        }),
+    }).pipe(Effect.orDie);
+
+  return { auth, authorize, unlink };
 };
+
+it.effect(
+  "the alternate social sign-in endpoint cannot issue a Google authorization URL",
+  () =>
+    Effect.gen(function* disabledSocialSignIn() {
+      const { auth } = fixture();
+
+      for (const path of ["/auth/sign-in/social", "/auth/sign-in/social/"]) {
+        const response = yield* Effect.tryPromise({
+          catch: (cause) =>
+            new Cause.UnknownError(
+              cause,
+              "Disabled OAuth endpoint request failed"
+            ),
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () =>
+            auth.handler(
+              new Request(`${config.baseURL}${path}`, {
+                body: JSON.stringify({ callbackURL: "/", provider: "google" }),
+                headers: {
+                  "content-type": "application/json",
+                  origin: config.baseURL,
+                },
+                method: "POST",
+              })
+            ),
+        });
+
+        expect(response.status).toBe(404);
+      }
+    })
+);
+
+it.effect(
+  "the authenticated Better Auth removal route cannot bypass the disconnect contract",
+  () =>
+    Effect.gen(function* refusedLegacyRemoval() {
+      const { auth, authorize } = fixture();
+      const signedIn = yield* authorize("joel@example.test");
+
+      const linked = yield* authorize(
+        "second@example.test",
+        signedIn.cookie,
+        true
+      );
+
+      for (const path of ["/auth/unlink-account", "/auth/unlink-account/"]) {
+        const response = yield* Effect.tryPromise({
+          catch: (cause) =>
+            new Cause.UnknownError(
+              cause,
+              "Disabled account removal request failed"
+            ),
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () =>
+            auth.handler(
+              new Request(`${config.baseURL}${path}`, {
+                body: JSON.stringify({
+                  accountId: "second@example.test",
+                  providerId: "google",
+                }),
+                headers: {
+                  "content-type": "application/json",
+                  cookie: linked.cookie,
+                  origin: config.baseURL,
+                },
+                method: "POST",
+              })
+            ),
+        });
+
+        expect(response.status).toBe(404);
+      }
+
+      const context = yield* authContext(auth);
+
+      const accounts = yield* Effect.tryPromise({
+        catch: (cause) =>
+          new Cause.UnknownError(cause, "Account verification failed"),
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () => context.adapter.findMany({ model: "account" }),
+      });
+
+      expect(accounts).toHaveLength(2);
+    })
+);
+
+for (const outcome of ["completed", "rejected", "timed-out"]) {
+  it.live(
+    `trusted Better Auth deletion keeps its bounded callback when ${outcome}`,
+    () =>
+      Effect.gen(function* bestEffortUnlink() {
+        const observed: {
+          readonly personId: string;
+          readonly accountId: string;
+        }[] = [];
+
+        const { auth, authorize, unlink } = fixture(
+          undefined,
+          // @effect-diagnostics-next-line asyncFunction:off -- This fixture implements Better Auth's native cleanup callback, including a deliberately stalled Promise.
+          async (personId, accountId) => {
+            observed.push({ accountId, personId });
+
+            if (outcome === "rejected") {
+              throw new Error("Fixture cleanup unavailable");
+            }
+
+            if (outcome === "timed-out") {
+              await Promise.race<undefined>([]);
+            }
+          }
+        );
+
+        const signedIn = yield* authorize("joel@example.test");
+        expect(
+          (yield* unlink(signedIn.cookie, "joel@example.test")).status
+        ).toBe(400);
+        expect(observed).toEqual([]);
+
+        const linked = yield* authorize(
+          "second@example.test",
+          signedIn.cookie,
+          true
+        );
+
+        const context = yield* authContext(auth);
+
+        const before = yield* Effect.tryPromise({
+          catch: (cause) =>
+            new Cause.UnknownError(cause, "Native Promise adapter failed"),
+
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () =>
+            context.adapter.findMany({
+              model: "account",
+              where: [{ field: "accountId", value: "second@example.test" }],
+            }),
+        }).pipe(Effect.orDie);
+
+        const stored = yield* Schema.decodeUnknownEffect(
+          Schema.NonEmptyArray(
+            Schema.Struct({ id: Schema.String, userId: Schema.String })
+          )
+        )(before);
+
+        expect(
+          (yield* unlink(linked.cookie, "second@example.test")).status
+        ).toBe(200);
+        expect(observed).toEqual([
+          { accountId: stored[0].id, personId: stored[0].userId },
+        ]);
+        expect(
+          yield* Effect.tryPromise({
+            catch: (cause) =>
+              new Cause.UnknownError(cause, "Native Promise adapter failed"),
+
+            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+            try: () =>
+              context.adapter.findMany({
+                model: "account",
+                where: [{ field: "id", value: stored[0].id }],
+              }),
+          }).pipe(Effect.orDie)
+        ).toHaveLength(0);
+      })
+  );
+}
 
 it.effect(
   "refuses an unlisted Google identity before inserting a user or account",

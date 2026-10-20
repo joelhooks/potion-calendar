@@ -25,6 +25,11 @@
       "import": "./dist/devtools.js",
       "default": "./dist/devtools.js"
     },
+    "./desktop": {
+      "types": "./src/desktop.ts",
+      "import": "./dist/desktop.js",
+      "default": "./dist/desktop.js"
+    },
     "./google": {
       "types": "./src/google.ts",
       "import": "./dist/google.js",

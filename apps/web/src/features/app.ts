@@ -1,18 +1,148 @@
-import { Option } from "effect";
+import { googleCalendarCapabilities } from "@calendar/calendar/contracts";
+import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
-import type { Document, HtmlBuilder } from "foldkit/html";
+import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
-import { detailPanel, sidebar, toolbar } from "./calendar.js";
+import { PrepareEditingDialogs } from "../client/editing/dialog-mount.js";
+import { EditorView } from "../client/editing/editor-model.js";
+import { PrepareGestures } from "../client/editing/gesture-mount.js";
+import { PrepareKeyboard } from "../client/keyboard/mount.js";
+import { bindingHints } from "../client/keyboard/registry.js";
+import { resolvedTheme } from "../client/settings/model.js";
+import { homeZone } from "../client/time-zones/model.js";
+import { visibleDays } from "../layout/navigation.js";
+import { resolvedTimeFormat } from "../layout/time-format.js";
+import { detailPanel, sidebar, systemZonePrompt, toolbar } from "./calendar.js";
+import { commandMenu } from "./command-menu.js";
+import { editorDialogs } from "./event-editor.js";
+import { searchPanel } from "./search.js";
+import { settingsPage } from "./settings.js";
+import { shortcutsPage } from "./shortcuts-page.js";
 import { monthGrid, timeGrid } from "./time-grid.js";
+import { undoToast } from "./undo-toast.js";
+import { upcomingMeetingPanel } from "./upcoming-meeting.js";
+
+const editingLayers = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] => {
+  const latest = model.editing.deletes.findLast(
+    (mark) => mark.phase === "pending"
+  );
+
+  const send = (
+    action: Parameters<typeof Message.EditingAction>[0]["action"]
+  ): AppMessage =>
+    Message.EditingAction({
+      action,
+      personId: Option.getOrUndefined(model.person),
+    });
+
+  const toast =
+    latest === undefined
+      ? undefined
+      : undoToast(h, { intent: latest.intent, send });
+
+  return [
+    ...editorDialogs(h, {
+      calendars: model.calendar.calendars,
+      chooseTimeZone: Message.KeyboardAction({ id: "event-zone" }),
+      initialFocus: model.keyboard.focus,
+      model: model.editing.view,
+      primaryZone: homeZone(model),
+      reminderLimit: googleCalendarCapabilities.maxRemindersCount,
+      send,
+      theme: resolvedTheme(model),
+      timeFormat: resolvedTimeFormat(model),
+      toast,
+    }),
+    ...(EditorView.guards.Closed(model.editing.view) && toast !== undefined
+      ? [toast]
+      : []),
+  ];
+};
+
+const dateFlash = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] => {
+  if (Option.isNone(model.keyboard.flash)) {
+    return [];
+  }
+
+  const day = model.keyboard.flash.value;
+  const index = visibleDays(model.calendar.navigation).indexOf(day) + 1;
+  const name = `keyboard-date-flash-${model.keyboard.flashVersion}`;
+
+  return [
+    h.style(
+      [],
+      [
+        `@keyframes ${name}{from{background-color:#d8e6ed}to{background-color:transparent}} .day-column[data-day="${day}"],.month-cells .month-cell:nth-child(${index}){animation:${name} 1s ease-out}`,
+      ]
+    ),
+  ];
+};
+
+const pageToolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html =>
+  Predicate.isTagged(model.route, "Settings")
+    ? h.header([h.Class("toolbar")], [h.h1([], ["Calendar"])])
+    : toolbar(model, h);
+
+const workspaceContent = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>,
+  prepare: typeof PrepareGestures
+): Html => {
+  if (Predicate.isTagged(model.route, "Search")) {
+    return searchPanel(model, h);
+  }
+
+  return model.calendar.navigation.mode === "month"
+    ? monthGrid(model, h)
+    : timeGrid(model, h, prepare);
+};
+
+const routedPage = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>,
+  prepare: typeof PrepareGestures
+): Html => {
+  if (Predicate.isTagged(model.route, "Shortcuts")) {
+    return shortcutsPage(model, h);
+  }
+
+  if (Predicate.isTagged(model.route, "Settings")) {
+    return model.route.page === "calendar"
+      ? settingsPage(model, h, "calendar", model.route.accountId)
+      : settingsPage(model, h, model.route.page);
+  }
+
+  return h.div(
+    [h.Class("workspace")],
+    [
+      ...(model.keyboard.sidebar ? [sidebar(model, h)] : []),
+      workspaceContent(model, h, prepare),
+      ...(model.settings.hideContextPanel
+        ? []
+        : [...detailPanel(model, h), ...upcomingMeetingPanel(model, h)]),
+    ]
+  );
+};
 
 export const view = (
   model: AppModel,
-  h: HtmlBuilder<AppMessage>
+  h: HtmlBuilder<AppMessage>,
+  prepare: typeof PrepareGestures = PrepareGestures
 ): Document => ({
-  body: h.main(
-    [h.Class("app")],
+  body: h.keyed("main")(
+    Option.getOrElse(model.person, () => "signed-out"),
+    [
+      h.Class(`app theme-${resolvedTheme(model)}`),
+      h.OnMount(PrepareKeyboard()),
+    ],
     [
       ...AsyncData.match(model.session, {
         onFailure: (error) => [
@@ -61,19 +191,39 @@ export const view = (
                 ),
               ]
             : [
-                toolbar(model, h),
-                h.div(
-                  [h.Class("workspace")],
-                  [
-                    sidebar(model, h),
-                    model.calendar.navigation.mode === "month"
-                      ? monthGrid(model, h)
-                      : timeGrid(model, h),
-                    ...detailPanel(model, h),
-                  ]
-                ),
+                pageToolbar(model, h),
+                ...(model.keyboard.sidebar
+                  ? [
+                      h.button(
+                        [
+                          h.Id("command-menu-button"),
+                          h.OnClick(Message.KeyboardAction({ id: "commands" })),
+                          h.Style({
+                            bottom: "16px",
+                            left: "16px",
+                            padding: "8px",
+                            position: "fixed",
+                            "z-index": "5",
+                          }),
+                          h.AriaLabel("Open command menu"),
+                        ],
+                        [`Commands · ${bindingHints("commands").join(" / ")}`]
+                      ),
+                    ]
+                  : []),
+                routedPage(model, h, prepare),
+                ...systemZonePrompt(model, h),
               ],
       }),
+      h.div(
+        [
+          h.Style({ display: "contents" }),
+          h.OnMount(PrepareEditingDialogs({ person: model.person })),
+        ],
+        editingLayers(model, h)
+      ),
+      ...commandMenu(model, h),
+      ...dateFlash(model, h),
       ...(Option.isNone(model.error)
         ? []
         : [h.p([h.Class("app-error"), h.Role("alert")], [model.error.value])]),

@@ -7,6 +7,7 @@ import type {
   EventFieldsValue,
   EventTimeValue,
 } from "./model.js";
+import { seriesZoneTime } from "./series-zone-time.js";
 import { CalendarReadBudget } from "./sync.js";
 
 const invalid = (message: string) =>
@@ -34,6 +35,16 @@ export const shiftedTime = Effect.fn("shiftedEventTime")(function* shiftedTime(
   selected: EventTimeValue,
   changed: EventTimeValue
 ) {
+  if (
+    "dateTime" in master &&
+    "dateTime" in selected &&
+    "dateTime" in changed &&
+    changed.timeZone !== undefined &&
+    changed.timeZone !== (selected.timeZone ?? master.timeZone)
+  ) {
+    return yield* seriesZoneTime(master, selected, changed);
+  }
+
   const masterTime = yield* timeValue(master);
   const selectedTime = yield* timeValue(selected);
   const changedTime = yield* timeValue(changed);

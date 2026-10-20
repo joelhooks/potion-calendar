@@ -71,11 +71,14 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
     const accounts = Effect.fn("GoogleTokens.accounts")(function* accounts() {
       const rows = yield* Effect.tryPromise({
         catch: () => storageError(""),
-        try: context.adapter.findMany.bind(context.adapter, {
-          limit: permittedEmails.length,
-          model: "account",
-          where: where(),
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          context.adapter.findMany({
+            limit: permittedEmails.length,
+            model: "account",
+            where: where(),
+          }),
       });
 
       const decoded = yield* Schema.decodeUnknownEffect(
@@ -95,10 +98,13 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
     ) {
       const row = yield* Effect.tryPromise({
         catch: () => storageError(accountId),
-        try: context.adapter.findOne.bind(context.adapter, {
-          model: "account",
-          where: where(accountId),
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          context.adapter.findOne({
+            model: "account",
+            where: where(accountId),
+          }),
       });
 
       if (row === null) {
@@ -145,10 +151,13 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
 
       const token = yield* Effect.tryPromise({
         catch: () => storageError(accountId),
-        try: symmetricDecrypt.bind(undefined, {
-          data: account.accessToken ?? "",
-          key: context.secretConfig,
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          symmetricDecrypt({
+            data: account.accessToken ?? "",
+            key: context.secretConfig,
+          }),
       });
 
       return Redacted.make(token);
@@ -169,10 +178,13 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
 
       const refreshToken = yield* Effect.tryPromise({
         catch: () => storageError(accountId),
-        try: symmetricDecrypt.bind(undefined, {
-          data: account.refreshToken ?? "",
-          key: context.secretConfig,
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          symmetricDecrypt({
+            data: account.refreshToken ?? "",
+            key: context.secretConfig,
+          }),
       });
 
       const response = yield* client
@@ -198,15 +210,18 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
         if (failure.error === "invalid_grant") {
           yield* Effect.tryPromise({
             catch: () => storageError(accountId),
-            try: context.adapter.update.bind(context.adapter, {
-              model: "account",
-              update: {
-                accessToken: null,
-                disconnected: true,
-                refreshToken: null,
-              },
-              where: where(accountId),
-            }),
+
+            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+            try: () =>
+              context.adapter.update({
+                model: "account",
+                update: {
+                  accessToken: null,
+                  disconnected: true,
+                  refreshToken: null,
+                },
+                where: where(accountId),
+              }),
           });
 
           return yield* new GoogleTokensError({
@@ -224,10 +239,13 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
 
       const encrypted = yield* Effect.tryPromise({
         catch: () => storageError(accountId),
-        try: symmetricEncrypt.bind(undefined, {
-          data: tokens.access_token,
-          key: context.secretConfig,
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          symmetricEncrypt({
+            data: tokens.access_token,
+            key: context.secretConfig,
+          }),
       });
 
       const rotated =
@@ -235,25 +253,31 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
           ? account.refreshToken
           : yield* Effect.tryPromise({
               catch: () => storageError(accountId),
-              try: symmetricEncrypt.bind(undefined, {
-                data: tokens.refresh_token ?? "",
-                key: context.secretConfig,
-              }),
+
+              // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+              try: () =>
+                symmetricEncrypt({
+                  data: tokens.refresh_token ?? "",
+                  key: context.secretConfig,
+                }),
             });
 
       yield* Effect.tryPromise({
         catch: () => storageError(accountId),
-        try: context.adapter.update.bind(context.adapter, {
-          model: "account",
-          update: {
-            accessToken: encrypted,
-            accessTokenExpiresAt: DateTime.toDateUtc(
-              DateTime.makeUnsafe(now + tokens.expires_in * 1000)
-            ),
-            refreshToken: rotated,
-          },
-          where: where(accountId),
-        }),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          context.adapter.update({
+            model: "account",
+            update: {
+              accessToken: encrypted,
+              accessTokenExpiresAt: DateTime.toDateUtc(
+                DateTime.makeUnsafe(now + tokens.expires_in * 1000)
+              ),
+              refreshToken: rotated,
+            },
+            where: where(accountId),
+          }),
       });
 
       return Redacted.make(tokens.access_token);

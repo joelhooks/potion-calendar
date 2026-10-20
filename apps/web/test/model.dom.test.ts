@@ -11,6 +11,7 @@ import {
   SavePreferences,
   ScrollToNow,
 } from "../src/client/commands.js";
+import { normalizePreferences } from "../src/client/settings/model.js";
 import { dayFromIso, visibleDays } from "../src/layout/navigation.js";
 import { visibleEvents } from "../src/layout/presentation.js";
 import { fixtureEvents, fixtureModel } from "./fixture.js";
@@ -164,21 +165,31 @@ it.effect(
       localStorage.clear();
       const hidden = [calendarKey("work", "primary")];
       yield* SavePreferences({
-        hidden,
-        mergeDuplicates: false,
+        ...normalizePreferences({ hidden, mergeDuplicates: false }),
         person: "person-one",
       }).effect;
       const own = yield* ReadPreferences({ person: "person-one" }).effect;
       const other = yield* ReadPreferences({ person: "person-two" }).effect;
 
       expect(own).toEqual(
-        Message.ReceivedPreferences({ hidden, mergeDuplicates: false })
+        Message.ReceivedPreferences({
+          person: "person-one",
+          preferences: normalizePreferences({ hidden, mergeDuplicates: false }),
+        })
       );
-      const loaded = update(fixtureModel(), own).model;
+
+      const loaded = update(
+        { ...fixtureModel(), person: Option.some("person-one") },
+        own
+      ).model;
+
       expect(loaded.calendar.mergeDuplicates).toBe(false);
       expect(loaded.calendar.hidden).toEqual(hidden);
       expect(other).toEqual(
-        Message.ReceivedPreferences({ hidden: [], mergeDuplicates: true })
+        Message.ReceivedPreferences({
+          person: "person-two",
+          preferences: normalizePreferences({ version: 2, visibility: {} }),
+        })
       );
 
       localStorage.setItem(
@@ -187,7 +198,12 @@ it.effect(
       );
       expect(
         yield* ReadPreferences({ person: "legacy-person" }).effect
-      ).toEqual(Message.ReceivedPreferences({ hidden, mergeDuplicates: true }));
+      ).toEqual(
+        Message.ReceivedPreferences({
+          person: "legacy-person",
+          preferences: normalizePreferences({ hidden }),
+        })
+      );
 
       const off = update(
         fixtureModel(),
@@ -217,7 +233,7 @@ it.effect(
         '{"hidden":false}'
       );
       expect(yield* ReadPreferences({ person: "person-two" }).effect).toEqual(
-        Message.FailedPreferences()
+        Message.FailedPreferences({ person: "person-two" })
       );
       localStorage.clear();
     })

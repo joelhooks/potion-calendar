@@ -14,9 +14,13 @@ import {
 } from "../client/calendar-state.js";
 import { allDayHeight, packAllDay } from "./all-day.js";
 import { eventColor } from "./colors.js";
+import { projectEditingEvents } from "./editing-events.js";
 import { mergeEquivalentEvents } from "./equivalent-events.js";
 import { minuteInZone, nearFullDay } from "./geometry.js";
 import { dayInZone, partsFromDay, visibleDays } from "./navigation.js";
+import { selectedSearchResult } from "./search-results.js";
+import { clockLabel } from "./time-format.js";
+import type { ResolvedTimeFormat } from "./time-format.js";
 
 export type EventStatus =
   | "accepted"
@@ -178,43 +182,118 @@ export const displayEvent = (
   };
 };
 
-const unmergedEvents = (model: AppModel): readonly DisplayEvent[] =>
-  model.calendar.reads.flatMap((read) => {
+const selectedUpcomingCopies = (
+  model: AppModel
+): readonly CalendarEventValue[] => {
+  if (Option.isNone(model.calendar.selected)) {
+    return [];
+  }
+
+  const saved = AsyncData.getData(model.upcoming.data);
+
+  const displayed = Option.isNone(saved)
+    ? []
+    : saved.value.events.flatMap((event) => {
+        const calendar = model.calendar.calendars.find(
+          (item) =>
+            item.accountId === event.accountId &&
+            item.calendarId === event.calendarId
+        );
+
+        const item =
+          calendar === undefined
+            ? undefined
+            : displayEvent(event, calendar, model.calendar.zone, Option.none());
+
+        return item === undefined ? [] : [item];
+      });
+
+  const session = Option.getOrUndefined(AsyncData.getData(model.session));
+  const accounts = session?.accounts ?? [];
+
+  const primaryAccount =
+    accounts.find((account) => account.email === session?.user.email)?.id ??
+    accounts[0]?.id;
+
+  const candidates = model.calendar.mergeDuplicates
+    ? mergeEquivalentEvents(
+        displayed,
+        accounts.map((account) => account.id),
+        primaryAccount
+      )
+    : displayed;
+
+  const selected = candidates.find((item) =>
+    Option.contains(model.calendar.selected, item.key)
+  );
+
+  return selected?.copies.map((copy) => copy.source) ?? [];
+};
+
+const unmergedEvents = (model: AppModel): readonly DisplayEvent[] => {
+  const raw = model.calendar.reads.flatMap((read) => {
     const result = AsyncData.getData(read.events);
 
-    if (Option.isNone(result)) {
+    return Option.isSome(result) ? result.value.events : [];
+  });
+
+  const selected = selectedSearchResult(model);
+
+  const events =
+    selected !== undefined &&
+    !raw.some(
+      (event) =>
+        event.calendarId === selected.event.calendarId &&
+        event.eventId === selected.event.eventId
+    )
+      ? [...raw, selected.event]
+      : raw;
+
+  const rangeKeys = new Set(events.map(eventKey));
+
+  const projected = [
+    ...events,
+    ...selectedUpcomingCopies(model).filter(
+      (event) => !rangeKeys.has(eventKey(event))
+    ),
+  ];
+
+  return projectEditingEvents(projected, model.editing).flatMap((event) => {
+    const calendar = model.calendar.calendars.find(
+      (item) =>
+        item.accountId === event.accountId &&
+        item.calendarId === event.calendarId
+    );
+
+    if (
+      calendar === undefined ||
+      model.calendar.hidden.includes(
+        calendarKey(event.accountId, event.calendarId)
+      )
+    ) {
       return [];
     }
 
-    return result.value.events.flatMap((event) => {
-      const calendar = model.calendar.calendars.find(
-        (item) =>
-          item.accountId === event.accountId &&
-          item.calendarId === event.calendarId
-      );
+    const item = displayEvent(
+      event,
+      calendar,
+      model.calendar.zone,
+      model.calendar.selected
+    );
 
-      if (
-        calendar === undefined ||
-        model.calendar.hidden.includes(
-          calendarKey(event.accountId, event.calendarId)
-        )
-      ) {
-        return [];
-      }
+    const selectedSearchCopy =
+      selected !== undefined &&
+      selected.event.calendarId === event.calendarId &&
+      selected.event.eventId === event.eventId;
 
-      const item = displayEvent(
-        event,
-        calendar,
-        model.calendar.zone,
-        model.calendar.selected
-      );
-
-      return item === undefined ||
-        (model.calendar.hideDeclined && item.status === "declined")
-        ? []
-        : [item];
-    });
+    return item === undefined ||
+      (model.calendar.hideDeclined &&
+        item.status === "declined" &&
+        !selectedSearchCopy)
+      ? []
+      : [item];
   });
+};
 
 export const visibleEvents = (model: AppModel): readonly DisplayEvent[] => {
   const events = unmergedEvents(model);
@@ -231,14 +310,31 @@ export const visibleEvents = (model: AppModel): readonly DisplayEvent[] => {
     accounts.find((account) => account.email === session?.user.email)?.id ??
     accounts[0]?.id;
 
+  const searchSelected = selectedSearchResult(model);
+
   return mergeEquivalentEvents(
     events,
     accounts.map((account) => account.id),
     primaryAccount
-  ).map((event) => ({
-    ...event,
-    selected: Option.contains(model.calendar.selected, event.key),
-  }));
+  ).map((event) => {
+    const selectedCopy =
+      searchSelected !== undefined &&
+      event.copies.some(
+        (copy) =>
+          copy.source.calendarId === searchSelected.event.calendarId &&
+          copy.source.eventId === searchSelected.event.eventId
+      );
+
+    const key = selectedCopy
+      ? Option.getOrElse(model.calendar.selected, () => event.key)
+      : event.key;
+
+    return {
+      ...event,
+      key,
+      selected: Option.contains(model.calendar.selected, key),
+    };
+  });
 };
 
 export const allDaySection = (
@@ -307,12 +403,7 @@ export const dayLabel = (
     locale: "en-US",
   });
 
-export const clockLabel = (minutes: number): string => {
-  const hour = Math.floor(minutes / 60) % 24;
-  const minute = Math.floor(minutes % 60);
-
-  return `${hour % 12 || 12}${minute === 0 ? "" : `:${String(minute).padStart(2, "0")}`}${hour < 12 ? "am" : "pm"}`;
-};
+export { clockLabel } from "./time-format.js";
 
 export interface DetailWhen {
   readonly date: string;
@@ -345,14 +436,16 @@ const allDayDateRange = (event: DisplayEvent, currentYear: number): string => {
 const timedEndpoint = (
   day: number,
   minute: number,
-  showYear: boolean
+  showYear: boolean,
+  format: ResolvedTimeFormat
 ): string =>
-  `${dayLabel(day, { day: "numeric", month: "short", weekday: "short", year: showYear ? "numeric" : undefined })}, ${clockLabel(minute)}`;
+  `${dayLabel(day, { day: "numeric", month: "short", weekday: "short", year: showYear ? "numeric" : undefined })}, ${clockLabel(minute, format)}`;
 
 export const eventWhen = (
   event: DisplayEvent,
   zone: string,
-  currentYear: number
+  currentYear: number,
+  format: ResolvedTimeFormat = "12"
 ): DetailWhen => {
   const { start, end } = event.source;
 
@@ -384,7 +477,7 @@ export const eventWhen = (
   if (firstDay === lastDay) {
     return {
       date: dayLabel(firstDay, { dateStyle: "full" }),
-      time: `${clockLabel(firstMinute)} – ${clockLabel(lastMinute)} · ${zone}`,
+      time: `${clockLabel(firstMinute, format)} – ${clockLabel(lastMinute, format)} · ${zone}`,
     };
   }
 
@@ -393,6 +486,6 @@ export const eventWhen = (
     partsFromDay(lastDay).year !== currentYear;
 
   return {
-    date: `${timedEndpoint(firstDay, firstMinute, showYear)} – ${timedEndpoint(lastDay, lastMinute, showYear)} · ${zone}`,
+    date: `${timedEndpoint(firstDay, firstMinute, showYear, format)} – ${timedEndpoint(lastDay, lastMinute, showYear, format)} · ${zone}`,
   };
 };

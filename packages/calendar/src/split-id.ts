@@ -55,7 +55,7 @@ export const splitSuccessorId = Effect.fn("splitSuccessorId")(
           operation: "split.id",
           status: 0,
         }),
-      // oxlint-disable-next-line typescript/promise-function-async -- Web Crypto owns this native Promise boundary.
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
       try: () => crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
     });
 

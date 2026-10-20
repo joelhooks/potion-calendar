@@ -33,16 +33,17 @@ const cookiesFor = (response: Response, previous = "") => {
 export const seedFakePerson = Effect.fn("seedFakePerson")(
   function* seedFakePerson(
     fake: ReturnType<typeof createFakeAuth>,
-    emails: readonly string[] = ["joel@example.test", "second@example.test"]
+    emails: readonly string[] = ["joel@example.test", "second@example.test"],
+    initialSession?: { readonly cookie: string }
   ) {
-    let cookie = "";
+    let cookie = initialSession?.cookie ?? "";
 
-    for (const [index, email] of emails.entries()) {
+    for (const email of emails) {
       const start = yield* Effect.promise(
         fake.auth.handler.bind(
           fake.auth,
           new Request(
-            `${fake.config.baseURL}/auth/${index === 0 ? "sign-in/oauth2" : "oauth2/link"}`,
+            `${fake.config.baseURL}/auth/${cookie === "" ? "sign-in/oauth2" : "oauth2/link"}`,
             {
               body: JSON.stringify({ callbackURL: "/", providerId: "google" }),
               headers: {

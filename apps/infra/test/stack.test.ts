@@ -58,7 +58,14 @@ it.effect(
             name: Schema.String,
             zoneName: Schema.String,
           }),
-          env: Schema.Struct({ RELEASE: Schema.String }),
+          env: Schema.Struct({
+            CALENDAR_LIVE: Schema.Struct({
+              className: Schema.String,
+              kind: Schema.String,
+            }),
+            CALENDAR_ORIGIN: Schema.String,
+            RELEASE: Schema.String,
+          }),
           routes: Schema.Array(
             Schema.Struct({ pattern: Schema.String, zoneName: Schema.String })
           ),
@@ -74,6 +81,11 @@ it.effect(
         { pattern: "calendar.wzrrd.sh/*", zoneName: "wzrrd.sh" },
       ]);
       expect(props.workersDev).toBe(false);
+      expect(props.env.CALENDAR_ORIGIN).toBe(`https://${props.domain.name}`);
+      expect(props.env.CALENDAR_LIVE).toEqual({
+        className: "CalendarLive",
+        kind: "Cloudflare.DurableObject",
+      });
       expect(props.env.RELEASE).toBe((yield* websiteRelease).generation);
     }).pipe(
       Effect.provide(services),

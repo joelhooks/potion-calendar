@@ -76,73 +76,16 @@ export const nextWatchEvidence = (
     : 0,
 });
 
-export const fixedWatchRoutes = [
-  { content: true, route: "/" },
-  { content: true, route: "/llms.txt" },
-  { content: true, route: "/sitemap.xml" },
-  { content: true, route: "/auth.md" },
-  { content: true, route: "/lore/effect-basics" },
-  { content: false, route: "/.well-known/mcp.json" },
-] as const;
-
-export const sweepSlice = (
-  routes: readonly string[],
-  cycle: number,
-  sweepCycles: number
-): readonly string[] => {
-  if (routes.length === 0) {
-    return [];
-  }
-
-  const size = Math.ceil(routes.length / sweepCycles);
-  const start = (cycle * size) % routes.length;
-
-  return [...routes, ...routes].slice(
-    start,
-    start + Math.min(size, routes.length)
-  );
-};
-
-export const sitemapRoutes = (
-  baseUrl: string,
-  sitemap: string
-): readonly string[] => {
-  const { origin } = new URL(baseUrl);
-  const fixed = new Set<string>(fixedWatchRoutes.map((row) => row.route));
-  const routes = new Set<string>();
-
-  for (const match of sitemap.matchAll(/<loc>\s*(?<loc>[^<\s]+)\s*<\/loc>/gu)) {
-    const loc = match.groups?.loc;
-    const url = loc === undefined ? undefined : URL.parse(loc);
-
-    if (url !== undefined && url !== null && url.origin === origin) {
-      const route = `${url.pathname}${url.search}`;
-
-      if (!fixed.has(route)) {
-        routes.add(route);
-      }
-    }
-  }
-
-  return [...routes];
-};
+export const fixedWatchRoutes = [{ content: true, route: "/" }] as const;
 
 const WatchInputSchema = Schema.Struct({
   baseUrl: Schema.String,
   deadline: Schema.Natural,
   intervalMs: Schema.Natural,
-  sweepCycles: Schema.Int.check(Schema.isGreaterThan(0)),
   threshold: Schema.Int.check(Schema.isGreaterThan(0)),
 });
 
 type WatchInput = typeof WatchInputSchema.Type;
-
-const WatchCycleInputSchema = Schema.Struct({
-  ...WatchInputSchema.fields,
-  routes: Schema.Array(Schema.String),
-});
-
-type WatchCycleInput = typeof WatchCycleInputSchema.Type;
 
 interface WatchContext {
   readonly evidence: WatchEvidence;
@@ -217,44 +160,15 @@ const logFailures = (observations: readonly WatchObservation[]) =>
     { discard: true }
   );
 
-export const discoverWatchRoutes = Effect.fn("discoverWatchRoutes")(
-  function* discoverWatchRoutes(input: WatchInput) {
-    const { observation, response } = yield* probeRoute(input.baseUrl, {
-      accept: "application/xml",
-      content: true,
-      route: "/sitemap.xml",
-    });
-
-    yield* logFailures([observation]);
-
-    if (Option.isNone(response) || observation.status !== 200) {
-      return { observation, routes: [] };
-    }
-
-    const sitemap = yield* response.value.text.pipe(
-      Effect.timeout(probeTimeoutMs),
-      Effect.orElseSucceed(() => "")
-    );
-
-    return { observation, routes: sitemapRoutes(input.baseUrl, sitemap) };
-  },
-  Effect.scoped
-);
-
 export const observeWatchCycle = Effect.fn("observeWatchCycle")(
-  function* observeWatchCycle(input: WatchCycleInput) {
+  function* observeWatchCycle(input: WatchInput) {
     const now = yield* Clock.currentTimeMillis;
 
     if (now >= input.deadline) {
       return { finished: true, observations: [] };
     }
 
-    const routes = [
-      ...fixedWatchRoutes,
-      ...input.routes.map((route) => ({ content: true, route })),
-    ];
-
-    const requests = routes.flatMap((route) =>
+    const requests = fixedWatchRoutes.flatMap((route) =>
       ["*/*", "text/html"].map((accept) => ({ ...route, accept }))
     );
 
@@ -274,14 +188,9 @@ export const observeWatchCycle = Effect.fn("observeWatchCycle")(
   Effect.scoped
 );
 
-const discover = createEffectLogic({
-  effect: ({ input }) => discoverWatchRoutes(input),
-  schemas: { input: WatchInputSchema },
-});
-
 const observe = createEffectLogic({
   effect: ({ input }) => observeWatchCycle(input),
-  schemas: { input: WatchCycleInputSchema },
+  schemas: { input: WatchInputSchema },
 });
 
 const wait = createEffectLogic({
@@ -303,44 +212,26 @@ const wait = createEffectLogic({
 });
 
 export const watchMachine = setupEffect({
-  actors: { discover, observe, wait },
+  actors: { observe, wait },
   schemas: { context: types<WatchContext>(), input: WatchInputSchema },
 }).createMachine({
   context: ({ input }) => ({
-    evidence: { cycles: 0, observations: [], routes: [], streak: 0 },
+    evidence: {
+      cycles: 0,
+      observations: [],
+      routes: fixedWatchRoutes.map(({ route }) => route),
+      streak: 0,
+    },
     input,
   }),
-  initial: "discovering",
+  initial: "observing",
   output: ({ context }) => context.evidence,
   states: {
     completed: { type: "final" },
-    discovering: {
-      invoke: {
-        input: ({ context }) => context.input,
-        onDone: ({ context, event }) => ({
-          context: {
-            evidence: {
-              ...context.evidence,
-              observations: [event.output.observation],
-              routes: event.output.routes,
-            },
-          },
-          target: "observing",
-        }),
-        src: "discover",
-      },
-    },
     failed: { type: "final" },
     observing: {
       invoke: {
-        input: ({ context }) => ({
-          ...context.input,
-          routes: sweepSlice(
-            context.evidence.routes,
-            context.evidence.cycles,
-            context.input.sweepCycles
-          ),
-        }),
+        input: ({ context }) => context.input,
         onDone: ({ context, event }) => {
           const evidence = event.output.finished
             ? context.evidence
@@ -384,10 +275,6 @@ export const watchDeployment = Effect.fn("watchDeployment")(
         baseUrl,
         deadline: now + duration,
         intervalMs: interval,
-        sweepCycles: Math.max(
-          1,
-          Math.floor(duration / Math.max(1, interval) / 3)
-        ),
         threshold: 2,
       },
     });
@@ -411,22 +298,6 @@ export const watchDeployment = Effect.fn("watchDeployment")(
           evidence.streak >= 2
             ? "consecutive-content-500-cycles"
             : "non-200-or-incomplete-watch",
-      });
-    }
-
-    if (evidence.routes.length === 0) {
-      return yield* new WatchFailed({
-        evidence,
-        reason: "sitemap-listed-no-routes",
-      });
-    }
-
-    const observed = new Set(evidence.observations.map((row) => row.route));
-
-    if (evidence.routes.some((route) => !observed.has(route))) {
-      return yield* new WatchFailed({
-        evidence,
-        reason: "route-coverage-incomplete",
       });
     }
 

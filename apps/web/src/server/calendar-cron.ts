@@ -1,10 +1,11 @@
 import { authContext } from "@calendar/auth/google";
 import type { GoogleAuth, GoogleAuthConfig } from "@calendar/auth/google";
-import { CalendarService, Provider, syncCalendar } from "@calendar/calendar";
+import { CalendarService, Provider } from "@calendar/calendar";
 import { Effect, Result, Schema } from "effect";
 
 import { calendarForPerson } from "./calendar-runtime.js";
 import type { CalendarBackendOptions } from "./calendar-runtime.js";
+import { CalendarSynchronization } from "./calendar-synchronization.js";
 
 const People = Schema.Array(
   Schema.Struct({ email: Schema.String, id: Schema.String })
@@ -40,11 +41,14 @@ export const syncConnectedCalendars = Effect.fn("syncConnectedCalendars")(
 
     const rows = yield* Effect.tryPromise({
       catch: cronFailure,
-      try: context.adapter.findMany.bind(context.adapter, {
-        limit: emails.length,
-        model: "user",
-        where: [{ field: "email", operator: "in", value: emails }],
-      }),
+
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+      try: () =>
+        context.adapter.findMany({
+          limit: emails.length,
+          model: "user",
+          where: [{ field: "email", operator: "in", value: emails }],
+        }),
     });
 
     const people = yield* Schema.decodeUnknownEffect(People)(rows).pipe(
@@ -55,6 +59,16 @@ export const syncConnectedCalendars = Effect.fn("syncConnectedCalendars")(
     let failed = 0;
 
     for (const person of people) {
+      if (options.maintain !== undefined) {
+        const maintenance = yield* options
+          .maintain(person.id)
+          .pipe(Effect.result);
+
+        if (Result.isFailure(maintenance)) {
+          failed += 1;
+        }
+      }
+
       const outcome = yield* calendarForPerson(
         auth,
         config,
@@ -75,7 +89,11 @@ export const syncConnectedCalendars = Effect.fn("syncConnectedCalendars")(
             }
 
             for (const calendar of account.calendars) {
-              const result = yield* Effect.result(syncCalendar(calendar));
+              const result = yield* Effect.result(
+                CalendarSynchronization.use((synchronization) =>
+                  synchronization.run(calendar)
+                )
+              );
 
               if (Result.isSuccess(result)) {
                 completed += 1;

@@ -1,7 +1,15 @@
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
+import type { Crypto } from "effect";
 
+import type { ConferencingWriteRequestValue } from "./conferencing-model.js";
 import { Provider } from "./errors.js";
 import type { CalendarFailureValue } from "./errors.js";
+import {
+  GoogleConferenceData,
+  googleConferencing,
+  requestedConferenceData,
+  conferencingReadback,
+} from "./google-conferencing.js";
 import type { GoogleTokens } from "./google-tokens.js";
 import {
   Calendar,
@@ -19,11 +27,13 @@ import type {
   EventFieldsValue,
   EventRefValue,
 } from "./model.js";
-import { googleRequest } from "./transport.js";
+import type { CalendarAppearancePatch } from "./settings-contracts.js";
+import { googleRequest, GoogleRetryPolicy } from "./transport.js";
 import type { GoogleRequestValue, GoogleHttp } from "./transport.js";
 
 const GoogleEvent = Schema.Struct({
   ...EventFields.fields,
+  conferenceData: Schema.optional(Schema.NullOr(GoogleConferenceData)),
   etag: Schema.optional(Schema.String),
   hangoutLink: Schema.optional(Schema.String),
   htmlLink: Schema.optional(Schema.String),
@@ -42,14 +52,27 @@ const EventPage = Schema.Struct({
   nextSyncToken: Schema.optional(Schema.String),
 });
 
+const SearchPage = Schema.Struct({
+  items: Schema.optional(Schema.Array(Schema.Unknown)),
+  nextPageToken: Schema.optional(Schema.String),
+  nextSyncToken: Schema.optional(Schema.String),
+});
+
 const GoogleCalendar = Schema.Struct({
   accessRole: Calendar.fields.accessRole,
   backgroundColor: Schema.optional(Schema.String),
   colorId: Schema.optional(Schema.String),
+  conferenceProperties: Schema.optional(
+    Schema.Struct({
+      allowedConferenceSolutionTypes: Schema.Array(Schema.String),
+    })
+  ),
   defaultReminders: Calendar.fields.defaultReminders,
   foregroundColor: Schema.optional(Schema.String),
+  hidden: Calendar.fields.hidden,
   id: Schema.String,
   primary: Schema.optional(Schema.Boolean),
+  selected: Calendar.fields.selected,
   summary: Schema.optional(Schema.String),
   timeZone: Schema.optional(Schema.String),
 });
@@ -88,13 +111,13 @@ const mapEvent = (
   ref: CalendarRefValue,
   event: typeof GoogleEvent.Type
 ): CalendarEventValue => {
-  const { id, summary, status, hangoutLink, ...fields } = event;
+  const { id, summary, status, hangoutLink, conferenceData, ...fields } = event;
 
   return {
     accountId: ref.accountId,
     calendarId: ref.calendarId,
     ...fields,
-    conferenceUrl: hangoutLink,
+    ...googleConferencing(conferenceData, hangoutLink),
     eventId: id,
     status: status ?? "confirmed",
     title: summary,
@@ -105,11 +128,14 @@ const mapCalendar = (
   accountId: string,
   calendar: typeof GoogleCalendar.Type
 ): CalendarValue => {
-  const { id, summary, timeZone, primary, ...fields } = calendar;
+  const { id, summary, timeZone, primary, conferenceProperties, ...fields } =
+    calendar;
 
   return {
     ...fields,
     accountId,
+    allowedConferenceSolutionTypes:
+      conferenceProperties?.allowedConferenceSolutionTypes,
     calendarId: id,
     primary: primary ?? false,
     timeZone: timeZone ?? "UTC",
@@ -126,6 +152,9 @@ const eventBody = (fields: EventFieldsValue) => {
 export interface ListPageInput {
   readonly ref: CalendarRefValue;
   readonly singleEvents: boolean;
+  readonly q?: string | undefined;
+  readonly maxResults?: number | undefined;
+  readonly orderBy?: "startTime" | "updated" | undefined;
   readonly pageToken?: string | undefined;
   readonly syncToken?: string | undefined;
   readonly timeMin?: string | undefined;
@@ -139,7 +168,12 @@ export interface ListedEvents {
 }
 
 export interface WriteOptions {
+  readonly conferencingRequest?: ConferencingWriteRequestValue | undefined;
   readonly sendUpdates?: "none" | "all" | "externalOnly" | undefined;
+}
+
+interface AttemptOptions extends WriteOptions {
+  readonly singleAttempt?: true;
 }
 
 export class GoogleCalendarClient extends Context.Service<
@@ -165,10 +199,14 @@ export class GoogleCalendarClient extends Context.Service<
     readonly getCalendar: (
       ref: CalendarRefValue
     ) => Effect.Effect<CalendarValue, CalendarFailureValue>;
+    readonly patchCalendar: (
+      ref: CalendarRefValue,
+      changes: typeof CalendarAppearancePatch.Type
+    ) => Effect.Effect<CalendarValue, CalendarFailureValue>;
     readonly move: (
       ref: EventRefValue,
       destinationCalendarId: string,
-      options: WriteOptions
+      options: AttemptOptions
     ) => Effect.Effect<CalendarEventValue, CalendarFailureValue>;
     readonly colors: (
       accountId: string
@@ -185,7 +223,7 @@ export class GoogleCalendarClient extends Context.Service<
     readonly patch: (
       ref: EventRefValue,
       fields: EventFieldsValue,
-      options: WriteOptions
+      options: AttemptOptions
     ) => Effect.Effect<CalendarEventValue, CalendarFailureValue>;
     readonly remove: (
       ref: EventRefValue,
@@ -207,13 +245,29 @@ export class GoogleCalendarClient extends Context.Service<
   static readonly layer = Layer.effect(
     GoogleCalendarClient,
     Effect.gen(function* layer() {
-      const context = yield* Effect.context<GoogleTokens | GoogleHttp>();
+      const context = yield* Effect.context<
+        GoogleTokens | GoogleHttp | Crypto.Crypto
+      >();
 
       const request = (input: GoogleRequestValue) =>
         googleRequest(input).pipe(Effect.provide(context));
 
-      const decode = <A>(schema: Schema.Codec<A>, input: GoogleRequestValue) =>
-        decodeResponse(schema, input).pipe(Effect.provide(context));
+      const decode = <A>(
+        schema: Schema.Codec<A>,
+        input: GoogleRequestValue,
+        singleAttempt = false
+      ) => {
+        const operation = singleAttempt
+          ? decodeResponse(schema, input).pipe(
+              Effect.provideService(GoogleRetryPolicy, {
+                baseDelayMs: 0,
+                retries: 0,
+              })
+            )
+          : decodeResponse(schema, input);
+
+        return operation.pipe(Effect.provide(context));
+      };
 
       const get = (ref: EventRefValue) =>
         decode(GoogleEvent, {
@@ -222,10 +276,28 @@ export class GoogleCalendarClient extends Context.Service<
           path: eventPath(ref),
         }).pipe(Effect.map((event) => mapEvent(ref, event)));
 
+      const readConferencingBack = (
+        ref: EventRefValue,
+        fallback: CalendarEventValue,
+        conferencingRequest: ConferencingWriteRequestValue
+      ) =>
+        get(ref).pipe(
+          Effect.map((event) =>
+            conferencingReadback(event, conferencingRequest)
+          ),
+          Effect.orElseSucceed((): CalendarEventValue => ({
+            ...fallback,
+            conferencingStatus: "unconfirmed",
+          }))
+        );
+
       return GoogleCalendarClient.of({
         calendarsPage: Effect.fn("GoogleCalendarClient.calendarsPage")(
           function* calendarsPage(accountId, pageToken) {
-            const query = new URLSearchParams({ maxResults: "250" });
+            const query = new URLSearchParams({
+              maxResults: "250",
+              showHidden: "true",
+            });
 
             if (pageToken !== undefined) {
               query.set("pageToken", pageToken);
@@ -249,16 +321,36 @@ export class GoogleCalendarClient extends Context.Service<
           decode(Colors, { accountId, method: "GET", path: "/colors" }),
         create: Effect.fn("GoogleCalendarClient.create")(
           function* create(ref, id, fields, options) {
+            const conferenceData = yield* requestedConferenceData(
+              options.conferencingRequest
+            ).pipe(Effect.provide(context));
+
+            const query = new URLSearchParams({
+              sendUpdates: options.sendUpdates ?? "none",
+            });
+
+            if (options.conferencingRequest !== undefined) {
+              query.set("conferenceDataVersion", "1");
+            }
+
             const response = yield* request({
               acceptConflict: true,
               accountId: ref.accountId,
-              body: JSON.stringify({ ...eventBody(fields), id }),
+              body: JSON.stringify({
+                ...eventBody(fields),
+                conferenceData,
+                id,
+              }),
               method: "POST",
-              path: `${pathFor(ref)}?sendUpdates=${options.sendUpdates ?? "none"}`,
+              path: `${pathFor(ref)}?${query.toString()}`,
             });
 
             if (response.status === 409) {
-              return yield* get({ ...ref, eventId: id });
+              const existing = yield* get({ ...ref, eventId: id });
+
+              return options.conferencingRequest === undefined
+                ? existing
+                : conferencingReadback(existing, options.conferencingRequest);
             }
 
             const event = yield* Schema.decodeEffect(
@@ -273,6 +365,14 @@ export class GoogleCalendarClient extends Context.Service<
                   })
               )
             );
+
+            if (options.conferencingRequest !== undefined) {
+              return yield* readConferencingBack(
+                { ...ref, eventId: event.id },
+                mapEvent(ref, event),
+                options.conferencingRequest
+              );
+            }
 
             return mapEvent(ref, event);
           }
@@ -312,17 +412,21 @@ export class GoogleCalendarClient extends Context.Service<
           function* listPage(input) {
             if (
               input.syncToken !== undefined &&
-              (input.timeMin !== undefined || input.timeMax !== undefined)
+              (input.timeMin !== undefined ||
+                input.timeMax !== undefined ||
+                input.q !== undefined ||
+                input.orderBy !== undefined)
             ) {
               return yield* new Provider({
-                message: "Sync tokens cannot be combined with range filters",
+                message:
+                  "Sync tokens cannot be combined with range or search filters",
                 operation: "events.list",
                 status: 0,
               });
             }
 
             const query = new URLSearchParams({
-              maxResults: "2500",
+              maxResults: String(input.maxResults ?? 2500),
               showDeleted: "true",
               singleEvents: String(input.singleEvents),
             });
@@ -341,6 +445,44 @@ export class GoogleCalendarClient extends Context.Service<
 
             if (input.timeMax !== undefined) {
               query.set("timeMax", input.timeMax);
+            }
+
+            if (input.q !== undefined) {
+              query.set("q", input.q);
+            }
+
+            if (input.orderBy !== undefined) {
+              query.set("orderBy", input.orderBy);
+            }
+
+            const pageRequest: GoogleRequestValue = {
+              accountId: input.ref.accountId,
+              method: "GET",
+              path: `${pathFor(input.ref)}?${query.toString()}`,
+            };
+
+            if (input.q !== undefined) {
+              const page = yield* decode(SearchPage, pageRequest);
+
+              const events = (page.items ?? []).flatMap((item) => {
+                const event = Schema.decodeUnknownOption(GoogleEvent)(item);
+
+                if (Option.isNone(event)) {
+                  return [];
+                }
+
+                return Option.toArray(
+                  Schema.decodeOption(CalendarEvent)(
+                    mapEvent(input.ref, event.value)
+                  )
+                );
+              });
+
+              return {
+                events,
+                nextPageToken: page.nextPageToken,
+                nextSyncToken: page.nextSyncToken,
+              };
             }
 
             const page = yield* decode(EventPage, {
@@ -364,11 +506,15 @@ export class GoogleCalendarClient extends Context.Service<
             sendUpdates: options.sendUpdates ?? "none",
           });
 
-          return decode(GoogleEvent, {
-            accountId: ref.accountId,
-            method: "POST",
-            path: `${eventPath(ref)}/move?${query.toString()}`,
-          }).pipe(
+          return decode(
+            GoogleEvent,
+            {
+              accountId: ref.accountId,
+              method: "POST",
+              path: `${eventPath(ref)}/move?${query.toString()}`,
+            },
+            options.singleAttempt
+          ).pipe(
             Effect.map((event) =>
               mapEvent(
                 { accountId: ref.accountId, calendarId: destinationCalendarId },
@@ -377,13 +523,51 @@ export class GoogleCalendarClient extends Context.Service<
             )
           );
         },
-        patch: (ref, fields, options) =>
-          decode(GoogleEvent, {
+        patch: Effect.fn("GoogleCalendarClient.patch")(
+          function* patch(ref, fields, options) {
+            const conferenceData = yield* requestedConferenceData(
+              options.conferencingRequest
+            ).pipe(Effect.provide(context));
+
+            const query = new URLSearchParams({
+              sendUpdates: options.sendUpdates ?? "none",
+            });
+
+            if (options.conferencingRequest !== undefined) {
+              query.set("conferenceDataVersion", "1");
+            }
+
+            const event = yield* decode(
+              GoogleEvent,
+              {
+                accountId: ref.accountId,
+                body: JSON.stringify({ ...eventBody(fields), conferenceData }),
+                method: "PATCH",
+                path: `${eventPath(ref)}?${query.toString()}`,
+              },
+              options.singleAttempt
+            );
+
+            if (options.conferencingRequest !== undefined) {
+              return yield* readConferencingBack(
+                ref,
+                mapEvent(ref, event),
+                options.conferencingRequest
+              );
+            }
+
+            return mapEvent(ref, event);
+          }
+        ),
+        patchCalendar: (ref, changes) =>
+          decode(GoogleCalendar, {
             accountId: ref.accountId,
-            body: JSON.stringify(eventBody(fields)),
+            body: JSON.stringify(changes),
             method: "PATCH",
-            path: `${eventPath(ref)}?sendUpdates=${options.sendUpdates ?? "none"}`,
-          }).pipe(Effect.map((event) => mapEvent(ref, event))),
+            path: `/users/me/calendarList/${encodeURIComponent(ref.calendarId)}`,
+          }).pipe(
+            Effect.map((calendar) => mapCalendar(ref.accountId, calendar))
+          ),
         remove: (ref, options) =>
           request({
             accountId: ref.accountId,

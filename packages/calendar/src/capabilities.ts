@@ -7,7 +7,9 @@ import {
   getEventContract,
   listCalendarsContract,
   listEventsContract,
+  searchEventsContract,
   moveEventContract,
+  moveAndRetimeSeriesContract,
   rsvpContract,
   syncNowContract,
   updateEventContract,
@@ -20,6 +22,10 @@ export const listCalendars = implement(listCalendarsContract, () =>
 
 export const listEvents = implement(listEventsContract, (input) =>
   CalendarService.use((calendar) => calendar.listEvents(input))
+);
+
+export const searchEvents = implement(searchEventsContract, (input) =>
+  CalendarService.use((calendar) => calendar.searchEvents(input))
 );
 
 export const getEvent = implement(getEventContract, (input) =>
@@ -38,6 +44,12 @@ export const moveEvent = implement(moveEventContract, (input) =>
   CalendarService.use((calendar) => calendar.moveEvent(input))
 );
 
+export const moveAndRetimeSeries = implement(
+  moveAndRetimeSeriesContract,
+  (input) =>
+    CalendarService.use((calendar) => calendar.moveAndRetimeSeries(input))
+);
+
 export const deleteEvent = implement(deleteEventContract, (input) =>
   CalendarService.use((calendar) => calendar.deleteEvent(input))
 );
@@ -51,10 +63,12 @@ export const syncNow = implement(syncNowContract, syncCalendar);
 export const calendarCapabilities = [
   listCalendars,
   listEvents,
+  searchEvents,
   getEvent,
   createEvent,
   updateEvent,
   moveEvent,
+  moveAndRetimeSeries,
   deleteEvent,
   rsvp,
   syncNow,

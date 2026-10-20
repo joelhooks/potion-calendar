@@ -22,9 +22,12 @@ import {
 } from "../../../packages/calendar/test/fake-google.js";
 import { Message, initialModel, update } from "../src/client/app.js";
 import { ReadCalendars } from "../src/client/commands.js";
+import { EditingRuntime } from "../src/client/editing/runtime.js";
+import { CalendarSearchClient } from "../src/client/search/client.js";
 import { view } from "../src/features/app.js";
 import { visibleEvents } from "../src/layout/presentation.js";
 import { fixtureModel } from "./fixture.js";
+import { unexpectedSearchClient } from "./search-fixture.js";
 
 it.effect(
   "the Foldkit UI reads the shared RPC contract through the memory store and fake provider",
@@ -40,6 +43,7 @@ it.effect(
                 backgroundColor: "#4986E8",
                 id: "primary",
                 primary: true,
+                selected: true,
                 summary: "Work",
                 timeZone: "America/Los_Angeles",
               },
@@ -103,12 +107,15 @@ it.effect(
       const fetcher: typeof fetch = async (input, init) =>
         await backend.handler(new Request(input, init));
 
-      const received = yield* ReadCalendars().effect.pipe(
-        Effect.provideService(FetchHttpClient.Fetch, fetcher)
-      );
+      const received = yield* ReadCalendars({
+        personId: "fixture-person",
+      }).effect.pipe(Effect.provideService(FetchHttpClient.Fetch, fetcher));
 
       let { model } = update(
-        initialModel(fixtureModel().calendar.now, "America/Los_Angeles"),
+        {
+          ...initialModel(fixtureModel().calendar.now, "America/Los_Angeles"),
+          person: Option.some("fixture-person"),
+        },
         received
       );
 
@@ -116,7 +123,18 @@ it.effect(
       ({ model } = requested);
 
       for (const command of requested.commands ?? []) {
+        const unexpectedEditing = Effect.die(
+          new Error("The read-only RPC seam must not invoke editing resources")
+        );
+
         const message = yield* command.effect.pipe(
+          Effect.provideService(
+            EditingRuntime,
+            EditingRuntime.of({
+              connect: () => unexpectedEditing,
+              dispatch: () => unexpectedEditing,
+            })
+          ),
           Effect.provideService(FetchHttpClient.Fetch, fetcher)
         );
 
@@ -150,5 +168,8 @@ it.effect(
       expect(rendered.html).toContain("Product review");
       expect(rendered.html).toContain("75%");
       expect(rendered.html).toContain("Reconnect");
-    }).pipe(Effect.scoped)
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
+    )
 );

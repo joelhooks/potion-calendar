@@ -1,35 +1,26 @@
-import {
-  CalendarRef,
-  Range,
-  listCalendarsContract,
-  listEventsContract,
-} from "@calendar/calendar/contracts";
-import { toRpcGroup } from "@calendar/capability/rpc-group";
-import { sessionContract } from "@calendar/core/contracts";
-import { Effect, Layer, Schema } from "effect";
+import { CalendarRef, Range } from "@calendar/calendar/contracts";
+import { Effect, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
 } from "effect/http";
-import { RpcClient, RpcSerialization } from "effect/rpc";
+import { RpcClient } from "effect/rpc";
 import { Command, Render } from "foldkit";
 
 import { initialScroll } from "../layout/geometry.js";
-import { Preferences, readFailure } from "./calendar-state.js";
+import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
+import { readFailure } from "./calendar-state.js";
 import { Message } from "./message.js";
+import { browserGroup, protocol } from "./rpc.js";
+import {
+  StoredPreferences,
+  SavedPreferences,
+  normalizePreferences,
+} from "./settings/model.js";
 
-export const browserGroup = toRpcGroup([
-  sessionContract,
-  listCalendarsContract,
-  listEventsContract,
-]).group;
-
-const protocol = RpcClient.layerProtocolHttp({ url: "/rpc" }).pipe(
-  Layer.provide(RpcSerialization.layerJson),
-  Layer.provide(FetchHttpClient.layer)
-);
+export { browserGroup } from "./rpc.js";
 
 export const ReadSession = Command.define("ReadSession", {
   execute: Effect.gen(function* readSession() {
@@ -45,21 +36,24 @@ export const ReadSession = Command.define("ReadSession", {
 });
 
 export const ReadCalendars = Command.define("ReadCalendars", {
-  execute: Effect.gen(function* readCalendars() {
-    const client = yield* RpcClient.make(browserGroup);
+  args: { personId: Schema.String },
+  execute: ({ personId }) =>
+    Effect.gen(function* readCalendars() {
+      const client = yield* RpcClient.make(browserGroup);
 
-    return Message.ReceivedCalendars({
-      result: yield* client.listCalendars({}),
-    });
-  }).pipe(
-    Effect.provide(protocol),
-    Effect.scoped,
-    Effect.match({
-      onFailure: (error) =>
-        Message.FailedCalendars({ failure: readFailure(error) }),
-      onSuccess: (message) => message,
-    })
-  ),
+      return Message.ReceivedCalendars({
+        personId,
+        result: yield* client.listCalendars({}),
+      });
+    }).pipe(
+      Effect.provide(protocol),
+      Effect.scoped,
+      Effect.match({
+        onFailure: (error) =>
+          Message.FailedCalendars({ failure: readFailure(error), personId }),
+        onSuccess: (message) => message,
+      })
+    ),
   messages: [Message.ReceivedCalendars, Message.FailedCalendars],
 });
 
@@ -102,39 +96,39 @@ export const ReadPreferences = Command.define("ReadPreferences", {
   args: { person: Schema.String },
   execute: ({ person }) =>
     Effect.try(
-      () => localStorage.getItem(preferenceKey(person)) ?? '{"hidden":[]}'
+      () =>
+        localStorage.getItem(preferenceKey(person)) ??
+        '{"version":2,"visibility":{}}'
     ).pipe(
       Effect.flatMap(
-        Schema.decodeUnknownEffect(Schema.fromJsonString(Preferences))
+        Schema.decodeEffect(Schema.fromJsonString(StoredPreferences))
       ),
-      Effect.map(({ hidden, mergeDuplicates }) =>
+      Effect.map((stored) =>
         Message.ReceivedPreferences({
-          hidden,
-          mergeDuplicates: mergeDuplicates ?? true,
+          person,
+          preferences: normalizePreferences(stored),
         })
       ),
-      Effect.orElseSucceed(() => Message.FailedPreferences())
+      Effect.orElseSucceed(() => Message.FailedPreferences({ person }))
     ),
   messages: [Message.ReceivedPreferences, Message.FailedPreferences],
 });
 
 export const SavePreferences = Command.define("SavePreferences", {
-  args: {
-    hidden: Schema.Array(Schema.String),
-    mergeDuplicates: Schema.Boolean,
-    person: Schema.String,
-  },
-  execute: ({ hidden, mergeDuplicates, person }) =>
-    Effect.try(() => {
-      localStorage.setItem(
-        preferenceKey(person),
-        JSON.stringify({ hidden, mergeDuplicates })
-      );
-    }).pipe(
+  args: { ...SavedPreferences.fields, person: Schema.String },
+  execute: ({ person, ...preferences }) =>
+    Schema.encodeEffect(Schema.fromJsonString(SavedPreferences))(
+      preferences
+    ).pipe(
+      Effect.flatMap((encoded) =>
+        Effect.try(() => {
+          localStorage.setItem(preferenceKey(person), encoded);
+        })
+      ),
       Effect.as(Message.SavedPreferences()),
-      Effect.orElseSucceed(() => Message.FailedPreferences())
+      Effect.orElseSucceed(() => Message.FailedPreferenceSave({ person }))
     ),
-  messages: [Message.SavedPreferences, Message.FailedPreferences],
+  messages: [Message.SavedPreferences, Message.FailedPreferenceSave],
 });
 
 export const ScrollToNow = Command.define("ScrollToNow", {
@@ -143,14 +137,16 @@ export const ScrollToNow = Command.define("ScrollToNow", {
     Render.afterCommit.pipe(
       Effect.andThen(
         Effect.sync(() => {
-          const viewport = document.querySelector("#time-viewport");
+          const viewport =
+            document.querySelector<HTMLElement>("#time-viewport");
 
           if (viewport !== null) {
             viewport.scrollTop = initialScroll(
               minute,
               scale,
-              viewport.clientHeight
+              timeAreaHeight(viewport)
             );
+            viewport.scrollLeft = todayScrollLeft(viewport);
           }
 
           return Message.CompletedGridScroll();

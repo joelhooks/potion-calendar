@@ -23,11 +23,15 @@ interface LintResult {
   readonly status: number;
 }
 
-const lintFixture = (area: string, source: string): LintResult => {
+const lintFixture = (
+  area: string,
+  source: string,
+  filename = "boundary-fixtures/fixture.ts"
+): LintResult => {
   const directory = mkdtempSync(path.join(tmpdir(), "rat-stack-boundaries-"));
-  const fixtureDirectory = path.join(directory, area, "boundary-fixtures");
   const config = path.join(directory, "oxlint.json");
-  const file = path.join(fixtureDirectory, "fixture.ts");
+  const file = path.join(directory, area, filename);
+  const fixtureDirectory = path.dirname(file);
 
   mkdirSync(fixtureDirectory, { recursive: true });
   writeFileSync(
@@ -73,6 +77,65 @@ const expectRuleSoft = (result: LintResult, message: string) => {
 };
 
 describe("architecture boundary rules", () => {
+  it("allows only the browser-safe actor watcher, not sibling capability implementations", () => {
+    expect(
+      lintFixture(
+        "apps/web/src/client",
+        'import { watchActor } from "@calendar/capability/actor-watch";'
+      ).status
+    ).toBe(0);
+    expectRule(
+      lintFixture(
+        "apps/web/src/client",
+        'import { implement } from "@calendar/capability/implement";'
+      ),
+      "browser-safe contract"
+    );
+  });
+
+  it("allows only the exact pure desktop bridge contract leaf in browser code", () => {
+    expect(
+      lintFixture(
+        "apps/web/src/client/desktop",
+        'import { DesktopSettings } from "@calendar/core/desktop-bridge";'
+      ).status
+    ).toBe(0);
+    expectRule(
+      lintFixture(
+        "apps/web/src/client/desktop",
+        'import { NativeSettings } from "@calendar/core/desktop-bridge/native";'
+      ),
+      "browser-safe contract"
+    );
+  });
+
+  it("allows only the web Vite config to install its own development composition", () => {
+    const source = 'import { development } from "./src/dev/vite-backend.js";';
+    expect(lintFixture("apps/web", source, "vite.config.ts").status).toBe(0);
+    expectRule(
+      lintFixture("apps/web", source, "another.config.ts"),
+      "Only modules inside"
+    );
+    expectRule(
+      lintFixture(
+        "apps/other",
+        'import { development } from "../web/src/dev/vite-backend.js";',
+        "vite.config.ts"
+      ),
+      "Only modules inside"
+    );
+
+    for (const area of ["client", "server", "features"]) {
+      expectRule(
+        lintFixture(
+          `apps/web/src/${area}`,
+          'import { development } from "../../dev/vite-backend.js";'
+        ),
+        "Only modules inside"
+      );
+    }
+  });
+
   it("keeps clients and vendor adapters out of core through every import form", () => {
     const sources = [
       'import { HttpClient } from "effect/unstable/http";',

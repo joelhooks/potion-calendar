@@ -5,11 +5,20 @@ import {
   join,
   setupEffect,
 } from "@xstate/effect";
-import { Context, Effect, Layer, Predicate, Redacted, Schema } from "effect";
+import {
+  Context,
+  Effect,
+  Layer,
+  Option,
+  Predicate,
+  Redacted,
+  Schema,
+} from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { types } from "xstate";
 
+import { calendarActorFailure } from "./calendar-actor-failure.js";
 import { Gone, NotFound, Provider, RateLimited, Revoked } from "./errors.js";
 import type { CalendarFailureValue } from "./errors.js";
 import { GoogleTokens, tokenFailure } from "./google-tokens.js";
@@ -143,11 +152,53 @@ const pauseRequest = createEffectLogic({
   schemas: { input: Schema.Struct({ delayMs: Schema.Finite }) },
 });
 
+const GoogleErrorReason = Schema.fromJsonString(
+  Schema.Struct({
+    error: Schema.Struct({
+      errors: Schema.Array(
+        Schema.Struct({
+          reason: Schema.String.check(
+            Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.-]{0,95}$/u)
+          ),
+        })
+      ),
+    }),
+  })
+);
+
 const classifyResponse = (
   request: GoogleRequestValue,
   response: GoogleResponse
 ): CalendarFailureValue => {
-  const operation = request.method;
+  const eventWatch =
+    request.method === "POST" &&
+    request.path.startsWith("/calendars/") &&
+    request.path.endsWith("/events/watch");
+
+  const operation = eventWatch ? "events.watch" : request.method;
+  const decoded = Schema.decodeOption(GoogleErrorReason)(response.body);
+
+  const reason = decoded.pipe(
+    Option.map((value) => value.error.errors[0]?.reason),
+    Option.getOrUndefined
+  );
+
+  const provider = () =>
+    new Provider({
+      message: "Google rejected the operation; inspect permissions or retry",
+      operation,
+      reason,
+      status: response.status,
+    });
+
+  if (
+    eventWatch &&
+    response.status >= 400 &&
+    response.status < 500 &&
+    ![401, 403, 429].includes(response.status)
+  ) {
+    return provider();
+  }
 
   switch (response.status) {
     case 401: {
@@ -170,11 +221,7 @@ const classifyResponse = (
     }
 
     default: {
-      return new Provider({
-        message: "Google rejected the operation; inspect permissions or retry",
-        operation,
-        status: response.status,
-      });
+      return provider();
     }
   }
 };
@@ -303,7 +350,7 @@ export const googleRequest = Effect.fn("googleRequest")(function* googleRequest(
   }
 
   if ("error" in outcome) {
-    return yield* outcome.error;
+    return yield* calendarActorFailure(outcome.error);
   }
 
   return outcome.response;

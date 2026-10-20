@@ -13,7 +13,10 @@ it.effect(
 
       const request = new Request("http://calendar.test/rpc", {
         body: '{"_tag":"Request","headers":[],"id":"1","payload":{},"tag":"session"}',
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          origin: "http://calendar.test",
+        },
         method: "POST",
       });
 

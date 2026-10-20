@@ -5,26 +5,40 @@ import {
   CalendarReadFailure,
   createEvent,
   deleteEvent,
+  disconnectAccount,
+  getAccountConferencingDefault,
+  setAccountConferencingDefault,
+  setCalendarAppearance,
   getEvent,
   listCalendars,
   listEvents,
+  moveAndRetimeSeries,
+  moveEvent,
   rsvp,
+  searchEvents,
   syncNow,
   updateEvent,
 } from "@calendar/calendar";
 import type {
   CalendarFailureValue,
   CalendarRefValue,
+  CalendarValue,
 } from "@calendar/calendar";
 import { implement } from "@calendar/capability/implement";
 import { toRpc } from "@calendar/capability/rpc";
 import { SessionUnavailable, sessionContract } from "@calendar/core/contracts";
-import { Effect, Layer, Predicate } from "effect";
+import { Cause, Effect, Layer, Predicate } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
+import {
+  SearchInventoryUnavailable,
+  searchEventsContract,
+} from "../search-contract.js";
+import type { SearchAccountFailure } from "../search-contract.js";
 import { calendarForRequest } from "./calendar-runtime.js";
 import type { CalendarBackendOptions } from "./calendar-runtime.js";
+import { CalendarSynchronization } from "./calendar-synchronization.js";
 
 const readFailureFor = (
   refs: readonly CalendarRefValue[],
@@ -55,9 +69,13 @@ export const createBackend = (
 ) => {
   const session = implement(sessionContract, () =>
     Effect.gen(function* readSession() {
-      const current = yield* Effect.tryPromise(
-        auth.api.getSession.bind(auth.api, { headers })
-      );
+      const current = yield* Effect.tryPromise({
+        catch: (cause) =>
+          new Cause.UnknownError(cause, "Native Promise adapter failed"),
+
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () => auth.api.getSession({ headers }),
+      });
 
       if (!current || !allowedEmail(current.user.email, config.allowedEmails)) {
         return null;
@@ -78,6 +96,46 @@ export const createBackend = (
 
   const rpc = toRpc([
     session,
+    implement(getAccountConferencingDefault.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        getAccountConferencingDefault.handler(input)
+      )
+    ),
+    implement(setAccountConferencingDefault.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        setAccountConferencingDefault.handler(input)
+      )
+    ),
+    implement(disconnectAccount.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        disconnectAccount.handler(input)
+      )
+    ),
+    implement(setCalendarAppearance.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [input],
+        setCalendarAppearance.handler(input)
+      )
+    ),
     implement(listCalendars.contract, (input) =>
       calendarForRequest(
         auth,
@@ -128,6 +186,75 @@ export const createBackend = (
         updateEvent.handler(input)
       )
     ),
+    implement(searchEventsContract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        Effect.gen(function* searchPersonInventory() {
+          if (input.query.trim() === "") {
+            return {
+              ...(yield* searchEvents.handler({ ...input, calendars: [] })),
+              accountFailures: [],
+            };
+          }
+
+          const inventory = yield* listCalendars.handler({});
+          const calendars: CalendarValue[] = [];
+          const accountFailures: (typeof SearchAccountFailure.Type)[] = [];
+          let loaded = 0;
+
+          for (const account of inventory.accounts) {
+            if ("failure" in account) {
+              accountFailures.push({
+                accountId: account.accountId,
+                failure: account.failure,
+              });
+            } else {
+              loaded += 1;
+              calendars.push(...account.calendars);
+            }
+          }
+
+          if (loaded === 0) {
+            return yield* new SearchInventoryUnavailable({
+              accountFailures,
+              reason:
+                inventory.accounts.length === 0
+                  ? "noAccounts"
+                  : "allInventoriesFailed",
+            });
+          }
+
+          return {
+            ...(yield* searchEvents.handler({ ...input, calendars })),
+            accountFailures,
+          };
+        })
+      )
+    ),
+    implement(moveAndRetimeSeries.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [input, input.destination],
+        moveAndRetimeSeries.handler(input)
+      )
+    ),
+    implement(moveEvent.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [input, input.destination],
+        moveEvent.handler(input)
+      )
+    ),
     implement(deleteEvent.contract, (input) =>
       calendarForRequest(
         auth,
@@ -155,7 +282,9 @@ export const createBackend = (
         headers,
         options,
         [input],
-        syncNow.handler(input)
+        CalendarSynchronization.use((synchronization) =>
+          synchronization.run(input)
+        )
       )
     ),
   ]);

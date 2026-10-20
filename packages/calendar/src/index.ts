@@ -1,5 +1,48 @@
 export { CalendarService } from "./calendar.js";
 
+export { ConferencingDefaults } from "./conferencing-defaults.js";
+
+export {
+  ConferencingRequest,
+  ConferencingDefault,
+  ConferencingStatus,
+} from "./conferencing-model.js";
+
+export type { ConferencingRequestValue } from "./conferencing-model.js";
+
+export {
+  CalendarSettings,
+  getAccountConferencingDefault,
+  setAccountConferencingDefault,
+  disconnectAccount,
+  setCalendarAppearance,
+} from "./settings.js";
+
+export { AccountNotOwned } from "./account-not-owned.js";
+
+export { LastCalendarAccount } from "./last-calendar-account.js";
+
+export { CalendarAppearanceRefused } from "./calendar-appearance-refused.js";
+
+export {
+  SearchEventsInput,
+  SearchEventsOutput,
+  SearchEventResult,
+  SearchWindow,
+} from "./search-model.js";
+
+export type {
+  SearchEventsInputValue,
+  SearchEventsOutputValue,
+  SearchEventResultValue,
+} from "./search-model.js";
+
+export {
+  matchesLocalSearch,
+  orderSearchResults,
+  searchEventResult,
+} from "./search-results.js";
+
 export { equivalenceKey } from "./equivalence-key.js";
 
 export { CalendarReadFailure } from "./calendar-read-failure.js";
@@ -15,7 +58,9 @@ export {
   getEvent,
   listCalendars,
   listEvents,
+  searchEvents,
   moveEvent,
+  moveAndRetimeSeries,
   rsvp,
   syncNow,
   updateEvent,
@@ -34,11 +79,21 @@ export {
   CalendarMoveRefused,
   ReminderLimitExceeded,
   RecurrenceRemovalRefused,
+  ConferencingRefused,
 } from "./errors.js";
 
 export type { CalendarFailureValue } from "./errors.js";
 
 export { GoogleCalendarClient } from "./google.js";
+
+export {
+  SeriesMoveRetimeFailure,
+  SeriesMoveRetimeRefused,
+  SeriesMoveRetimePartial,
+  SeriesMoveRetimeUncertain,
+} from "./series-move-result.js";
+
+export type { SeriesMoveRetimeFailureValue } from "./series-move-result.js";
 
 export {
   CalendarProviderCapabilities,

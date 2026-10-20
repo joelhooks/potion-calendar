@@ -2,6 +2,7 @@ import { Effect, Queue, Schema, Stream } from "effect";
 import { Mount } from "foldkit";
 
 import { initialScroll } from "../layout/geometry.js";
+import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
 import { Message } from "./message.js";
 
 export const PrepareTimeGrid = Mount.defineStream("PrepareTimeGrid", {
@@ -36,8 +37,9 @@ export const PrepareTimeGrid = Mount.defineStream("PrepareTimeGrid", {
             viewport.scrollTop = initialScroll(
               initialMinute,
               initialScale,
-              viewport.clientHeight
+              timeAreaHeight(viewport)
             );
+            viewport.scrollLeft = todayScrollLeft(viewport);
           }
 
           return observer;

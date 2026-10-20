@@ -2,12 +2,17 @@ import { Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import { CalendarReadFailure } from "./calendar-read-failure.js";
 import { CalendarChanges } from "./changes.js";
+import { ConferencingDefaults } from "./conferencing-defaults.js";
+import { conferenceLink } from "./conferencing-link.js";
+import { ConferencingRefused } from "./conferencing-refused.js";
+import { automaticConferencingRequest } from "./conferencing-rule.js";
 import type {
   DeleteEventInput,
   ListCalendarsOutput,
   ListEventsInput,
   ListEventsOutput,
   MoveEventInput,
+  MoveAndRetimeSeriesInput,
   RsvpInput,
   UpdateEventInput,
 } from "./contracts.js";
@@ -33,8 +38,22 @@ import type {
 } from "./model.js";
 import { EventFields, EventReminders } from "./model.js";
 import { googleCalendarCapabilities } from "./provider-capabilities.js";
+import { calendarReadConcurrency } from "./read-concurrency.js";
 import { seriesChanges, splitRecurrence, timeValue } from "./recurrence.js";
 import { normalizeReminderSet } from "./reminders.js";
+import type {
+  SearchEventsInputValue,
+  SearchEventsOutputValue,
+} from "./search-model.js";
+import { searchCalendarEvents } from "./search.js";
+import { followingConferencing } from "./series-conferencing.js";
+import { runSeriesMove, SeriesMoveSteps } from "./series-move-machine.js";
+import {
+  SeriesMoveRetimeRefused,
+  uncertainCalendarWrite,
+} from "./series-move-result.js";
+import type { SeriesMoveRetimeFailureValue } from "./series-move-result.js";
+import { seriesMoveTimes } from "./series-move-time.js";
 import { splitSuccessorId } from "./split-id.js";
 import { CalendarStore } from "./store.js";
 import { CalendarReadBudget } from "./sync.js";
@@ -59,6 +78,9 @@ export class CalendarService extends Context.Service<
     readonly listEvents: (
       input: typeof ListEventsInput.Type
     ) => Effect.Effect<typeof ListEventsOutput.Type, CalendarReadFailure>;
+    readonly searchEvents: (
+      input: SearchEventsInputValue
+    ) => Effect.Effect<SearchEventsOutputValue, CalendarFailureValue>;
     readonly getEvent: (
       ref: EventRefValue
     ) => Effect.Effect<CalendarEventValue, CalendarReadFailure>;
@@ -71,6 +93,9 @@ export class CalendarService extends Context.Service<
     readonly moveEvent: (
       input: typeof MoveEventInput.Type
     ) => Effect.Effect<CalendarEventValue, CalendarFailureValue>;
+    readonly moveAndRetimeSeries: (
+      input: typeof MoveAndRetimeSeriesInput.Type
+    ) => Effect.Effect<CalendarEventValue, SeriesMoveRetimeFailureValue>;
     readonly deleteEvent: (
       input: typeof DeleteEventInput.Type
     ) => Effect.Effect<void, CalendarFailureValue>;
@@ -84,6 +109,7 @@ export class CalendarService extends Context.Service<
     Effect.gen(function* layer() {
       const google = yield* GoogleCalendarClient;
       const tokens = yield* GoogleTokens;
+      const conferencingDefaults = yield* ConferencingDefaults;
       const budget = yield* CalendarReadBudget;
       const recurrenceContext = yield* Effect.context<GoogleCalendarClient>();
 
@@ -155,26 +181,90 @@ export class CalendarService extends Context.Service<
         }
       );
 
+      const prepareConferencing = Effect.fn(
+        "CalendarService.prepareConferencing"
+      )(function* prepareConferencing(
+        ref: CalendarRefValue,
+        fields: EventFieldsValue,
+        options: WriteOptions,
+        automatic?: boolean
+      ) {
+        if (options.conferencingRequest?.kind !== "googleMeet") {
+          return options;
+        }
+
+        if (fields.eventType !== undefined && fields.eventType !== "default") {
+          if (automatic === true) {
+            return { sendUpdates: options.sendUpdates };
+          }
+
+          return yield* new ConferencingRefused({
+            ...ref,
+            reason: "eventTypeUnsupported",
+          });
+        }
+
+        const calendar = yield* google.getCalendar(ref);
+
+        if (
+          calendar.accessRole !== "owner" &&
+          calendar.accessRole !== "writer"
+        ) {
+          if (automatic === true) {
+            return { sendUpdates: options.sendUpdates };
+          }
+
+          return yield* new ConferencingRefused({
+            ...ref,
+            reason: "calendarReadOnly",
+          });
+        }
+
+        if (
+          calendar.allowedConferenceSolutionTypes?.includes("hangoutsMeet") !==
+          true
+        ) {
+          if (automatic === true) {
+            return { sendUpdates: options.sendUpdates };
+          }
+
+          return yield* new ConferencingRefused({
+            ...ref,
+            reason: "calendarUnsupported",
+          });
+        }
+
+        return options;
+      });
+
       const patch = (
         ref: EventRefValue,
         fields: EventFieldsValue,
         options: WriteOptions
       ) =>
-        prepareFields(ref, fields).pipe(
+        prepareConferencing(ref, fields, options).pipe(
+          Effect.andThen(prepareFields(ref, fields)),
           Effect.flatMap((prepared) => google.patch(ref, prepared, options))
         );
 
-      const create = (
+      const create = Effect.fn("CalendarService.create")(function* create(
         ref: CalendarRefValue,
         id: string,
         fields: EventFieldsValue,
-        options: WriteOptions
-      ) =>
-        prepareFields(ref, fields).pipe(
-          Effect.flatMap((prepared) =>
-            google.create(ref, id, prepared, options)
-          )
+        options: WriteOptions,
+        automatic?: boolean
+      ) {
+        const preparedOptions = yield* prepareConferencing(
+          ref,
+          fields,
+          options,
+          automatic
         );
+
+        const preparedFields = yield* prepareFields(ref, fields);
+
+        return yield* google.create(ref, id, preparedFields, preparedOptions);
+      });
 
       const removeRecurrence = Effect.fn("CalendarService.removeRecurrence")(
         function* removeRecurrence(
@@ -216,6 +306,25 @@ export class CalendarService extends Context.Service<
         }
       );
 
+      const observeSeriesWrite = <A>(
+        refs: readonly CalendarRefValue[],
+        effect: Effect.Effect<A, CalendarFailureValue>
+      ) => {
+        const invalidate = Effect.forEach(
+          refs,
+          (ref) => recordWrite(ref, Effect.void),
+          { discard: true }
+        );
+
+        return effect.pipe(
+          Effect.tap(() => invalidate),
+          Effect.tapError((cause) =>
+            uncertainCalendarWrite(cause) ? invalidate : Effect.void
+          ),
+          Effect.onInterrupt(() => invalidate)
+        );
+      };
+
       const operations = CalendarService.of({
         createEvent: Effect.fn("CalendarService.createEvent")(
           function* createEvent(input) {
@@ -237,6 +346,56 @@ export class CalendarService extends Context.Service<
               return yield* refuse(
                 "createEvent",
                 "New events require start and end times"
+              );
+            }
+
+            if (
+              valid.conferencingRequest === undefined &&
+              valid.event.attendees?.some(
+                (attendee) =>
+                  attendee.resource !== true && attendee.self !== true
+              ) === true &&
+              conferenceLink(
+                undefined,
+                valid.event.location,
+                valid.event.description
+              ) === undefined
+            ) {
+              const setting = yield* conferencingDefaults.forAccount(
+                valid.accountId
+              );
+
+              if (setting !== "googleMeet") {
+                return yield* create(valid, valid.id, valid.event, valid);
+              }
+
+              const accounts = yield* tokens
+                .accounts()
+                .pipe(Effect.mapError(tokenFailure));
+
+              const { request } = automaticConferencingRequest({
+                attendees: valid.event.attendees ?? [],
+                hasConferencing:
+                  conferenceLink(
+                    undefined,
+                    valid.event.location,
+                    valid.event.description
+                  ) !== undefined,
+                isNew: true,
+                participantSeen: false,
+                request: undefined,
+                selfEmail: accounts.find(
+                  (account) => account.id === valid.accountId
+                )?.email,
+                setting,
+              });
+
+              return yield* create(
+                valid,
+                valid.id,
+                valid.event,
+                { ...valid, conferencingRequest: request },
+                true
               );
             }
 
@@ -364,112 +523,203 @@ export class CalendarService extends Context.Service<
         ),
         listEvents: Effect.fn("CalendarService.listEvents")(
           function* listEvents({ range, calendars }) {
-            const events: CalendarEventValue[] = [];
+            const results = yield* Effect.forEach(
+              calendars,
+              (ref) =>
+                Effect.gen(function* listCalendarRange() {
+                  const start = yield* timeValue({ dateTime: range.start });
+                  const end = yield* timeValue({ dateTime: range.end });
 
-            const versions: {
-              accountId: string;
-              calendarId: string;
-              version: number;
-            }[] = [];
-
-            for (const ref of calendars) {
-              const result = yield* Effect.gen(function* listCalendarRange() {
-                const start = yield* timeValue({ dateTime: range.start });
-                const end = yield* timeValue({ dateTime: range.end });
-
-                if (
-                  DateTime.toEpochMillis(start) >= DateTime.toEpochMillis(end)
-                ) {
-                  return yield* refuse(
-                    "listEvents",
-                    "Range start must precede range end"
-                  );
-                }
-
-                const snapshot = yield* store.read(ref);
-                versions.push({ ...ref, version: snapshot.version });
-
-                const cached = yield* store.readRange(
-                  ref,
-                  range,
-                  snapshot.version
-                );
-
-                if (cached !== undefined) {
-                  return cached;
-                }
-
-                const calendarEvents: CalendarEventValue[] = [];
-                const seen = new Set<string>();
-                let pageToken: string | undefined;
-
-                for (let pageNumber = 0; ; pageNumber += 1) {
-                  if (pageNumber >= budget.maxPages) {
+                  if (
+                    DateTime.toEpochMillis(start) >= DateTime.toEpochMillis(end)
+                  ) {
                     return yield* refuse(
                       "listEvents",
-                      "Range listing exceeded its page budget"
+                      "Range start must precede range end"
                     );
                   }
 
-                  const page = yield* google.listPage({
-                    pageToken,
+                  const snapshot = yield* store.read(ref);
+                  const version = { ...ref, version: snapshot.version };
+
+                  const cached = yield* store.readRange(
                     ref,
-                    singleEvents: true,
-                    timeMax: range.end,
-                    timeMin: range.start,
-                  });
-
-                  calendarEvents.push(
-                    ...page.events.filter(
-                      (event) => event.status !== "cancelled"
-                    )
+                    range,
+                    snapshot.version
                   );
 
-                  if (page.nextPageToken === undefined) {
-                    break;
+                  if (cached !== undefined) {
+                    return { events: cached, version };
                   }
 
-                  if (seen.has(page.nextPageToken)) {
+                  const calendarEvents: CalendarEventValue[] = [];
+                  const seen = new Set<string>();
+                  let pageToken: string | undefined;
+
+                  for (let pageNumber = 0; ; pageNumber += 1) {
+                    if (pageNumber >= budget.maxPages) {
+                      return yield* refuse(
+                        "listEvents",
+                        "Range listing exceeded its page budget"
+                      );
+                    }
+
+                    const page = yield* google.listPage({
+                      pageToken,
+                      ref,
+                      singleEvents: true,
+                      timeMax: range.end,
+                      timeMin: range.start,
+                    });
+
+                    calendarEvents.push(
+                      ...page.events.filter(
+                        (event) => event.status !== "cancelled"
+                      )
+                    );
+
+                    if (page.nextPageToken === undefined) {
+                      break;
+                    }
+
+                    if (seen.has(page.nextPageToken)) {
+                      return yield* refuse(
+                        "listEvents",
+                        "Google repeated a range page token"
+                      );
+                    }
+
+                    seen.add(page.nextPageToken);
+                    pageToken = page.nextPageToken;
+                  }
+
+                  const cachedVersion = yield* store.cacheRange(
+                    ref,
+                    range,
+                    snapshot.version,
+                    calendarEvents
+                  );
+
+                  if (!cachedVersion) {
                     return yield* refuse(
                       "listEvents",
-                      "Google repeated a range page token"
+                      "Calendar changed while loading this range; retry"
                     );
                   }
 
-                  seen.add(page.nextPageToken);
-                  pageToken = page.nextPageToken;
-                }
+                  return { events: calendarEvents, version };
+                }).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new CalendarReadFailure({
+                        accountId: ref.accountId,
+                        calendarId: ref.calendarId,
+                        cause,
+                      })
+                  )
+                ),
+              { concurrency: calendarReadConcurrency }
+            );
 
-                const cachedVersion = yield* store.cacheRange(
-                  ref,
-                  range,
-                  snapshot.version,
-                  calendarEvents
-                );
-
-                if (!cachedVersion) {
-                  return yield* refuse(
-                    "listEvents",
-                    "Calendar changed while loading this range; retry"
-                  );
-                }
-
-                return calendarEvents;
-              }).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new CalendarReadFailure({
-                      accountId: ref.accountId,
-                      calendarId: ref.calendarId,
-                      cause,
-                    })
-                )
-              );
-
-              events.push(...result);
+            return {
+              events: results.flatMap((result) => result.events),
+              versions: results.map((result) => result.version),
+            };
+          }
+        ),
+        moveAndRetimeSeries: Effect.fn("CalendarService.moveAndRetimeSeries")(
+          function* moveAndRetimeSeries(input) {
+            if (input.accountId !== input.destination.accountId) {
+              return yield* new CrossAccountMove({
+                destinationAccountId: input.destination.accountId,
+                sourceAccountId: input.accountId,
+              });
             }
 
-            return { events, versions };
+            if (input.calendarId === input.destination.calendarId) {
+              return yield* new SeriesMoveRetimeRefused({
+                accountId: input.accountId,
+                calendarId: input.calendarId,
+                eventId: input.eventId,
+                reason: "sameCalendar",
+              });
+            }
+
+            const selected = yield* google.get(input);
+
+            if (selected.recurringEventId === undefined) {
+              return yield* new SeriesMoveRetimeRefused({
+                accountId: input.accountId,
+                calendarId: input.calendarId,
+                eventId: input.eventId,
+                reason: "notRecurringInstance",
+              });
+            }
+
+            const master = yield* google.get({
+              ...input,
+              eventId: selected.recurringEventId,
+            });
+
+            if (
+              master.recurringEventId !== undefined ||
+              master.recurrence === undefined ||
+              master.recurrence.length === 0 ||
+              master.end === undefined
+            ) {
+              return yield* new SeriesMoveRetimeRefused({
+                accountId: input.accountId,
+                calendarId: input.calendarId,
+                eventId: input.eventId,
+                reason: "invalidMaster",
+              });
+            }
+
+            if (
+              master.eventType !== undefined &&
+              master.eventType !== "default"
+            ) {
+              return yield* new CalendarMoveRefused({
+                accountId: master.accountId,
+                calendarId: master.calendarId,
+                eventId: master.eventId,
+                eventType: master.eventType,
+                reason: "eventType",
+              });
+            }
+
+            const changes = yield* seriesMoveTimes(
+              selected,
+              master,
+              input.start,
+              input.end
+            );
+
+            return yield* runSeriesMove({
+              changes,
+              destination: input.destination,
+              master,
+              sendUpdates: input.sendUpdates,
+            }).pipe(
+              Effect.provideService(SeriesMoveSteps, {
+                move: (plan) =>
+                  observeSeriesWrite(
+                    [plan.master, plan.destination],
+                    google.move(plan.master, plan.destination.calendarId, {
+                      sendUpdates: plan.sendUpdates,
+                      singleAttempt: true,
+                    })
+                  ),
+                retime: (plan, moved) =>
+                  observeSeriesWrite(
+                    [moved],
+                    google.patch(moved, plan.changes, {
+                      sendUpdates: plan.sendUpdates,
+                      singleAttempt: true,
+                    })
+                  ),
+              })
+            );
           }
         ),
         moveEvent: Effect.fn("CalendarService.moveEvent")(
@@ -545,6 +795,10 @@ export class CalendarService extends Context.Service<
             input
           );
         }),
+        searchEvents: (input) =>
+          searchCalendarEvents(input).pipe(
+            Effect.provideService(GoogleCalendarClient, google)
+          ),
         updateEvent: Effect.fn("CalendarService.updateEvent")(
           function* updateEvent(input) {
             if (
@@ -582,6 +836,17 @@ export class CalendarService extends Context.Service<
 
             const selected = yield* google.get(input);
 
+            if (
+              input.conferencingRequest?.kind === "googleMeet" &&
+              selected.eventType !== undefined &&
+              selected.eventType !== "default"
+            ) {
+              return yield* new ConferencingRefused({
+                ...input,
+                reason: "eventTypeUnsupported",
+              });
+            }
+
             if (input.removeRecurrence === true) {
               return yield* removeRecurrence(input, selected);
             }
@@ -615,6 +880,12 @@ export class CalendarService extends Context.Service<
               );
             }
 
+            const conferencing = yield* followingConferencing(
+              selected,
+              master,
+              input
+            );
+
             const recurrence = yield* splitRecurrence(master, selected).pipe(
               Effect.provide(recurrenceContext)
             );
@@ -635,14 +906,14 @@ export class CalendarService extends Context.Service<
                   start: selected.start,
                   ...input.changes,
                 },
-                input
+                conferencing
               )
             );
 
             yield* google.patch(
               master,
               { recurrence: recurrence.truncate },
-              input
+              { sendUpdates: input.sendUpdates }
             );
 
             return successor;

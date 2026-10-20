@@ -1,5 +1,8 @@
 import { Schema } from "effect";
 
+import { ConferencingStatus } from "./conferencing-model.js";
+import { ConferenceDetails } from "./owned-conference.js";
+
 export const CalendarRef = Schema.Struct({
   accountId: Schema.NonEmptyString,
   calendarId: Schema.NonEmptyString,
@@ -95,12 +98,15 @@ export type EventFieldsValue = typeof EventFields.Type;
 export const CalendarEvent = Schema.Struct({
   ...EventRef.fields,
   ...EventFields.fields,
+  conference: Schema.optional(ConferenceDetails),
   conferenceUrl: Schema.optional(Schema.String),
+  conferencingStatus: Schema.optional(ConferencingStatus),
   etag: Schema.optional(Schema.String),
   htmlLink: Schema.optional(Schema.String),
   iCalUID: Schema.optional(Schema.String),
   organizer: Schema.optional(
     Schema.Struct({
+      displayName: Schema.optional(Schema.String),
       email: Schema.optional(Schema.String),
       self: Schema.optional(Schema.Boolean),
     })
@@ -115,11 +121,14 @@ export type CalendarEventValue = typeof CalendarEvent.Type;
 export const Calendar = Schema.Struct({
   ...CalendarRef.fields,
   accessRole: Schema.Literals(["freeBusyReader", "reader", "writer", "owner"]),
+  allowedConferenceSolutionTypes: Schema.optional(Schema.Array(Schema.String)),
   backgroundColor: Schema.optional(Schema.String),
   colorId: Schema.optional(Schema.String),
   defaultReminders: Schema.optional(Schema.Array(Reminder)),
   foregroundColor: Schema.optional(Schema.String),
+  hidden: Schema.optional(Schema.Boolean),
   primary: Schema.Boolean,
+  selected: Schema.optional(Schema.Boolean),
   timeZone: Schema.String,
   title: Schema.String,
 });

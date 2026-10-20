@@ -9,10 +9,23 @@ import { RpcClient, RpcSerialization } from "effect/rpc";
 
 import { DeployStepError } from "./contracts.js";
 
-const okStatusClient = Layer.effect(
-  HttpClient.HttpClient,
-  HttpClient.HttpClient.pipe(Effect.map(HttpClient.filterStatusOk))
-);
+const rpcCheckClient = (url: string) =>
+  Layer.effect(
+    HttpClient.HttpClient,
+    HttpClient.HttpClient.pipe(
+      Effect.map((client) =>
+        client.pipe(
+          HttpClient.mapRequest(
+            HttpClientRequest.setHeaders({
+              origin: new URL(url).origin,
+              "sec-fetch-site": "same-origin",
+            })
+          ),
+          HttpClient.filterStatusOk
+        )
+      )
+    )
+  );
 
 export const measuredCheck = <E, R>(
   check: string,
@@ -251,7 +264,7 @@ export const rpcSessionCheck = (url: string) =>
     }).pipe(
       Effect.provide(
         RpcClient.layerProtocolHttp({ url: `${url}/rpc` }).pipe(
-          Layer.provide([RpcSerialization.layerJson, okStatusClient])
+          Layer.provide([RpcSerialization.layerJson, rpcCheckClient(url)])
         )
       ),
       Effect.scoped

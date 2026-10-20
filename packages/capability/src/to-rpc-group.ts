@@ -10,14 +10,16 @@ import type {
   OutputOf,
 } from "./contract.js";
 
-export type RpcOf<Value> = ReturnType<
-  typeof Rpc.make<
-    NameOf<Value>,
-    InputOf<Value>,
-    OutputOf<Value>,
-    FailureOf<Value>
-  >
->;
+export type RpcOf<Value> = Value extends unknown
+  ? ReturnType<
+      typeof Rpc.make<
+        NameOf<Value>,
+        InputOf<Value>,
+        OutputOf<Value>,
+        FailureOf<Value>
+      >
+    >
+  : never;
 
 export type RpcsOf<Values extends readonly unknown[]> = {
   readonly [K in keyof Values]: RpcOf<Values[K]>;

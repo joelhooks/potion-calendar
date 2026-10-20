@@ -5,8 +5,11 @@ import type { memoryAdapter } from "better-auth/adapters/memory";
 import { symmetricDecrypt } from "better-auth/crypto";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
+
+import { desktopHandoff } from "./desktop.js";
+import type { DesktopHandoffStore } from "./desktop.js";
 
 export const googleScopes = [
   "openid",
@@ -22,6 +25,11 @@ export interface GoogleAuthConfig {
   readonly secret: string;
   readonly allowedEmails: string;
   readonly tokenEndpoint?: string;
+  readonly desktopStore?: DesktopHandoffStore;
+  readonly beforeAccountDelete?: (
+    personId: string,
+    accountId: string
+  ) => Promise<void>;
 }
 
 export const GoogleProfile = Schema.Struct({
@@ -146,6 +154,34 @@ export const googleAuthOptions = (
             };
           },
         },
+        delete: {
+          // @effect-diagnostics-next-line asyncFunction:off -- Better Auth owns account deletion; cleanup is best-effort and cannot prevent unlinking.
+          before: async (account) => {
+            const cleanup = config.beforeAccountDelete;
+
+            if (account.providerId === "google" && cleanup !== undefined) {
+              await Effect.runPromise(
+                Effect.tryPromise({
+                  catch: (cause) =>
+                    new Cause.UnknownError(
+                      cause,
+                      "Native Promise adapter failed"
+                    ),
+
+                  // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+                  try: () => cleanup(account.userId, account.id),
+                }).pipe(
+                  Effect.timeout("2 seconds"),
+                  Effect.catch(() =>
+                    Effect.logWarning(
+                      "Google watch cleanup did not complete before account deletion"
+                    )
+                  )
+                )
+              );
+            }
+          },
+        },
         update: {
           // @effect-diagnostics-next-line asyncFunction:off -- Better Auth owns the account update hook; ID tokens are not retained.
           before: async (account) => {
@@ -168,9 +204,21 @@ export const googleAuthOptions = (
         },
       },
     },
-    disabledPaths: ["/get-access-token", "/refresh-token"],
+    disabledPaths: [
+      "/get-access-token",
+      "/refresh-token",
+      "/sign-in/social",
+      "/unlink-account",
+    ],
     onAPIError: { errorURL: `${config.baseURL}/refused` },
     plugins: [
+      ...(config.desktopStore === undefined
+        ? []
+        : [
+            desktopHandoff(config.desktopStore, (email) =>
+              allowedEmail(email, config.allowedEmails)
+            ),
+          ]),
       genericOAuth({
         config: [
           {

@@ -5,8 +5,19 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import type { AppModel, AppMessage } from "../client/app.js";
 import { Message } from "../client/app.js";
 import { calendarKey } from "../client/calendar-state.js";
+import { EditorAction } from "../client/editing/editor-action.js";
+import { writableCalendar } from "../client/editing/load-editor.js";
+import { resolvedTheme } from "../client/settings/model.js";
+import { TimeZoneAction } from "../client/time-zones/model.js";
 import { conferenceLink } from "../layout/conferencing.js";
-import { dayInZone, partsFromDay, visibleDays } from "../layout/navigation.js";
+import {
+  dayInZone,
+  maximumDisplayedDays,
+  partsFromDay,
+  viewLabel,
+  visibleDays,
+  weekStart,
+} from "../layout/navigation.js";
 import {
   accountFailure,
   clockLabel,
@@ -15,26 +26,45 @@ import {
   visibleEvents,
 } from "../layout/presentation.js";
 import type { DisplayEvent } from "../layout/presentation.js";
+import { SettingsRoute, printRoute } from "../layout/route.js";
+import { chipColors } from "../layout/settings-colors.js";
+import { weekNumber } from "../layout/settings-week.js";
+import { resolvedTimeFormat } from "../layout/time-format.js";
+import type { ResolvedTimeFormat } from "../layout/time-format.js";
+import { eventRsvp } from "./event-rsvp.js";
+
+const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
 
 export const chip = (
   h: HtmlBuilder<AppMessage>,
   item: DisplayEvent,
-  style: Record<string, string>
-): Html =>
-  h.button(
+  style: Record<string, string>,
+  appearance: {
+    readonly theme: "light" | "dark";
+    readonly timeFormat: ResolvedTimeFormat;
+  } = defaultChipAppearance
+): Html => {
+  const colors = chipColors(item.color, appearance.theme);
+
+  return h.button(
     [
       h.Class(
         `event-chip status-${item.status}${item.selected ? " selected" : ""}`
       ),
       h.Style({
-        "--event-color": item.color,
+        "--event-border": colors.border,
+        "--event-color": colors.accent,
+        "--event-fill": colors.fill,
+        "--event-selected-fill": colors.selectedFill,
+        "--event-text": colors.text,
         ...style,
         "padding-left": `${5 + item.copies.length * 4 + (item.status === "tentative" ? 4 : 0)}px`,
       }),
       h.DataAttribute("event-key", item.key),
       h.OnClick(Message.ClickedEvent({ key: item.key })),
+      h.OnDoubleClick(Message.KeyboardAction({ id: "open-event" })),
       h.AriaLabel(
-        `${item.title}, ${item.allDay ? "all day" : `${clockLabel(item.startMinute)} to ${clockLabel(item.endMinute)}`}, ${item.copies.map((copy) => copy.calendar.title).join(", ")}, ${item.status}`
+        `${item.title}, ${item.allDay ? "all day" : `${clockLabel(item.startMinute, appearance.timeFormat)} to ${clockLabel(item.endMinute, appearance.timeFormat)}`}, ${item.copies.map((copy) => copy.calendar.title).join(", ")}, ${item.status}`
       ),
     ],
     [
@@ -53,21 +83,93 @@ export const chip = (
             ),
             h.Title(copy.calendar.title),
             h.Style({
-              "background-color": copy.calendar.backgroundColor ?? copy.color,
+              "background-color": chipColors(
+                copy.calendar.backgroundColor ?? copy.color,
+                appearance.theme
+              ).accent,
             }),
           ])
         )
       ),
+      ...(item.selected &&
+      (item.calendar.accessRole === "owner" ||
+        item.calendar.accessRole === "writer") &&
+      (item.source.organizer?.self === true ||
+        item.source.guestsCanModify === true)
+        ? ["start", "end"].map((edge) =>
+            h.span([
+              h.Class(
+                `resize-handle resize-${edge}${item.allDay ? " resize-horizontal" : ""}`
+              ),
+              h.DataAttribute("resize-edge", edge),
+              h.AriaHidden(true),
+            ])
+          )
+        : []),
       h.strong([], [item.title]),
       ...(item.allDay
         ? []
         : [
             h.span(
               [h.Class("event-time")],
-              [`${clockLabel(item.startMinute)}–${clockLabel(item.endMinute)}`]
+              [
+                `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
+              ]
             ),
           ]),
     ]
+  );
+};
+
+export const systemZonePrompt = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] =>
+  Option.toArray(model.timeZones.systemPrompt).map((zone) =>
+    h.div(
+      [
+        h.Role("status"),
+        h.Class("zone-system-prompt"),
+        h.Style({
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          "border-radius": "8px",
+          "max-width": "min(360px, calc(100vw - 24px))",
+          padding: "10px",
+          position: "fixed",
+          right: "12px",
+          top: "64px",
+          "white-space": "normal",
+          "z-index": "100",
+        }),
+      ],
+      [
+        h.p(
+          [],
+          [`Your system time zone is ${zone}. Change your home time zone?`]
+        ),
+        h.button(
+          [
+            h.OnClick(
+              Message.TimeZoneAction({
+                action: TimeZoneAction.cases.AcceptSystem.make({}),
+              })
+            ),
+          ],
+          ["Change home zone"]
+        ),
+        h.button(
+          [
+            h.OnClick(
+              Message.TimeZoneAction({
+                action: TimeZoneAction.cases.DismissSystem.make({}),
+              })
+            ),
+          ],
+          ["Keep home zone"]
+        ),
+      ]
+    )
   );
 
 export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
@@ -79,6 +181,21 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
     [h.Class("toolbar")],
     [
       h.h1([], ["Calendar"]),
+      h.button(
+        [h.OnClick(Message.ClickedRefresh()), h.Title("Refresh calendars (R)")],
+        ["Refresh"]
+      ),
+      h.button(
+        [
+          h.OnClick(
+            Message.EditingAction({
+              action: EditorAction.cases.OpenCreate.make({}),
+            })
+          ),
+          h.Title("Create event (C)"),
+        ],
+        ["Create"]
+      ),
       h.button(
         [h.OnClick(Message.ClickedToday()), h.Title("Today (T)")],
         ["Today"]
@@ -118,7 +235,7 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                 h.OnClick(Message.ClickedView({ days: 7, mode })),
                 h.AriaPressed(String(model.calendar.navigation.mode === mode)),
               ],
-              [mode[0]?.toUpperCase() + mode.slice(1)]
+              [viewLabel(mode)]
             )
           ),
           h.select(
@@ -135,7 +252,7 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
             ],
             [
               h.option([h.Value(""), h.Disabled(true)], ["Days…"]),
-              ...Array.from({ length: 9 }, (_, index) =>
+              ...Array.from({ length: maximumDisplayedDays }, (_, index) =>
                 h.option(
                   [h.Value(String(index + 1))],
                   [`${index + 1} day${index === 0 ? "" : "s"}`]
@@ -153,7 +270,16 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const { anchor } = model.calendar.navigation;
   const parts = partsFromDay(anchor);
   const first = anchor - parts.day + 1;
-  const start = first - partsFromDay(first).weekDay;
+  const start = weekStart(first, model.calendar.navigation.weekStartsOn);
+
+  const weekdays = Array.from(
+    { length: 7 },
+    (_, index) =>
+      ["S", "M", "T", "W", "T", "F", "S"][
+        (index + (model.calendar.navigation.weekStartsOn ?? 0)) % 7
+      ] ?? ""
+  );
+
   const today = dayInZone(model.calendar.now, model.calendar.zone);
   const displayed = visibleDays(model.calendar.navigation);
 
@@ -164,9 +290,7 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
       h.div(
         [h.Class("mini-days")],
         [
-          ...["S", "M", "T", "W", "T", "F", "S"].map((day) =>
-            h.span([h.Class("weekday")], [day])
-          ),
+          ...weekdays.map((day) => h.span([h.Class("weekday")], [day])),
           ...Array.from({ length: 42 }, (_, index) => {
             const day = start + index;
 
@@ -178,7 +302,20 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                 h.OnClick(Message.ClickedDate({ day })),
                 h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
               ],
-              [String(partsFromDay(day).day)]
+              [
+                String(partsFromDay(day).day),
+                ...(model.settings.showWeekNumbers && index % 7 === 0
+                  ? [
+                      h.span(
+                        [
+                          h.Class("mini-week-number"),
+                          h.Title("ISO week number"),
+                        ],
+                        [`W${weekNumber(day + 3)}`]
+                      ),
+                    ]
+                  : []),
+              ]
             );
           }),
         ]
@@ -201,6 +338,13 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
     [h.Class("sidebar"), h.AriaLabel("Calendars")],
     [
       miniMonth(model, h),
+      h.a(
+        [
+          h.Class("settings-entry"),
+          h.Href(printRoute(SettingsRoute.make({ page: "general" }))),
+        ],
+        ["Settings"]
+      ),
       ...accounts.map((account) => {
         const read = model.calendar.reads.find(
           (item) => item.accountId === account.id
@@ -260,7 +404,10 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                       `swatch${model.calendar.hidden.includes(calendarKey(calendar.accountId, calendar.calendarId)) ? " hidden" : ""}`
                     ),
                     h.Style({
-                      "--event-color": calendar.backgroundColor ?? "#4986E8",
+                      "--event-color": chipColors(
+                        calendar.backgroundColor ?? "#4986E8",
+                        resolvedTheme(model)
+                      ).accent,
                     }),
                   ]),
                   h.span([], [calendar.title]),
@@ -378,6 +525,13 @@ export const detailPanel = (
 
   const event = selected.source;
 
+  const writable = model.calendar.calendars.some(
+    (calendar) =>
+      calendar.accountId === event.accountId &&
+      calendar.calendarId === event.calendarId &&
+      writableCalendar(calendar)
+  );
+
   const join = conferenceLink(
     event.conferenceUrl,
     event.location,
@@ -387,7 +541,8 @@ export const detailPanel = (
   const when = eventWhen(
     selected,
     model.calendar.zone,
-    partsFromDay(dayInZone(model.calendar.now, model.calendar.zone)).year
+    partsFromDay(dayInZone(model.calendar.now, model.calendar.zone)).year,
+    resolvedTimeFormat(model)
   );
 
   return [
@@ -403,6 +558,48 @@ export const detailPanel = (
           ["×"]
         ),
         h.h2([], [selected.title]),
+        ...(writable
+          ? []
+          : [h.p([h.Class("muted")], ["This calendar is read-only."])]),
+        h.div(
+          [h.Class("detail-actions")],
+          [
+            h.button(
+              [
+                h.Disabled(!writable),
+                h.OnClick(
+                  Message.EditingAction({
+                    action: EditorAction.cases.OpenEdit.make({}),
+                  })
+                ),
+              ],
+              ["Edit"]
+            ),
+            h.button(
+              [
+                h.OnClick(
+                  Message.EditingAction({
+                    action: EditorAction.cases.DuplicateSelected.make({}),
+                  })
+                ),
+                h.Title("Duplicate (Mod+D)"),
+              ],
+              ["Duplicate"]
+            ),
+            h.button(
+              [
+                h.Disabled(!writable),
+                h.OnClick(
+                  Message.EditingAction({
+                    action: EditorAction.cases.DeleteSelected.make({}),
+                  })
+                ),
+              ],
+              ["Delete"]
+            ),
+          ]
+        ),
+        ...eventRsvp(model, h, selected),
         h.p([h.Class("detail-date")], [when.date]),
         ...(when.time === undefined
           ? []
@@ -429,7 +626,10 @@ export const detailPanel = (
               h.span([
                 h.Class("swatch"),
                 h.Style({
-                  "--event-color": copy.calendar.backgroundColor ?? copy.color,
+                  "--event-color": chipColors(
+                    copy.calendar.backgroundColor ?? copy.color,
+                    resolvedTheme(model)
+                  ).accent,
                 }),
               ]),
               `${copy.calendar.title}${account === undefined ? "" : ` · ${account.email}`}`,
@@ -439,12 +639,12 @@ export const detailPanel = (
         ...(join === undefined
           ? []
           : [
-              h.a(
+              h.button(
                 [
                   h.Class("join-link"),
-                  h.Href(join),
-                  h.Target("_blank"),
-                  h.Rel("noopener noreferrer"),
+                  h.OnClick(
+                    Message.RequestedJoinMeeting({ key: Option.none() })
+                  ),
                 ],
                 ["Join meeting ↗"]
               ),

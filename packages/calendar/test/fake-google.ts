@@ -1,9 +1,24 @@
-import { Effect, Layer, Option, Redacted, Ref, Schema } from "effect";
+import { Crypto, Effect, Layer, Option, Redacted, Ref, Schema } from "effect";
 
+import { ConferencingDefaults } from "../src/conferencing-defaults.js";
+import type { ConferencingDefault } from "../src/conferencing-model.js";
 import { GoogleTokens } from "../src/google-tokens.js";
 import type { GoogleAccountValue } from "../src/google-tokens.js";
 import { GoogleHttp } from "../src/transport.js";
 import type { GoogleRequestValue, GoogleResponse } from "../src/transport.js";
+
+export const fakeGoogleCrypto = Layer.succeed(
+  Crypto.Crypto,
+  Crypto.make({
+    digest: () =>
+      Effect.die(new Error("Unexpected digest in Calendar Google fake")),
+    randomBytes: (size) => crypto.getRandomValues(new Uint8Array(size)),
+  })
+);
+
+export const fakeConferencingDefaults = Layer.succeed(ConferencingDefaults, {
+  forAccount: () => Effect.succeed("unset"),
+});
 
 export const response = (
   status: number,
@@ -15,7 +30,8 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
   initial: readonly GoogleResponse[] = [],
   accounts: readonly GoogleAccountValue[] = [
     { disconnected: false, email: "owner@example.test", id: "account" },
-  ]
+  ],
+  conferencingDefault: typeof ConferencingDefault.Type = "unset"
 ) {
   const pending = yield* Ref.make(initial);
   const crashAt = yield* Ref.make(Option.none<number>());
@@ -68,7 +84,14 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
 
   return {
     crashAt,
-    layer: Layer.merge(http, tokens),
+    layer: Layer.mergeAll(
+      http,
+      tokens,
+      fakeGoogleCrypto,
+      Layer.succeed(ConferencingDefaults, {
+        forAccount: () => Effect.succeed(conferencingDefault),
+      })
+    ),
     pending,
     refreshes,
     requests,

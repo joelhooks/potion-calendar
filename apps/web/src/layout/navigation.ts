@@ -36,9 +36,15 @@ export const NavigationState = Schema.Struct({
   days: Schema.Int,
   hideWeekends: Schema.Boolean,
   mode: Schema.Literals(["day", "week", "days", "month"]),
+  weekStartsOn: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ maximum: 6, minimum: 0 }))
+  ),
 });
 
 export type Navigation = typeof NavigationState.Type;
+
+export const viewLabel = (mode: Navigation["mode"]): string =>
+  mode === "days" ? "Custom" : `${mode[0]?.toUpperCase()}${mode.slice(1)}`;
 
 export type NavigationAction =
   | { readonly type: "page"; readonly direction: -1 | 1 }
@@ -51,6 +57,8 @@ export type NavigationAction =
       readonly days?: number;
     };
 
+export const maximumDisplayedDays = 31;
+
 const minimum = dayFromIso("2015-01-01");
 
 const maximum = dayFromIso("2040-12-31");
@@ -58,7 +66,8 @@ const maximum = dayFromIso("2040-12-31");
 const clampDay = (day: number): number =>
   Math.max(minimum, Math.min(maximum, day));
 
-const weekStart = (day: number): number => day - partsFromDay(day).weekDay;
+export const weekStart = (day: number, startsOn = 0): number =>
+  day - ((partsFromDay(day).weekDay - startsOn + 7) % 7);
 
 const monthStart = (day: number): number => day - partsFromDay(day).day + 1;
 
@@ -71,10 +80,12 @@ export const initialNavigation = (today: number): Navigation => ({
 
 export const periodStart = (nav: Navigation): number => {
   if (nav.mode === "month") {
-    return weekStart(monthStart(nav.anchor));
+    return weekStart(monthStart(nav.anchor), nav.weekStartsOn);
   }
 
-  return nav.mode === "week" ? weekStart(nav.anchor) : nav.anchor;
+  return nav.mode === "week"
+    ? weekStart(nav.anchor, nav.weekStartsOn)
+    : nav.anchor;
 };
 
 export const visibleDays = (nav: Navigation): readonly number[] => {
@@ -146,7 +157,10 @@ export const navigate = (
       return {
         ...nav,
         anchor: action.mode === "day" && containsToday ? today : start,
-        days: Math.max(1, Math.min(9, action.days ?? nav.days)),
+        days: Math.max(
+          1,
+          Math.min(maximumDisplayedDays, action.days ?? nav.days)
+        ),
         mode: action.mode === "days" && action.days === 1 ? "day" : action.mode,
       };
     }
@@ -191,42 +205,6 @@ export const navigate = (
 
     default: {
       return nav;
-    }
-  }
-};
-
-export const keyAction = (key: string): NavigationAction | undefined => {
-  switch (key.toLowerCase()) {
-    case "t": {
-      return { type: "today" };
-    }
-
-    case "d":
-    case "1": {
-      return { mode: "day", type: "view" };
-    }
-
-    case "w":
-    case "0": {
-      return { mode: "week", type: "view" };
-    }
-
-    case "m": {
-      return { mode: "month", type: "view" };
-    }
-
-    case "arrowright": {
-      return { direction: 1, type: "page" };
-    }
-
-    case "arrowleft": {
-      return { direction: -1, type: "page" };
-    }
-
-    default: {
-      return /^[2-9]$/u.test(key)
-        ? { days: Number(key), mode: "days", type: "view" }
-        : undefined;
     }
   }
 };

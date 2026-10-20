@@ -50,8 +50,10 @@ const surfaceConstructorNames = new Set([
 ]);
 
 const browserContractModules = new Set([
+  "packages/capability/actor-watch",
   "packages/capability/rpc-group",
   "packages/core/contracts",
+  "packages/core/desktop-bridge",
   "packages/devtools/contracts",
 ]);
 
@@ -1439,6 +1441,10 @@ const noDevtoolsInProduction = defineRule({
       if (
         folder !== undefined &&
         !isWithin(filename, folder) &&
+        !(
+          filename === "apps/web/vite.config.ts" &&
+          folder === "apps/web/src/dev"
+        ) &&
         !isTestSource(filename)
       ) {
         context.report({ data: { folder }, messageId: "devFolder", node });

@@ -7,6 +7,10 @@ import { Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
 import { NavigationState } from "../layout/navigation.js";
+import {
+  VisibilityChoices,
+  VisibilityMigration,
+} from "./settings/visibility-model.js";
 
 export const ReadFailure = Schema.Struct({
   kind: Schema.Literals(["reconnect", "retry"]),
@@ -67,6 +71,8 @@ export const CalendarUi = Schema.Struct({
   selected: Schema.Option(Schema.String),
   viewport: Schema.Finite,
   viewportWidth: Schema.Finite,
+  visibility: VisibilityChoices,
+  visibilityMigration: VisibilityMigration,
   zone: Schema.String,
   zoom: Schema.Int,
 });

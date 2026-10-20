@@ -9,6 +9,10 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./conferencing": {
+      "types": "./src/conferencing.ts",
+      "import": "./dist/conferencing.js"
+    },
     "./contracts": {
       "types": "./src/contracts.ts",
       "import": "./dist/contracts.js"

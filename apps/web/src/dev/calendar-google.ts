@@ -1,13 +1,61 @@
 import { EventFields, EventTime, GoogleHttp } from "@calendar/calendar";
 import type {
+  ColorsValue,
   EventTimeValue,
   GoogleRequestValue,
   GoogleResponse,
 } from "@calendar/calendar";
+import { CalendarAppearancePatch } from "@calendar/calendar/contracts";
 import { DateTime, Effect, Layer, Schema } from "effect";
+
+export const FakeConferenceOutcome = Schema.Literals([
+  "success",
+  "pending",
+  "failure",
+]);
+
+const FakeConferenceData = Schema.Struct({
+  conferenceId: Schema.optional(Schema.String),
+  conferenceSolution: Schema.optional(
+    Schema.Struct({
+      iconUri: Schema.optional(Schema.String),
+      key: Schema.Struct({ type: Schema.String }),
+      name: Schema.optional(Schema.String),
+    })
+  ),
+  createRequest: Schema.optional(
+    Schema.Struct({
+      conferenceSolutionKey: Schema.Struct({
+        type: Schema.Literal("hangoutsMeet"),
+      }),
+      requestId: Schema.NonEmptyString,
+      status: Schema.optional(
+        Schema.Struct({ statusCode: FakeConferenceOutcome })
+      ),
+    })
+  ),
+  entryPoints: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        accessCode: Schema.optional(Schema.String),
+        entryPointType: Schema.String,
+        label: Schema.optional(Schema.String),
+        meetingCode: Schema.optional(Schema.String),
+        passcode: Schema.optional(Schema.String),
+        password: Schema.optional(Schema.String),
+        pin: Schema.optional(Schema.String),
+        uri: Schema.String,
+      })
+    )
+  ),
+  notes: Schema.optional(Schema.String),
+  signature: Schema.optional(Schema.String),
+});
 
 const FakeEvent = Schema.Struct({
   ...EventFields.fields,
+  conferenceData: Schema.optional(Schema.NullOr(FakeConferenceData)),
+  iCalUID: Schema.optional(Schema.String),
   id: Schema.String,
   organizer: Schema.optional(Schema.Struct({ self: Schema.Boolean })),
   originalStartTime: Schema.optional(EventTime),
@@ -26,17 +74,35 @@ const FakeWrite = Schema.Struct({
 type FakeEventValue = typeof FakeEvent.Type;
 
 interface FakeCalendarValue {
+  readonly conferenceProperties: {
+    readonly allowedConferenceSolutionTypes: readonly string[];
+  };
+  readonly defaultReminders?: readonly {
+    readonly method: "email" | "popup";
+    readonly minutes: number;
+  }[];
   readonly accessRole: string;
   readonly backgroundColor: string;
   readonly colorId: string;
   readonly foregroundColor: string;
+  readonly hidden?: boolean;
+  readonly selected?: boolean;
   readonly id: string;
   readonly primary: boolean;
   readonly summary: string;
   readonly timeZone: string;
 }
 
+const primaryReminders: NonNullable<FakeCalendarValue["defaultReminders"]> = [
+  { method: "popup", minutes: 10 },
+];
+
+const secondaryReminders: NonNullable<FakeCalendarValue["defaultReminders"]> = [
+  { method: "email", minutes: 30 },
+];
+
 type FakeResponseBody =
+  | FakeCalendarValue
   | FakeEventValue
   | {
       readonly items: readonly (FakeEventValue | FakeCalendarValue)[];
@@ -118,11 +184,62 @@ const visibleEvents = (
   });
 };
 
+const conferenceForWrite = (
+  previous: FakeEventValue["conferenceData"],
+  requested: FakeEventValue["conferenceData"],
+  url: URL,
+  outcome: typeof FakeConferenceOutcome.Type
+): FakeEventValue["conferenceData"] => {
+  if (
+    url.searchParams.get("conferenceDataVersion") !== "1" ||
+    requested === undefined
+  ) {
+    return previous;
+  }
+
+  if (requested === null) {
+    return null;
+  }
+
+  const { createRequest } = requested;
+
+  if (createRequest === undefined) {
+    return requested;
+  }
+
+  if (createRequest.requestId === previous?.createRequest?.requestId) {
+    return previous;
+  }
+
+  return {
+    conferenceId:
+      outcome === "success" ? `dev-${createRequest.requestId}` : undefined,
+    conferenceSolution:
+      outcome === "success"
+        ? { key: { type: "hangoutsMeet" }, name: "Google Meet" }
+        : undefined,
+    createRequest: { ...createRequest, status: { statusCode: outcome } },
+    entryPoints:
+      outcome === "success"
+        ? [
+            {
+              entryPointType: "video",
+              uri: `https://meet.google.com/dev-${createRequest.requestId}`,
+            },
+          ]
+        : undefined,
+    signature:
+      outcome === "success" ? `fixture-${createRequest.requestId}` : undefined,
+  };
+};
+
 const writeEvent = Effect.fn("fakeCalendarGoogle.writeEvent")(
   function* writeEvent(
     events: Map<string, FakeEventValue>,
     request: GoogleRequestValue,
-    eventId: string | undefined
+    eventId: string | undefined,
+    url: URL,
+    conferenceOutcome: typeof FakeConferenceOutcome.Type
   ) {
     if (request.method === "DELETE") {
       const previous = eventId === undefined ? undefined : events.get(eventId);
@@ -156,10 +273,22 @@ const writeEvent = Effect.fn("fakeCalendarGoogle.writeEvent")(
       return reply(404, {});
     }
 
+    const { conferenceData: requested, ...ordinaryFields } = fields;
+
+    const conferenceData = conferenceForWrite(
+      previous?.conferenceData,
+      requested,
+      url,
+      conferenceOutcome
+    );
+
     const next: FakeEventValue = {
+      iCalUID: `${request.accountId}:${id}@calendar-fixture.test`,
+      organizer: { self: true },
       status: "confirmed",
       ...previous,
-      ...fields,
+      ...ordinaryFields,
+      conferenceData,
       id,
     };
 
@@ -169,7 +298,7 @@ const writeEvent = Effect.fn("fakeCalendarGoogle.writeEvent")(
   }
 );
 
-const palette = {
+const palette: ColorsValue = {
   calendar: {
     "1": { background: "#7986cb", foreground: "#ffffff" },
     "2": { background: "#33b679", foreground: "#ffffff" },
@@ -179,12 +308,14 @@ const palette = {
     "1": { background: "#a4bdfc", foreground: "#1d1d1d" },
     "2": { background: "#7ae7bf", foreground: "#1d1d1d" },
     "3": { background: "#dbadff", foreground: "#1d1d1d" },
+    "9": { background: "#556677", foreground: "#ffffff" },
   },
 };
 
 export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
   function* fakeCalendarGoogle(
-    accounts: readonly { readonly id: string; readonly email: string }[]
+    accounts: readonly { readonly id: string; readonly email: string }[],
+    conferenceOutcome: typeof FakeConferenceOutcome.Type = "success"
   ) {
     const now = yield* DateTime.now;
     const monday = DateTime.startOf(now, "week", { weekStartsOn: 1 });
@@ -200,7 +331,7 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
       date: DateTime.formatIsoDateUtc(DateTime.add(monday, { days })),
     });
 
-    const calendars = new Map(
+    const calendars = new Map<string, FakeCalendarValue[]>(
       accounts.map((account, index) => [
         account.id,
         [
@@ -208,9 +339,14 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
             accessRole: "owner",
             backgroundColor: index === 0 ? "#7986cb" : "#33b679",
             colorId: String(index + 1),
+            conferenceProperties: {
+              allowedConferenceSolutionTypes: ["hangoutsMeet"],
+            },
+            defaultReminders: primaryReminders,
             foregroundColor: "#ffffff",
             id: account.email,
             primary: true,
+            selected: true,
             summary: index === 0 ? "Personal" : "Work",
             timeZone: "UTC",
           },
@@ -218,9 +354,12 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
             accessRole: "owner",
             backgroundColor: "#8e69b8",
             colorId: "3",
+            conferenceProperties: { allowedConferenceSolutionTypes: [] },
+            defaultReminders: secondaryReminders,
             foregroundColor: "#ffffff",
             id: `${account.email}:shared`,
             primary: false,
+            selected: true,
             summary: index === 0 ? "Family" : "Projects",
             timeZone: "UTC",
           },
@@ -242,6 +381,7 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
           duration = 1
         ): FakeEventValue => ({
           end: instant(day, hour + duration),
+          iCalUID: `${calendar.id}:${id}@calendar-fixture.test`,
           id,
           organizer: { self: true },
           start: instant(day, hour),
@@ -258,9 +398,20 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
                   0,
                   9
                 ),
-                timed("overlap", "Design review", 0, 9.5, 1.5),
+                {
+                  ...timed("overlap", "Design review", 0, 9.5, 1.5),
+                  iCalUID: "design-review-invitation@calendar-fixture.test",
+                  organizer: { self: accountIndex === 0 },
+                },
+                ...(accountIndex === 0
+                  ? [
+                      timed("accountonly", "Read a chapter", 1, 8),
+                      timed("reviewlookalike", "Design review", 0, 9.5, 1.5),
+                    ]
+                  : []),
                 {
                   end: date(2),
+                  iCalUID: `${calendar.id}:allday@calendar-fixture.test`,
                   id: "allday",
                   start: date(1),
                   status: "confirmed",
@@ -268,6 +419,7 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
                 },
                 {
                   end: date(5),
+                  iCalUID: `${calendar.id}:multiday@calendar-fixture.test`,
                   id: "multiday",
                   start: date(3),
                   status: "confirmed",
@@ -307,6 +459,8 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
                 timed("overnight", "Late release window", 4, 23, 2),
                 {
                   ...timed("series", "Daily focus", 0, 16),
+                  iCalUID: "daily-focus-series@calendar-fixture.test",
+                  organizer: { self: accountIndex === 0 },
                   recurrence: ["RRULE:FREQ=DAILY;COUNT=10"],
                 },
                 ...Array.from({ length: 10 }, (_, day) => ({
@@ -316,6 +470,8 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
                     day,
                     day === 2 ? 17 : 16
                   ),
+                  iCalUID: "daily-focus-series@calendar-fixture.test",
+                  organizer: { self: accountIndex === 0 },
                   originalStartTime: instant(day, 16),
                   recurringEventId: "series",
                   status:
@@ -344,6 +500,99 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
 
     const revisions = new Map<string, number>();
 
+    const readCalendars = (accountId: string, url: URL) => {
+      const listed = calendars.get(accountId) ?? [];
+
+      if (url.pathname === "/users/me/calendarList") {
+        return reply(200, {
+          items:
+            url.searchParams.get("showHidden") === "true"
+              ? listed
+              : listed.filter((calendar) => calendar.hidden !== true),
+        });
+      }
+
+      const id = decodeURIComponent(
+        url.pathname.slice("/users/me/calendarList/".length)
+      );
+
+      const calendar = listed.find((candidate) => candidate.id === id);
+
+      return calendar === undefined ? reply(404, {}) : reply(200, calendar);
+    };
+
+    const writeCalendar = Effect.fn("fakeCalendarGoogle.writeCalendar")(
+      function* writeCalendar(request: GoogleRequestValue, url: URL) {
+        const listed = calendars.get(request.accountId) ?? [];
+
+        const id = decodeURIComponent(
+          url.pathname.slice("/users/me/calendarList/".length)
+        );
+
+        const previous = listed.find((calendar) => calendar.id === id);
+
+        if (previous === undefined) {
+          return reply(404, {});
+        }
+
+        const patch = yield* Schema.decodeEffect(
+          Schema.fromJsonString(CalendarAppearancePatch)
+        )(request.body ?? "{}").pipe(Effect.orDie);
+
+        const color =
+          patch.colorId === undefined
+            ? undefined
+            : palette.calendar[patch.colorId];
+
+        if (patch.colorId !== undefined && color === undefined) {
+          return reply(400, {});
+        }
+
+        const updated = {
+          ...previous,
+          ...patch,
+          backgroundColor: color?.background ?? previous.backgroundColor,
+          foregroundColor: color?.foreground ?? previous.foregroundColor,
+        };
+
+        calendars.set(
+          request.accountId,
+          listed.map((calendar) => (calendar.id === id ? updated : calendar))
+        );
+
+        return reply(200, updated);
+      }
+    );
+
+    const move = (accountId: string, url: URL) => {
+      const segments = url.pathname.split("/");
+
+      const sourceKey = keyFor(
+        accountId,
+        decodeURIComponent(segments[2] ?? "")
+      );
+
+      const targetKey = keyFor(
+        accountId,
+        url.searchParams.get("destination") ?? ""
+      );
+
+      const source = eventSets.get(sourceKey);
+      const target = eventSets.get(targetKey);
+      const event = source?.get(decodeURIComponent(segments[4] ?? ""));
+
+      if (source === undefined || target === undefined || event === undefined) {
+        return reply(404, {});
+      }
+
+      source.delete(event.id);
+      target.set(event.id, event);
+      revisions.set(sourceKey, (revisions.get(sourceKey) ?? 0) + 1);
+      revisions.set(targetKey, (revisions.get(targetKey) ?? 0) + 1);
+
+      return reply(200, event);
+    };
+
     return Layer.succeed(GoogleHttp, {
       execute: Effect.fn("fakeCalendarGoogle.execute")(function* execute(
         request: GoogleRequestValue
@@ -354,8 +603,18 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
           return reply(200, palette);
         }
 
-        if (url.pathname === "/users/me/calendarList") {
-          return reply(200, { items: calendars.get(request.accountId) ?? [] });
+        if (url.pathname.startsWith("/users/me/calendarList")) {
+          if (request.method === "PATCH") {
+            return yield* writeCalendar(request, url);
+          }
+
+          return request.method === "GET"
+            ? readCalendars(request.accountId, url)
+            : reply(405, {});
+        }
+
+        if (request.method === "POST" && url.pathname.endsWith("/move")) {
+          return move(request.accountId, url);
         }
 
         const [, prefix, encodedCalendar, resource, encodedEvent, instances] =
@@ -379,7 +638,13 @@ export const fakeCalendarGoogle = Effect.fn("fakeCalendarGoogle")(
             : decodeURIComponent(encodedEvent);
 
         if (request.method !== "GET") {
-          const result = yield* writeEvent(events, request, eventId);
+          const result = yield* writeEvent(
+            events,
+            request,
+            eventId,
+            url,
+            conferenceOutcome
+          );
 
           if (result.status < 300) {
             revisions.set(key, (revisions.get(key) ?? 0) + 1);

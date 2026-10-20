@@ -1,0 +1,249 @@
+import { Option } from "effect";
+
+import { conferenceLink } from "../../layout/conferencing.js";
+import { eligibleNotificationEvent, eligibleReminder } from "./candidates.js";
+import type {
+  ReminderCandidateValue,
+  ReminderMemory,
+  ReminderScan,
+  NotificationContentValue,
+} from "./model.js";
+
+type Memory = typeof ReminderMemory.Type;
+
+type Scan = typeof ReminderScan.Type;
+
+type Invitation = Memory["invitations"][string];
+
+const selfResponse = (candidate: ReminderCandidateValue) =>
+  candidate.event.attendees?.find((attendee) => attendee.self === true);
+
+const version = (candidate: ReminderCandidateValue): string =>
+  JSON.stringify({
+    conferencing: conferenceLink(
+      candidate.event.conferenceUrl,
+      candidate.event.description,
+      candidate.event.location
+    ),
+    end:
+      candidate.event.end !== undefined && "date" in candidate.event.end
+        ? candidate.event.end.date
+        : candidate.end,
+    location: candidate.event.location ?? "",
+    start:
+      candidate.event.start !== undefined && "date" in candidate.event.start
+        ? candidate.event.start.date
+        : candidate.start,
+    title: candidate.title,
+  });
+
+const invitationsIn = (
+  candidates: readonly ReminderCandidateValue[]
+): Memory["invitations"] =>
+  Object.fromEntries(
+    candidates.flatMap((candidate) => {
+      const self = selfResponse(candidate);
+
+      if (
+        self === undefined ||
+        candidate.event.organizer?.self === true ||
+        self.organizer === true
+      ) {
+        return [];
+      }
+
+      const observed: Invitation = {
+        answered:
+          self.responseStatus === "accepted" ||
+          self.responseStatus === "tentative",
+        version: version(candidate),
+      };
+
+      return [[candidate.identity, observed]];
+    })
+  );
+
+const popupNotifications = (
+  scan: Scan,
+  floor: number,
+  candidates: readonly ReminderCandidateValue[]
+): NotificationContentValue[] =>
+  candidates.flatMap((candidate) => {
+    const { reminders } = candidate.event;
+
+    if (reminders === undefined) {
+      return [];
+    }
+
+    const offsets = reminders.useDefault
+      ? (candidate.calendar.defaultReminders ?? [])
+      : (reminders.overrides ?? []);
+
+    return offsets
+      .filter(
+        (reminder) =>
+          reminder.method === "popup" &&
+          candidate.start - reminder.minutes * 60_000 > floor &&
+          candidate.start - reminder.minutes * 60_000 <= scan.now
+      )
+      .map((reminder) => ({
+        candidate,
+        id: JSON.stringify(["popup", candidate.identity, reminder.minutes]),
+        personId: scan.personId,
+        title: candidate.title,
+      }));
+  });
+
+const invitationNotifications = (
+  receipt: { readonly personId: string; readonly request: number },
+  candidates: readonly ReminderCandidateValue[],
+  previous: Memory["invitations"],
+  current: Memory["invitations"]
+): NotificationContentValue[] =>
+  candidates.flatMap((candidate) => {
+    const before = previous[candidate.identity];
+    const after = current[candidate.identity];
+    const self = selfResponse(candidate);
+
+    if (
+      after === undefined ||
+      !(
+        (before === undefined && self?.responseStatus === "needsAction") ||
+        (before?.answered === true && before.version !== after.version)
+      )
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        candidate,
+        id: JSON.stringify(["invite", candidate.identity, receipt.request]),
+        personId: receipt.personId,
+        title: `Invite: ${candidate.title}`,
+      },
+    ];
+  });
+
+const readMemory = (
+  memory: Memory,
+  scan: Scan,
+  fresh: boolean,
+  sameScope: boolean,
+  checked: number,
+  invitations: Memory["invitations"]
+) => {
+  if (fresh && Option.isSome(scan.accepted)) {
+    return {
+      accepted: Option.some(scan.accepted.value.request),
+      coverage: Option.some(checked),
+      invitations,
+    };
+  }
+
+  if (sameScope) {
+    return {
+      accepted: memory.accepted,
+      coverage: memory.coverage,
+      invitations: memory.invitations,
+    };
+  }
+
+  return { accepted: Option.none(), coverage: Option.none(), invitations: {} };
+};
+
+export const planReminders = (memory: Memory, scan: Scan): Memory => {
+  const permitted = memory.permission === "granted";
+
+  const candidates = scan.candidates.filter((candidate) =>
+    eligibleNotificationEvent(candidate, scan.now)
+  );
+
+  const current = new Map(
+    candidates.map((candidate) => [candidate.identity, candidate])
+  );
+
+  const active = memory.active.flatMap((notification) => {
+    const candidate = current.get(notification.candidate.identity);
+
+    return permitted && candidate !== undefined
+      ? [{ ...notification, candidate }]
+      : [];
+  });
+
+  const activeIds = new Set(active.map((notification) => notification.id));
+
+  const close = memory.active
+    .filter((notification) => !activeIds.has(notification.id))
+    .map((notification) => notification.id);
+
+  const highWater = Option.getOrElse(memory.lastChecked, () => scan.now);
+  const checked = Math.max(highWater, scan.now);
+  const sameScope = memory.scope === scan.scope;
+
+  const fresh =
+    Option.isSome(scan.accepted) &&
+    (!sameScope ||
+      !Option.contains(memory.accepted, scan.accepted.value.request));
+
+  const baseline = sameScope && Option.isSome(memory.accepted);
+
+  const floor =
+    fresh && sameScope && Option.isSome(memory.coverage)
+      ? Math.min(highWater, memory.coverage.value)
+      : highWater;
+
+  const invitations = invitationsIn(candidates);
+
+  const proposals =
+    permitted && scan.now >= highWater && Option.isSome(scan.accepted)
+      ? popupNotifications(
+          scan,
+          floor,
+          candidates.filter((candidate) =>
+            eligibleReminder(candidate, scan.now)
+          )
+        )
+      : [];
+
+  if (
+    permitted &&
+    scan.eventInvites &&
+    baseline &&
+    fresh &&
+    Option.isSome(scan.accepted) &&
+    scan.accepted.value.origin === "live"
+  ) {
+    proposals.push(
+      ...invitationNotifications(
+        { personId: scan.personId, request: scan.accepted.value.request },
+        candidates,
+        memory.invitations,
+        invitations
+      )
+    );
+  }
+
+  const fired = new Set(memory.fired);
+
+  const deliveries = proposals.filter((notification) => {
+    if (fired.has(notification.id)) {
+      return false;
+    }
+
+    fired.add(notification.id);
+
+    return true;
+  });
+
+  return {
+    ...memory,
+    ...readMemory(memory, scan, fresh, sameScope, checked, invitations),
+    active: [...active, ...deliveries],
+    close,
+    deliveries,
+    fired: [...fired],
+    lastChecked: Option.some(checked),
+    scope: scan.scope,
+  };
+};

@@ -13,13 +13,29 @@ pnpm install
 pnpm dev
 ```
 
-The development composition uses an in-process Google OAuth fake. It checks state, one-use codes, callback URLs, and PKCE. No Google request runs.
+Development runs the actual Worker, D1 migrations, and per-person Durable Objects in Miniflare. An in-process Google fake checks state, one-use codes, callback URLs, and PKCE. Outbound requests terminate in that fake; no live Google connection or application secrets are needed.
 
-- Sign in with `joel@example.test`.
-- Link `second@example.test` with **Add Google account**.
-- Choose `refused@example.test` to exercise refusal.
-- Local accounts live in memory and reset when the dev server restarts.
-- `portless list` shows the named route for this checkout.
+The first session starts with `joel@example.test` and linked `second@example.test`. Each account has two calendars. Sign out to exercise sign-in again. Use **Add Google account** to link an account, or choose `refused@example.test` to exercise refusal. D1 and Durable Object data reset when the dev server restarts.
+
+`portless list` shows the named route for this checkout. If no shared proxy is running, use the loopback-only fallback:
+
+```sh
+PORTLESS=0 pnpm dev
+```
+
+Do not start or reconfigure a shared proxy just to run this checkout. Client HMR stays enabled. Restart `pnpm dev` after changing server code, development adapters, or SQL migrations; the Worker bundle is built once at startup.
+
+### Simulate an external Google change
+
+Open the signed-in calendar first so its live connection registers Google watches. Send this request to the same development origin printed by Vite, or to its existing Portless route:
+
+```sh
+curl -X POST http://127.0.0.1:5173/__fake-google/change \
+  -H 'content-type: application/json' \
+  -d '{"email":"joel@example.test","calendarId":"joel@example.test","eventId":"overlap","summary":"Changed outside Calendar"}'
+```
+
+The fake patches its provider event, then sends a Google-shaped notification through `/google/push`. The real Durable Object drains the job and publishes a calendar invalidation after the cursor/version commit. The response reports accepted notifications and HTTP statuses. Expect `{"delivered":1,"statuses":[200]}` once watches are registered. This endpoint exists only in development.
 
 ## What is in the stack
 
@@ -88,7 +104,7 @@ pnpm turbo run check test build --concurrency=1
 
 The desk deploys from the operator machine. Workers do not contact live Google or deploy Cloudflare resources.
 
-The Stack declares one Worker, D1, and the Worker's `calendar.wzrrd.sh` custom domain. The custom domain resolves `wzrrd.sh` by name. The Stack owns no Zone, standalone DNS record, DNSSEC setting, or mail resource. It must never reconcile the existing wildcard or any other record.
+The Stack declares one Worker, D1, a per-person Durable Object namespace, and the Worker's `calendar.wzrrd.sh` custom domain. The custom domain resolves `wzrrd.sh` by name. The Stack owns no Zone, standalone DNS record, DNSSEC setting, or mail resource. It must never reconcile the existing wildcard or any other record.
 
 Supply these application keys through `.env.schema`:
 
@@ -100,13 +116,13 @@ Supply these application keys through `.env.schema`:
 Alchemy credentials come only from a named profile. Set `ALCHEMY_PROFILE` to the same profile passed to the driver.
 
 ```sh
-pnpm deploy:plan --profile default
-pnpm deploy:prod --profile default --yes
+pnpm deploy:plan --profile wzrrd
+pnpm deploy:prod --profile wzrrd --yes
 ```
 
 Inspect and explicitly allow the initial creates. Deploy checks prove the served release, anonymous session isolation, refusal page, and absence of development and retired public endpoints. Google consent still needs a live owner check.
 
-Rollback requires explicit approval: revert the code, then use `pnpm deploy:rollback --profile default --yes` with the prior receipt. Receipts live in gitignored `.rat/deploy/`.
+Rollback requires explicit approval: revert the code, then use `pnpm deploy:rollback --profile wzrrd --yes` with the prior receipt. Receipts live in gitignored `.rat/deploy/`.
 
 ## About `spec/`
 

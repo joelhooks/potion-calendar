@@ -59,6 +59,7 @@ it.effect(
             (id) =>
               id.includes("/src/dev/") ||
               id.includes("fake-google") ||
+              /\/miniflare(?:@|\/)/u.test(id) ||
               id.includes("/devtools/") ||
               id.includes("/packages/calendar/test/") ||
               id.includes("/@effect/vitest/") ||

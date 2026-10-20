@@ -16,6 +16,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./account-conferencing-default": {
+      "types": "./src/account-conferencing-default.ts",
+      "import": "./dist/account-conferencing-default.js",
+      "default": "./dist/account-conferencing-default.js"
+    },
+    "./account-disconnect": {
+      "types": "./src/account-disconnect.ts",
+      "import": "./dist/account-disconnect.js",
+      "default": "./dist/account-disconnect.js"
+    },
     "./calendar-cache": {
       "types": "./src/calendar-cache.ts",
       "import": "./dist/calendar-cache.js",
@@ -25,6 +35,11 @@
       "types": "./src/d1.ts",
       "import": "./dist/d1.js",
       "default": "./dist/d1.js"
+    },
+    "./google-push": {
+      "types": "./src/google-push.ts",
+      "import": "./dist/google-push.js",
+      "default": "./dist/google-push.js"
     },
     "./hyperdrive-postgres": {
       "types": "./src/hyperdrive-postgres.ts",

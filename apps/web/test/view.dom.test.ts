@@ -59,7 +59,7 @@ it.effect(
 );
 
 it.effect(
-  "detail selection shows read-only attendee and conference data without inserting HTML",
+  "detail selection keeps meeting fields read-only while exposing the person's own RSVP note",
   () =>
     Effect.gen(function* detailDom() {
       const model = fixtureSelection();
@@ -75,9 +75,7 @@ it.effect(
       expect(document.querySelector(".detail-time")?.textContent).toBe(
         "9am – 10am · America/Los_Angeles"
       );
-      expect(document.querySelector(".join-link")?.getAttribute("href")).toBe(
-        "https://meet.google.com/abc-defg-hij"
-      );
+      expect(document.querySelector(".join-link")?.tagName).toBe("BUTTON");
       expect(document.querySelector(".detail-panel")?.textContent).toContain(
         "Alex"
       );
@@ -85,8 +83,11 @@ it.effect(
         "accepted"
       );
       expect(
-        document.querySelectorAll(".detail-panel input, .detail-panel textarea")
+        document.querySelectorAll(
+          ".detail-panel input, .detail-panel textarea:not(#rsvp-note)"
+        )
       ).toHaveLength(0);
+      expect(document.querySelector("#rsvp-note")).not.toBeNull();
       const [event] = fixtureEvents;
 
       if (event !== undefined) {

@@ -9,6 +9,10 @@ export const rpcDocument = Effect.fn("rpcDocument")(function* rpcDocument(
   const requestHeaders = new Headers(headers);
   requestHeaders.set("content-type", "application/json");
 
+  if (!requestHeaders.has("origin")) {
+    requestHeaders.set("origin", "http://calendar.test");
+  }
+
   const request = new Request("http://calendar.test/rpc", {
     body: `{"_tag":"Request","headers":[],"id":"1","tag":${JSON.stringify(tag)},"payload":${JSON.stringify(payload)}}`,
     headers: requestHeaders,

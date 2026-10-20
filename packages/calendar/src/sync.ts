@@ -8,6 +8,7 @@ import {
 import { Context, Effect, Layer, Predicate, Schema } from "effect";
 import { types } from "xstate";
 
+import { calendarActorFailure } from "./calendar-actor-failure.js";
 import { CalendarChanges } from "./changes.js";
 import { Gone, Provider } from "./errors.js";
 import type { CalendarFailureValue } from "./errors.js";
@@ -253,7 +254,7 @@ export const syncCalendar = Effect.fn("syncCalendar")(function* syncCalendar(
   }
 
   if ("error" in outcome) {
-    return yield* outcome.error;
+    return yield* calendarActorFailure(outcome.error);
   }
 
   return outcome.result;

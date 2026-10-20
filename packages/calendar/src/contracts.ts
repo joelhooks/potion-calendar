@@ -2,6 +2,11 @@ import { defineContract } from "@calendar/capability/contract";
 import { Schema } from "effect";
 
 import { CalendarReadFailure } from "./calendar-read-failure.js";
+import {
+  getAccountConferencingDefaultContract,
+  setAccountConferencingDefaultContract,
+} from "./conferencing-contracts.js";
+import { ConferencingRequest } from "./conferencing-model.js";
 import { CalendarFailure } from "./errors.js";
 import {
   Calendar,
@@ -12,11 +17,57 @@ import {
   EditScope,
   EventFields,
   EventRef,
+  EventTime,
   Range,
   ResponseStatus,
   SendUpdates,
 } from "./model.js";
+import { SearchEventsInput, SearchEventsOutput } from "./search-model.js";
+import { SeriesMoveRetimeFailure } from "./series-move-result.js";
+import {
+  disconnectAccountContract,
+  setCalendarAppearanceContract,
+} from "./settings-contracts.js";
 import { SyncResult } from "./sync-result.js";
+
+export {
+  getAccountConferencingDefaultContract,
+  setAccountConferencingDefaultContract,
+  GetAccountConferencingDefaultInput,
+  SetAccountConferencingDefaultInput,
+  AccountConferencingDefault,
+  AccountConferencingDefaultFailure,
+} from "./conferencing-contracts.js";
+
+export {
+  ConferencingRequest,
+  ConferencingDefault,
+  ConferencingStatus,
+} from "./conferencing-model.js";
+
+export type { ConferencingRequestValue } from "./conferencing-model.js";
+
+export { OwnedConference, ConferenceEntryPoint } from "./owned-conference.js";
+
+export type { OwnedConferenceValue } from "./owned-conference.js";
+
+export {
+  disconnectAccountInstruction,
+  disconnectAccountContract,
+  setCalendarAppearanceContract,
+  DisconnectAccountInput,
+  DisconnectAccountResult,
+  DisconnectAccountFailure,
+  CalendarAppearancePatch,
+  SetCalendarAppearanceInput,
+  SetCalendarAppearanceFailure,
+} from "./settings-contracts.js";
+
+export { AccountNotOwned } from "./account-not-owned.js";
+
+export { LastCalendarAccount } from "./last-calendar-account.js";
+
+export { CalendarAppearanceRefused } from "./calendar-appearance-refused.js";
 
 export const AccountCalendars = Schema.Union([
   Schema.Struct({
@@ -45,6 +96,7 @@ export const ListEventsOutput = Schema.Struct({
 
 export const CreateEventInput = Schema.Struct({
   ...CalendarRef.fields,
+  conferencingRequest: Schema.optional(ConferencingRequest),
   event: EventFields,
   id: ClientEventId,
   sendUpdates: Schema.optional(SendUpdates),
@@ -53,6 +105,7 @@ export const CreateEventInput = Schema.Struct({
 export const UpdateEventInput = Schema.Struct({
   ...EventRef.fields,
   changes: EventFields,
+  conferencingRequest: Schema.optional(ConferencingRequest),
   removeRecurrence: Schema.optional(Schema.Literals([true])),
   scope: EditScope,
   sendUpdates: Schema.optional(SendUpdates),
@@ -62,6 +115,14 @@ export const MoveEventInput = Schema.Struct({
   ...EventRef.fields,
   destination: CalendarRef,
   sendUpdates: Schema.optional(SendUpdates),
+});
+
+export const MoveAndRetimeSeriesInput = Schema.Struct({
+  ...EventRef.fields,
+  destination: CalendarRef,
+  end: EventTime,
+  sendUpdates: Schema.optional(SendUpdates),
+  start: EventTime,
 });
 
 export const DeleteEventInput = Schema.Struct({
@@ -91,6 +152,15 @@ export const listEventsContract = defineContract("listEvents", {
   failure: CalendarReadFailure,
   input: ListEventsInput,
   output: ListEventsOutput,
+});
+
+export const searchEventsContract = defineContract("searchEvents", {
+  annotations: { idempotent: true, readOnly: true },
+  description:
+    "Initial Google q search of owned/subscribed calendars, including hidden ones. Split at local week start four weeks ago; forward end includes the local day three years after that boundary. Pages are limited to 100 forward and 2500 older; no pagination or completeness claim. Per-calendar failures preserve other calendars.",
+  failure: CalendarFailure,
+  input: SearchEventsInput,
+  output: SearchEventsOutput,
 });
 
 export const getEventContract = defineContract("getEvent", {
@@ -127,6 +197,18 @@ export const moveEventContract = defineContract("moveEvent", {
   output: CalendarEvent,
 });
 
+export const moveAndRetimeSeriesContract = defineContract(
+  "moveAndRetimeSeries",
+  {
+    annotations: { idempotent: false, readOnly: false },
+    description:
+      "Move a recurring series using offset timestamps; preserve its master's local date and report partial or uncertain outcomes",
+    failure: SeriesMoveRetimeFailure,
+    input: MoveAndRetimeSeriesInput,
+    output: CalendarEvent,
+  }
+);
+
 export const deleteEventContract = defineContract("deleteEvent", {
   annotations: { destructive: true, idempotent: true, readOnly: false },
   description:
@@ -154,12 +236,18 @@ export const syncNowContract = defineContract("syncNow", {
 });
 
 export const calendarContracts = [
+  getAccountConferencingDefaultContract,
+  setAccountConferencingDefaultContract,
+  disconnectAccountContract,
+  setCalendarAppearanceContract,
   listCalendarsContract,
   listEventsContract,
+  searchEventsContract,
   getEventContract,
   createEventContract,
   updateEventContract,
   moveEventContract,
+  moveAndRetimeSeriesContract,
   deleteEventContract,
   rsvpContract,
   syncNowContract,
@@ -185,6 +273,34 @@ export {
 } from "./model.js";
 
 export { CalendarReadFailure } from "./calendar-read-failure.js";
+
+export {
+  SeriesMoveRetimeFailure,
+  SeriesMoveRetimeRefused,
+  SeriesMoveRetimePartial,
+  SeriesMoveRetimeUncertain,
+} from "./series-move-result.js";
+
+export type { SeriesMoveRetimeFailureValue } from "./series-move-result.js";
+
+export {
+  SearchEventsInput,
+  SearchEventsOutput,
+  SearchEventResult,
+  SearchWindow,
+} from "./search-model.js";
+
+export type {
+  SearchEventsInputValue,
+  SearchEventsOutputValue,
+  SearchEventResultValue,
+} from "./search-model.js";
+
+export {
+  matchesLocalSearch,
+  orderSearchResults,
+  searchEventResult,
+} from "./search-results.js";
 
 export { equivalenceKey } from "./equivalence-key.js";
 
@@ -225,4 +341,5 @@ export {
   CalendarMoveRefused,
   ReminderLimitExceeded,
   RecurrenceRemovalRefused,
+  ConferencingRefused,
 } from "./errors.js";

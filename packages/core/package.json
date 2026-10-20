@@ -19,6 +19,11 @@
       "import": "./dist/contracts.js",
       "default": "./dist/contracts.js"
     },
+    "./desktop-bridge": {
+      "types": "./src/desktop-bridge.ts",
+      "import": "./dist/desktop-bridge.js",
+      "default": "./dist/desktop-bridge.js"
+    },
     "./release": {
       "types": "./src/release.ts",
       "import": "./dist/release.js",

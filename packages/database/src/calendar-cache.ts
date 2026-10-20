@@ -31,7 +31,9 @@ export const expireCalendarRanges = Effect.fn("expireCalendarRanges")(
 
     const result = yield* Effect.tryPromise({
       catch: () => new CalendarCacheError({ operation: "expireRanges" }),
-      try: statement.run.bind(statement),
+
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+      try: () => statement.run(),
     });
 
     return result.meta.changes;
@@ -177,7 +179,9 @@ export const calendarCacheRepository = (
 
     const result = yield* Effect.tryPromise({
       catch: () => new CalendarCacheError({ operation: "cacheRange" }),
-      try: statement.run.bind(statement),
+
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+      try: () => statement.run(),
     });
 
     return result.meta.changes === 1;

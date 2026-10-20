@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "src/**/*.ts",
+    "*.config.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "e2e/**/*.ts"
+  ],
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "allowImportingTsExtensions": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "allowedUnstableApis": ["effect/Arbitrary"]
+      }
+    ]
+  }
+}

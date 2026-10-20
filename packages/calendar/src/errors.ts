@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 
+import { AccountNotOwned } from "./account-not-owned.js";
 import { CalendarMoveRefused } from "./calendar-move-refused.js";
+import { ConferencingRefused } from "./conferencing-refused.js";
 import { CrossAccountMove } from "./cross-account-move.js";
 import { Gone } from "./gone.js";
 import { NotConnected } from "./not-connected.js";
@@ -13,6 +15,8 @@ import { Revoked } from "./revoked.js";
 import { UnsupportedRecurrenceSplit } from "./unsupported-recurrence-split.js";
 
 export { CrossAccountMove } from "./cross-account-move.js";
+
+export { ConferencingRefused } from "./conferencing-refused.js";
 
 export { CalendarMoveRefused } from "./calendar-move-refused.js";
 
@@ -35,6 +39,8 @@ export { Revoked } from "./revoked.js";
 export { UnsupportedRecurrenceSplit } from "./unsupported-recurrence-split.js";
 
 export const CalendarFailure = Schema.Union([
+  AccountNotOwned,
+  ConferencingRefused,
   NotConnected,
   Revoked,
   NotFound,

@@ -4,7 +4,7 @@ import { vi } from "vitest";
 
 import * as calendarCron from "../../src/server/calendar-cron.js";
 import worker from "../../src/server/worker.js";
-import { d1Fixture } from "./d1-fixture.js";
+import { d1Fixture, liveNamespaceFixture } from "./d1-fixture.js";
 
 for (const failed of [0, 1]) {
   it.effect(
@@ -12,6 +12,7 @@ for (const failed of [0, 1]) {
     () =>
       Effect.gen(function* scheduledSync() {
         const database = yield* d1Fixture;
+        const live = yield* liveNamespaceFixture;
 
         const sync = yield* Effect.acquireRelease(
           Effect.sync(() =>
@@ -38,6 +39,8 @@ for (const failed of [0, 1]) {
               },
               BETTER_AUTH_SECRET:
                 "local-only-auth-secret-at-least-thirty-two-characters",
+              CALENDAR_LIVE: live,
+              CALENDAR_ORIGIN: "https://calendar.wzrrd.sh",
               DB: database,
               GOOGLE_CLIENT_ID: "local-client",
               GOOGLE_CLIENT_SECRET: "local-client-secret",

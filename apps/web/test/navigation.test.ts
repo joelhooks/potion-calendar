@@ -1,11 +1,14 @@
 import { expect, it } from "@effect/vitest";
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Schema, Option } from "effect";
 
+import { initialModel, Message } from "../src/client/app.js";
+import { EditorAction } from "../src/client/editing/editor-action.js";
+import { resolveBinding } from "../src/client/keyboard/input.js";
+import { keyboardRegistry } from "../src/client/keyboard/registry.js";
 import {
   dayFromIso,
   initialNavigation,
   isoFromDay,
-  keyAction,
   midnightInZone,
   navigate,
   periodStart,
@@ -100,10 +103,31 @@ it.effect.prop(
 
 it.effect("view keys, month bounds, and day limits are explicit", () =>
   Effect.sync(() => {
-    expect(keyAction("0")).toEqual({ mode: "week", type: "view" });
-    expect(keyAction("9")).toEqual({ days: 9, mode: "days", type: "view" });
-    expect(keyAction("T")).toEqual({ type: "today" });
-    expect(keyAction("c")).toBeUndefined();
+    const model = { ...initialModel(0, "UTC"), person: Option.some("fixture") };
+
+    const dispatch = (key: string) =>
+      resolveBinding(
+        model,
+        { alt: false, key, mod: false, shift: false },
+        0,
+        "grid"
+      ).action?.dispatch(model);
+
+    expect(dispatch("0")).toEqual(
+      Message.ClickedView({ days: 7, mode: "week" })
+    );
+    expect(dispatch("9")).toEqual(
+      Message.ClickedView({ days: 9, mode: "days" })
+    );
+    expect(dispatch("T")).toEqual(Message.ClickedToday());
+    const create = keyboardRegistry.find((action) => action.id === "create");
+    expect(create?.keys).toContain("c");
+    expect(create?.dispatch(model)).toEqual(
+      Message.EditingAction({
+        action: EditorAction.cases.OpenCreate.make({}),
+        personId: "fixture",
+      })
+    );
     const today = dayFromIso("2026-10-19");
 
     const month = navigate(

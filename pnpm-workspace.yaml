@@ -9,6 +9,7 @@ packages:
 
 allowBuilds:
   "@google/genai": true
+  electron: true
   esbuild: true
   lefthook: true
   msgpackr-extract: true

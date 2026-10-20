@@ -17,6 +17,7 @@ import {
   CalendarEvent,
   ListCalendarsOutput,
   ListEventsOutput,
+  equivalenceKey,
 } from "@calendar/calendar/contracts";
 import { expect, it } from "@effect/vitest";
 import { DateTime, Effect, Layer, Schema } from "effect";
@@ -27,6 +28,7 @@ import { fakeCalendarGoogle } from "../../src/dev/calendar-google.js";
 import { seedFakePerson } from "../../src/dev/person.js";
 import { createBackend } from "../../src/server/backend.js";
 import { syncConnectedCalendars } from "../../src/server/calendar-cron.js";
+import { calendarForPerson } from "../../src/server/calendar-runtime.js";
 import { d1CalendarStore } from "../../src/server/calendar-store.js";
 import { rpcDocument, rpcValue, rpcFailure } from "./calendar-rpc.js";
 import { d1Fixture } from "./d1-fixture.js";
@@ -75,6 +77,45 @@ it.effect(
       const snapshot = (yield* Schema.decodeUnknownEffect(
         rpcValue(ListEventsOutput)
       )(document))[0].exit.value;
+
+      const copies = yield* Schema.decodeUnknownEffect(
+        Schema.NonEmptyArray(CalendarEvent)
+      )(snapshot.events.filter((event) => event.eventId === "overlap"));
+
+      const lookalikes = yield* Schema.decodeUnknownEffect(
+        Schema.NonEmptyArray(CalendarEvent)
+      )(snapshot.events.filter((event) => event.eventId === "reviewlookalike"));
+
+      const sharedKeys = copies.map(equivalenceKey);
+
+      expect(copies).toHaveLength(2);
+      expect(new Set(copies.map((event) => event.accountId)).size).toBe(2);
+      expect(sharedKeys[0]).toBeDefined();
+      expect(new Set(sharedKeys).size).toBe(1);
+      expect(lookalikes).toHaveLength(1);
+      expect(lookalikes[0].title).toBe(copies[0].title);
+      expect(lookalikes[0].start).toEqual(copies[0].start);
+      expect(lookalikes[0].end).toEqual(copies[0].end);
+      expect(equivalenceKey(lookalikes[0])).toBeDefined();
+      expect(equivalenceKey(lookalikes[0])).not.toBe(sharedKeys[0]);
+      expect(
+        snapshot.events.filter((event) => event.eventId === "accountonly")
+      ).toHaveLength(1);
+      expect(
+        snapshot.events.every((event) => event.iCalUID !== undefined)
+      ).toBe(true);
+
+      const instances = snapshot.events.filter(
+        (event) => event.recurringEventId === "series"
+      );
+
+      expect(new Set(instances.map((event) => event.iCalUID)).size).toBe(1);
+      expect(
+        instances.every((event) => equivalenceKey(event) !== undefined)
+      ).toBe(true);
+      expect(new Set(instances.map(equivalenceKey)).size).toBe(
+        instances.length / 2
+      );
 
       expect(
         snapshot.events.some((event) => event.status === "cancelled")
@@ -260,6 +301,38 @@ const twoPeople = Effect.gen(function* twoPeople() {
     storeRequests,
   };
 }).pipe(Effect.provide(FetchHttpClient.layer));
+
+it.effect(
+  "person runtime exposes the configured transport to channel operations",
+  () =>
+    Effect.gen(function* transportContext() {
+      const fixture = yield* twoPeople;
+
+      const expected = yield* GoogleHttp.pipe(
+        Effect.provide(fixture.options.googleHttp)
+      );
+
+      const actual = yield* calendarForPerson(
+        fixture.fake.auth,
+        fixture.fake.config,
+        fixture.first.personId,
+        fixture.options,
+        [],
+        GoogleHttp
+      );
+
+      expect(actual).toBe(expected);
+
+      yield* calendarForPerson(
+        fixture.fake.auth,
+        fixture.fake.config,
+        fixture.first.personId,
+        { storeFor: fixture.options.storeFor },
+        [],
+        GoogleHttp.pipe(Effect.asVoid)
+      );
+    })
+);
 
 it.effect(
   "RPC denies foreign accounts before cache or provider access for two signed-in people",
