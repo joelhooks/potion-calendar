@@ -54,7 +54,10 @@ import {
   initialConferencing,
   clearConferencing,
 } from "./conferencing/model.js";
-import { changeConferencing } from "./conferencing/update.js";
+import {
+  changeConferencing,
+  loadConferencingAccounts,
+} from "./conferencing/update.js";
 import { ApplyDesktopRequest } from "./desktop/commands.js";
 import {
   DesktopNotice,
@@ -868,7 +871,25 @@ const updateCore = (
       }
 
       const accepted = receiveManagedInventory(model, result);
-      const refreshed = reloadRange(accepted.model, false, [], model);
+
+      const accounts =
+        Option.getOrUndefined(AsyncData.getData(accepted.model.session))
+          ?.accounts ?? [];
+
+      const preferences = loadConferencingAccounts(
+        accepted.model,
+        accounts
+          .filter((account) => !account.disconnected)
+          .map((account) => account.id),
+        false
+      );
+
+      const range = reloadRange(preferences.model, false, [], model);
+
+      const refreshed = {
+        ...range,
+        commands: [...(range.commands ?? []), ...(preferences.commands ?? [])],
+      };
 
       return accepted.migrationCompleted
         ? persistPreferences(refreshed)
@@ -1092,15 +1113,24 @@ const updateCore = (
         return { model: cleared };
       }
 
+      const preferences = loadConferencingAccounts(
+        syncSearchRoute(
+          { ...cleared, person: Option.some(snapshot.user.id) },
+          model.route
+        ),
+        snapshot.accounts
+          .filter((account) => !account.disconnected)
+          .map((account) => account.id),
+        false
+      );
+
       return {
         commands: [
           ReadPreferences({ person: snapshot.user.id }),
           ...scrollForRoute(model.route),
+          ...(preferences.commands ?? []),
         ],
-        model: syncSearchRoute(
-          { ...cleared, person: Option.some(snapshot.user.id) },
-          model.route
-        ),
+        model: preferences.model,
       };
     },
     ReceivedSystemSettings: ({ dark, hour24 }) => ({

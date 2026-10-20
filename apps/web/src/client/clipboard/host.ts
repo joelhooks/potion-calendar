@@ -5,6 +5,7 @@ import { AsyncData } from "foldkit";
 import { hourHeight } from "../../layout/geometry.js";
 import { allDaySection, visibleEvents } from "../../layout/presentation.js";
 import type { AppModel } from "../app.js";
+import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { EditorView } from "../editing/editor-model.js";
 import { defaultCreationCalendar } from "../settings/update.js";
 import { homeZone } from "../time-zones/model.js";
@@ -113,6 +114,7 @@ export const clipboardNativeHost = (
         ? undefined
         : ClipboardPasteTarget.make({
             calendar,
+            conferencingContext: editorConferencingContext(model),
             navigation: model.calendar.navigation,
             primaryZone: homeZone(model),
             selection: model.calendar.selected,

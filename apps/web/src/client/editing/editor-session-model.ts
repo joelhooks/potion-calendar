@@ -12,6 +12,7 @@ import {
   ClipboardPasteMetadata,
   ClipboardTemplate,
 } from "../clipboard/model.js";
+import { EditorConferencingContext } from "./conferencing-draft.js";
 import { DeleteIntent } from "./delete-actor.js";
 import { EditorAction } from "./editor-action.js";
 import { EventDraft, RepeatForm } from "./editor-model.js";
@@ -22,6 +23,7 @@ import { MoveSupport } from "./move-support.js";
 
 const openingFields = {
   calendars: Schema.Array(Calendar),
+  conferencingContext: Schema.optional(EditorConferencingContext),
   navigation: NavigationState,
   primaryZone: Schema.String,
   rangeZone: Schema.optionalKey(Schema.String),
@@ -51,6 +53,7 @@ export const LoadedEditor = Schema.Struct({
   baseline: EventDraft,
   calendars: Schema.Array(Calendar),
   clipboard: Schema.optionalKey(ClipboardPasteMetadata),
+  conferencingContext: Schema.optional(EditorConferencingContext),
   createId: Schema.Option(CreateEventInput.fields.id),
   direct: Schema.optionalKey(Schema.Boolean),
   draft: EventDraft,

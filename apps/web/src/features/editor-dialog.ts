@@ -6,6 +6,7 @@ import { EditorAction } from "../client/editing/editor-action.js";
 export interface EditorDialogProps<Message> {
   readonly body: readonly (Html | string)[];
   readonly cancelDisabled?: boolean;
+  readonly compact?: boolean;
   readonly confirm: typeof EditorAction.Type;
   readonly confirmDisabled?: boolean;
   readonly confirmLabel: string;
@@ -66,7 +67,15 @@ export const editorDialog = <Message>(
               ),
             ]
           ),
-          h.div([h.Class("editor-scroll")], props.body),
+          h.div(
+            [
+              h.Class("editor-scroll"),
+              ...(props.compact === true
+                ? [h.Style({ "padding-bottom": "0" })]
+                : []),
+            ],
+            props.body
+          ),
           h.footer(
             [h.Class("editor-footer")],
             [

@@ -6,6 +6,7 @@ import {
 } from "@calendar/calendar/contracts";
 import { Schema } from "effect";
 
+import { ConferencingDraft } from "./conferencing-draft.js";
 import { MutationFailure } from "./failure.js";
 import { MoveSupport } from "./move-support.js";
 
@@ -50,6 +51,7 @@ export const EventDraft = Schema.Struct({
   attendees: Schema.Array(Attendee),
   calendarId: Schema.String,
   colorId: Schema.NullOr(Schema.String),
+  conferencing: Schema.optional(ConferencingDraft),
   description: Schema.String,
   endDate: Schema.String,
   endTime: Schema.String,
@@ -86,6 +88,7 @@ const editorFields = {
 
 export const EditorView = Schema.TaggedUnion({
   Closed: {},
+  ConfirmConferencing: editorFields,
   CustomRepeat: { ...editorFields, custom: RepeatForm },
   Editing: editorFields,
   Email: editorFields,

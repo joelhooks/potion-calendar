@@ -8,12 +8,16 @@ export const undoToast = <Message>(
   props: {
     readonly intent: DeleteIntentValue;
     readonly send: (action: typeof EditorAction.Type) => Message;
+    readonly stacked?: boolean;
   }
 ): Html =>
   h.keyed("aside")(
     `undo-${props.intent.id}`,
     [
       h.Class("undo-toast"),
+      ...(props.stacked === true
+        ? [h.Style({ "max-width": "100%", position: "static" })]
+        : []),
       h.Role("status"),
       h.AriaLive("polite"),
       h.DataAttribute("undo-intent", props.intent.id),

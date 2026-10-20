@@ -254,7 +254,8 @@ export const draftChanges = (
     calendarMoved,
     changes,
     dayChanged,
-    noEmailOnly: noEmailOnlyFields(names),
+    noEmailOnly:
+      draft.conferencing?.request === undefined && noEmailOnlyFields(names),
     participantsChanged,
     removeRecurrence,
     repeatChanged,

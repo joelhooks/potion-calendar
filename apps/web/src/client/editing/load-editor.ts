@@ -16,6 +16,7 @@ import {
   composeClipboardDraft,
 } from "../clipboard/template.js";
 import { CalendarEditingClient } from "./calendar-client.js";
+import { applyEditorConferencingDefault } from "./conferencing-draft.js";
 import {
   EditorLoadResult,
   EditorRequest,
@@ -80,6 +81,7 @@ const loadNew = Effect.fn("loadNewEditor")(function* loadNew(
   const session = LoadedEditor.make({
     baseline: draft,
     calendars: request.calendars,
+    conferencingContext: request.conferencingContext,
     createId: Option.some(id.replaceAll("-", "")),
     draft,
     id,
@@ -92,10 +94,15 @@ const loadNew = Effect.fn("loadNewEditor")(function* loadNew(
     selection: request.selection,
   });
 
+  const prepared = {
+    ...session,
+    draft: applyEditorConferencingDefault(session),
+  };
+
   return request.template === undefined
-    ? session
+    ? prepared
     : LoadedEditor.make({
-        ...session,
+        ...prepared,
         clipboard: clipboardPasteMetadata(request.template),
         direct: true,
       });
@@ -151,9 +158,10 @@ const loadExisting = Effect.fn("loadExistingEditor")(function* loadExisting(
           draft.timeZone
         );
 
-  return LoadedEditor.make({
+  const session = LoadedEditor.make({
     baseline: draft,
     calendars: request.calendars,
+    conferencingContext: request.conferencingContext,
     createId:
       request.mode === "duplicate"
         ? Option.some(id.replaceAll("-", ""))
@@ -169,6 +177,8 @@ const loadExisting = Effect.fn("loadExistingEditor")(function* loadExisting(
     original: Option.some(source),
     selection: request.selection,
   });
+
+  return { ...session, draft: applyEditorConferencingDefault(session) };
 });
 
 export const loadEditor = Effect.fn("loadEditor")(function* loadEditor(

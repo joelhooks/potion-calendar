@@ -11,6 +11,8 @@ import { Scene } from "foldkit/test";
 import { Message, update } from "../src/client/app.js";
 import type { AppModel, AppMessage } from "../src/client/app.js";
 import { ReadCalendars, ReadEvents } from "../src/client/commands.js";
+import { ReadConferencingDefault } from "../src/client/conferencing/commands.js";
+import { ConferencingChange } from "../src/client/conferencing/model.js";
 import { ManageSettings } from "../src/client/settings-management/commands.js";
 import { PrepareAccountRemoval } from "../src/client/settings-management/dialog.js";
 import {
@@ -113,6 +115,17 @@ it.effect(
                 (account) => account.accountId !== "work"
               ),
             },
+          })
+        ),
+        Scene.Command.resolve(
+          ReadConferencingDefault,
+          Message.ChangedConferencing({
+            change: ConferencingChange.cases.Received.make({
+              accountId: "personal",
+              personId: Option.getOrThrow(base.person),
+              requestId: 1,
+              result: { accountId: "personal", value: "unset" },
+            }),
           })
         ),
         Scene.Command.resolve(

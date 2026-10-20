@@ -60,6 +60,7 @@ export const prepareClipboardPaste = Effect.fn("prepareClipboardPaste")(
       const request = EditorRequest.cases.New.make({
         ...range,
         calendars: [calendar],
+        conferencingContext: pending.target.conferencingContext,
         navigation: pending.target.navigation,
         primaryZone: pending.target.primaryZone,
         ref: { accountId: calendar.accountId, calendarId: calendar.calendarId },

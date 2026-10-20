@@ -8,8 +8,14 @@ import { ClipboardAction } from "../client/clipboard/runtime.js";
 export const clipboardPanel = <Message>(
   h: HtmlBuilder<Message>,
   view: typeof ClipboardView.Type,
-  send: (action: typeof ClipboardAction.Type) => Message
+  send: (action: typeof ClipboardAction.Type) => Message,
+  stacked?: boolean
 ): Html => {
+  const placement =
+    stacked === true
+      ? [h.Style({ "max-width": "100%", position: "static" })]
+      : [];
+
   if (ClipboardView.guards.Guests(view)) {
     const exclude = send(
       ClipboardAction.cases.Guests.make({
@@ -91,7 +97,7 @@ export const clipboardPanel = <Message>(
 
   if (ClipboardView.guards.Failure(view)) {
     return h.aside(
-      [h.Class("undo-toast clipboard-toast"), h.Role("alert")],
+      [h.Class("undo-toast clipboard-toast"), h.Role("alert"), ...placement],
       [
         h.span([], [view.message]),
         ...(view.retryable
@@ -133,6 +139,7 @@ export const clipboardPanel = <Message>(
     return h.aside(
       [
         h.Class("undo-toast clipboard-toast"),
+        ...placement,
         h.Role("status"),
         h.AriaLive("polite"),
       ],
@@ -146,6 +153,7 @@ export const clipboardPanel = <Message>(
       h.aside(
         [
           h.Class("undo-toast clipboard-toast"),
+          ...placement,
           h.Role("status"),
           h.AriaLive("polite"),
         ],

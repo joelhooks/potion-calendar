@@ -12,6 +12,7 @@ import { SettingsChange } from "../client/settings/model.js";
 import { defaultCreationCalendar } from "../client/settings/update.js";
 import { accountFailure } from "../layout/presentation.js";
 import { AccountSettingsRoute, printRoute } from "../layout/route.js";
+import { conferencingAccountSettings } from "./conferencing-account-settings.js";
 import {
   accountRemoval,
   calendarAppearance,
@@ -210,6 +211,7 @@ export const settingsCalendars = (
           h.button([h.OnClick(Message.ClickedRetry({ accountId }))], ["Retry"]),
         ]
       : []),
+    ...(reconnect ? [] : conferencingAccountSettings(model, h, accountId)),
     ...(reconnect
       ? [
           h.p(

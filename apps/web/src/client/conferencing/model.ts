@@ -9,7 +9,9 @@ import { AsyncData } from "foldkit";
 
 export const ConferencingSaveNotice = Schema.Struct({
   ...EventRef.fields,
-  status: ConferencingStatus,
+  id: Schema.String,
+  status: Schema.Union([ConferencingStatus, Schema.Literal("removed")]),
+  title: Schema.String,
 });
 
 export const ConferencingProblem = Schema.Struct({ message: Schema.String });

@@ -7,6 +7,7 @@ import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppModel, AppMessage } from "../src/client/app.js";
+import { editorConferencingContext } from "../src/client/conferencing/editor-context.js";
 import { DispatchEditing } from "../src/client/editing/commands.js";
 import { EditorRequest } from "../src/client/editing/editor-session-model.js";
 import { EditingCommand } from "../src/client/editing/runtime.js";
@@ -185,6 +186,7 @@ it.effect(
         command: EditingCommand.cases.Open.make({
           request: EditorRequest.cases.Existing.make({
             calendars: selected.calendar.calendars,
+            conferencingContext: editorConferencingContext(selected),
             event: event.source,
             mode: "edit",
             navigation: selected.calendar.navigation,

@@ -11,7 +11,7 @@ import { conferencingAccountSettings } from "../src/features/conferencing-accoun
 
 const labels: Record<typeof ConferencingDefault.Type, string> = {
   googleMeet: "Google Meet",
-  none: "No conferencing",
+  none: "None",
   unset: "Not set",
 };
 

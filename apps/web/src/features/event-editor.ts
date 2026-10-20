@@ -6,6 +6,7 @@ import { EditorView } from "../client/editing/editor-model.js";
 import type { EditorViewValue } from "../client/editing/editor-model.js";
 import { needsCalendarReview } from "../client/editing/failure.js";
 import { mutationFailureMessage } from "../layout/mutation-failure.js";
+import { conferencingField } from "./editor-conferencing.js";
 import { editorDialog } from "./editor-dialog.js";
 import {
   calendarField,
@@ -96,6 +97,7 @@ const editorForm = <Message>(
             ),
           ]),
       ...eventTextFields(h, props),
+      conferencingField(h, props),
       repeatField(h, props),
       calendarField(h, props),
       colourField(h, props),
@@ -128,7 +130,8 @@ const editorForm = <Message>(
       EditorView.guards.Scope(props.model) ||
       EditorView.guards.Email(props.model) ||
       EditorView.guards.RemoveRecurrence(props.model) ||
-      EditorView.guards.CustomRepeat(props.model)
+      EditorView.guards.CustomRepeat(props.model) ||
+      EditorView.guards.ConfirmConferencing(props.model)
         ? undefined
         : props.toast,
     id: "event-editor-dialog",
@@ -285,6 +288,29 @@ export const editorDialogs = <Message>(
 
   const props = { ...input, model };
   const dialogs = model.operation === "save" ? [editorForm(h, props)] : [];
+
+  if (EditorView.guards.ConfirmConferencing(model)) {
+    dialogs.push(
+      editorDialog(h, {
+        body: [
+          h.p(
+            [],
+            [
+              "This removes the current link, including meeting links in Location and Description, and adds a new Google Meet link when you save.",
+            ]
+          ),
+        ],
+        compact: true,
+        confirm: EditorAction.cases.ConfirmConferencing.make({}),
+        confirmLabel: "Replace with Google Meet",
+        extra: props.toast,
+        id: "replace-conferencing-dialog",
+        initialFocus: "replace-conferencing-dialog-confirm",
+        label: "Replace the meeting link?",
+        send: props.send,
+      })
+    );
+  }
 
   if (EditorView.guards.Scope(model)) {
     dialogs.push(scopeDialog(h, { ...input, model }));

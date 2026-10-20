@@ -18,6 +18,7 @@ import { resolvedTimeFormat } from "../layout/time-format.js";
 import { detailPanel, sidebar, systemZonePrompt, toolbar } from "./calendar.js";
 import { clipboardPanel } from "./clipboard.js";
 import { commandMenu } from "./command-menu.js";
+import { conferencingSaveNotice } from "./conferencing-save-notice.js";
 import { editorDialogs } from "./event-editor.js";
 import { searchPanel } from "./search.js";
 import { settingsPage } from "./settings.js";
@@ -60,9 +61,97 @@ const editingLayers = (
       timeFormat: resolvedTimeFormat(model),
       toast,
     }),
-    ...(EditorView.guards.Closed(model.editing.view) && toast !== undefined
-      ? [toast]
-      : []),
+  ];
+};
+
+const notificationLayers = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] => {
+  const latest = model.editing.deletes.findLast(
+    (mark) => mark.phase === "pending"
+  );
+
+  const clipboardReady =
+    Option.isSome(model.person) && Option.isSome(model.clipboard.sessionId);
+
+  const undoReady =
+    EditorView.guards.Closed(model.editing.view) && latest !== undefined;
+
+  if (
+    Option.isNone(model.editing.conferencingResult) &&
+    !clipboardReady &&
+    !undoReady
+  ) {
+    return [];
+  }
+
+  const send = (
+    action: Parameters<typeof Message.EditingAction>[0]["action"]
+  ): AppMessage =>
+    Message.EditingAction({
+      action,
+      personId: Option.getOrUndefined(model.person),
+    });
+
+  return [
+    h.div(
+      [
+        h.Class("notification-stack"),
+        h.Style({
+          "align-items": "flex-end",
+          bottom: "24px",
+          display: "flex",
+          "flex-direction": "column",
+          gap: "12px",
+          "max-width": "min(460px, calc(100vw - 48px))",
+          position: "fixed",
+          right: "24px",
+          "z-index": "800",
+        }),
+      ],
+      [
+        ...Option.match(model.editing.conferencingResult, {
+          onNone: () => [],
+          onSome: (notice) => [conferencingSaveNotice(h, notice, send)],
+        }),
+        ...(Option.isSome(model.person) &&
+        Option.isSome(model.clipboard.sessionId)
+          ? [
+              h.div(
+                [
+                  h.Style({ display: "contents" }),
+                  h.OnMount(
+                    PrepareClipboardDialogs({
+                      personId: model.person.value,
+                      sessionId: model.clipboard.sessionId.value,
+                    })
+                  ),
+                ],
+                [
+                  clipboardPanel(
+                    h,
+                    model.clipboard.view,
+                    (action) =>
+                      Message.ClipboardAction({
+                        action,
+                        personId: Option.getOrElse(model.person, () => ""),
+                        sessionId: Option.getOrElse(
+                          model.clipboard.sessionId,
+                          () => ""
+                        ),
+                      }),
+                    true
+                  ),
+                ]
+              ),
+            ]
+          : []),
+        ...(undoReady && latest !== undefined
+          ? [undoToast(h, { intent: latest.intent, send, stacked: true })]
+          : []),
+      ]
+    ),
   ];
 };
 
@@ -224,34 +313,7 @@ export const view = (
         ],
         editingLayers(model, h)
       ),
-      ...(Option.isSome(model.person) &&
-      Option.isSome(model.clipboard.sessionId)
-        ? [
-            h.div(
-              [
-                h.Style({ display: "contents" }),
-                h.OnMount(
-                  PrepareClipboardDialogs({
-                    personId: model.person.value,
-                    sessionId: model.clipboard.sessionId.value,
-                  })
-                ),
-              ],
-              [
-                clipboardPanel(h, model.clipboard.view, (action) =>
-                  Message.ClipboardAction({
-                    action,
-                    personId: Option.getOrElse(model.person, () => ""),
-                    sessionId: Option.getOrElse(
-                      model.clipboard.sessionId,
-                      () => ""
-                    ),
-                  })
-                ),
-              ]
-            ),
-          ]
-        : []),
+      ...notificationLayers(model, h),
       ...commandMenu(model, h),
       ...dateFlash(model, h),
       ...(Option.isNone(model.error)

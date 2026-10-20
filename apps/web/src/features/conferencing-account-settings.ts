@@ -18,7 +18,7 @@ const choices: readonly (typeof ConferencingDefault.Type)[] = [
 
 const labels: Record<typeof ConferencingDefault.Type, string> = {
   googleMeet: "Google Meet",
-  none: "No conferencing",
+  none: "None",
   unset: "Not set",
 };
 
@@ -26,7 +26,7 @@ const descriptions: Record<typeof ConferencingDefault.Type, string> = {
   googleMeet:
     "Adds Meet when you invite another person to a new event without conferencing.",
   none: "Do not add conferencing automatically.",
-  unset: "Choose a default to add conferencing automatically.",
+  unset: "New events won't get a meeting link until you choose.",
 };
 
 export const conferencingAccountSettings = (

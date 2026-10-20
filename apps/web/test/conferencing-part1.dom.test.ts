@@ -9,10 +9,10 @@ import { RemoteConferencingDefault } from "../src/client/conferencing/model.js";
 import { view } from "../src/features/app.js";
 import { isDocumentRoute, parseRoute } from "../src/layout/route.js";
 import { editingFixture } from "./editor-fixture.js";
-import { fixtureModel } from "./fixture.js";
+import { fixtureIndex, fixtureModel } from "./fixture.js";
 
 it.effect(
-  "part 1 exposes no conferencing page, default selector or Meet controls from account routes or the command menu",
+  "only the connected account root mounts its default while the editor requires reported Meet capability",
   () =>
     Effect.gen(function* noDeadSwitch() {
       const fixture = fixtureModel();
@@ -70,8 +70,13 @@ it.effect(
           );
 
           expect(
-            document.querySelector('select[id^="conferencing-default-"]')
-          ).toBeNull();
+            document.querySelectorAll('select[id^="conferencing-default-"]')
+              .length
+          ).toBe(
+            path === `/settings/calendar/${encodeURIComponent(accountId)}`
+              ? 1
+              : 0
+          );
           expect(
             document.querySelector('a[href="/settings/conferencing"]')
           ).toBeNull();
@@ -92,6 +97,13 @@ it.effect(
 
       const editing = {
         ...prepared,
+        calendar: {
+          ...prepared.calendar,
+          calendars: prepared.calendar.calendars.map((calendar) => ({
+            ...calendar,
+            allowedConferenceSolutionTypes: [],
+          })),
+        },
         editing: { ...prepared.editing, view: editingFixture },
       };
 
@@ -106,19 +118,19 @@ it.effect(
       );
 
       expect(
-        [...editorDocument.querySelectorAll("button")].some((button) =>
-          /^(?:Add Google Meet|Remove conferencing|Replace with Google Meet)$/u.test(
-            button.textContent?.trim() ?? ""
-          )
-        )
-      ).toBe(false);
+        editorDocument.querySelector<HTMLButtonElement>("#event-add-meet")
+          ?.disabled
+      ).toBe(true);
+      expect(
+        editorDocument.querySelector("#event-meet-availability")?.textContent
+      ).toContain("can't add Google Meet");
 
       expect(isDocumentRoute("/settings/conferencing")).toBe(false);
     })
 );
 
 it.effect(
-  "normal authentication and inventory updates do not start the dormant preference commands",
+  "authentication loads connected account preferences once and inventory does not restart pending reads",
   () =>
     Effect.sync(() => {
       const fixture = fixtureModel();
@@ -132,23 +144,25 @@ it.effect(
       const inventory = update(
         authenticated.model,
         Message.ReceivedCalendars({
-          result: {
-            accounts: [
-              {
-                accountId: "part1-account",
-                calendars: [],
-                colors: { calendar: {}, event: {} },
-              },
-            ],
-          },
+          result: fixtureIndex,
         })
       );
 
+      const connected =
+        snapshot?.accounts.filter((account) => !account.disconnected) ?? [];
+
       expect(
-        [...(authenticated.commands ?? []), ...(inventory.commands ?? [])].some(
-          (command) => /ConferencingDefault/u.test(command.name)
+        (authenticated.commands ?? []).filter(
+          (command) => command.name === "ReadConferencingDefault"
         )
-      ).toBe(false);
-      expect(inventory.model.conferencing.accounts).toEqual({});
+      ).toHaveLength(connected.length);
+      expect(
+        (inventory.commands ?? []).filter((command) =>
+          /ConferencingDefault/u.test(command.name)
+        )
+      ).toHaveLength(0);
+      expect(
+        Object.keys(inventory.model.conferencing.accounts).toSorted()
+      ).toEqual(connected.map((account) => account.id).toSorted());
     })
 );

@@ -66,6 +66,7 @@ const saveCreated = Effect.fn("saveCreatedEvent")(function* saveCreated(
   const event = yield* client.createEvent({
     accountId: plan.session.draft.accountId,
     calendarId: plan.session.draft.calendarId,
+    conferencingRequest: plan.session.draft.conferencing?.request,
     event: {
       ...plan.fields,
       guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
@@ -137,11 +138,16 @@ const saveExisting = Effect.fn("saveExistingEvent")(function* saveExisting(
     }
   }
 
-  if (Object.keys(changes).length > 0 || plan.removeRecurrence) {
+  if (
+    Object.keys(changes).length > 0 ||
+    plan.removeRecurrence ||
+    plan.session.draft.conferencing?.request !== undefined
+  ) {
     const update = {
       accountId: event.accountId,
       calendarId: event.calendarId,
       changes,
+      conferencingRequest: plan.session.draft.conferencing?.request,
       eventId: event.eventId,
       scope: plan.scope,
       sendUpdates: plan.sendUpdates,

@@ -15,6 +15,7 @@ import {
   parseReminderInput,
 } from "../../layout/editor-reminders.js";
 import { composeClipboardCreationFields } from "../clipboard/template.js";
+import { applyEditorConferencingDefault } from "./conferencing-draft.js";
 import type { EditorPermissions } from "./editor-model.js";
 import {
   EditorPlanResult,
@@ -115,7 +116,10 @@ const finalizeInputs = Effect.fn("finalizeEditorInputs")(
       };
     }
 
-    return { ...session, draft };
+    return {
+      ...session,
+      draft: applyEditorConferencingDefault({ ...session, draft }),
+    };
   }
 );
 

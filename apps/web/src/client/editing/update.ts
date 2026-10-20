@@ -12,9 +12,11 @@ import {
 import { visibleEvents } from "../../layout/presentation.js";
 import type { AppModel, AppMessage } from "../app.js";
 import { eventKey } from "../calendar-state.js";
+import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { defaultCreationCalendar } from "../settings/update.js";
 import { homeZone } from "../time-zones/model.js";
 import { DispatchEditing } from "./commands.js";
+import { savedConferencingNotice } from "./conferencing-notice.js";
 import { DeleteOutcome } from "./delete-actor.js";
 import { DeleteNotice } from "./deletion-session.js";
 import { EditorAction } from "./editor-action.js";
@@ -56,6 +58,7 @@ export const completeGesture = (
 
   const common = {
     calendars: model.calendar.calendars,
+    conferencingContext: editorConferencingContext(model),
     navigation: model.calendar.navigation,
     primaryZone: homeZone(model),
     rangeZone: model.calendar.zone,
@@ -165,6 +168,7 @@ const openCreate = (model: AppModel): Result => {
   const request = EditorRequest.cases.New.make({
     allDay: false,
     calendars: model.calendar.calendars,
+    conferencingContext: editorConferencingContext(model),
     endDate: isoFromDay(position.day + Math.floor(end / 1440)),
     endTime: clock(end % 1440),
     navigation: model.calendar.navigation,
@@ -195,6 +199,7 @@ const openSelected = (
     EditingCommand.cases.Open.make({
       request: EditorRequest.cases.Existing.make({
         calendars: model.calendar.calendars,
+        conferencingContext: editorConferencingContext(model),
         event: selected.source,
         mode,
         navigation: model.calendar.navigation,
@@ -240,6 +245,17 @@ export const editAction = (
     action,
     {
       DeleteSelected: () => openSelected(model, "delete"),
+      DismissConferencingNotice: ({ id }) => ({
+        model: {
+          ...model,
+          editing: {
+            ...model.editing,
+            conferencingResult: model.editing.conferencingResult.pipe(
+              Option.filter((notice) => notice.id !== id)
+            ),
+          },
+        },
+      }),
       DuplicateSelected: () => openSelected(model, "duplicate"),
       OpenCreate: () => openCreate(model),
       OpenEdit: () => openSelected(model, "edit"),
@@ -338,15 +354,16 @@ export const mutationReceived = (
       },
       reload: false,
     }),
-    Saved: ({ id, plan }) => ({
+    Saved: (saved) => ({
       model: {
         ...model,
         editing: {
           ...model.editing,
-          handledMutation: Option.some(id),
+          conferencingResult: savedConferencingNotice(saved),
+          handledMutation: Option.some(saved.id),
           write: Option.some({
             afterRead: Option.some(model.calendar.rangeRequest + 1),
-            plan,
+            plan: saved.plan,
           }),
         },
       },

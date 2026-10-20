@@ -10,6 +10,12 @@ import {
 } from "../../layout/editor-reminders.js";
 import { repeatRules } from "../../layout/editor-repeat.js";
 import { changeEventZone } from "../../layout/editor-zone.js";
+import {
+  applyEditorConferencingDefault,
+  editorMeetUnavailable,
+  editorNeedsConferenceReplacement,
+  requestEditorConferencing,
+} from "./conferencing-draft.js";
 import { EditorAction } from "./editor-action.js";
 import { RepeatPreset } from "./editor-model.js";
 import {
@@ -86,10 +92,30 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
   >(
     action,
     {
+      AddMeet: () => {
+        const reason = editorMeetUnavailable(session, permissions.editMeeting);
+
+        if (reason !== undefined || editorNeedsConferenceReplacement(session)) {
+          return Effect.fail(
+            new EditorInputFailure({
+              message:
+                reason ?? "Confirm replacing the existing conferencing first.",
+            })
+          );
+        }
+
+        return Effect.succeed({
+          ...session,
+          draft: requestEditorConferencing(session, { kind: "googleMeet" }),
+        });
+      },
       AddParticipant: () =>
         permissions.inviteGuests
           ? addParticipant(session.draft).pipe(
-              Effect.map((draft) => ({ ...session, draft }))
+              Effect.map((draft) => ({
+                ...session,
+                draft: applyEditorConferencingDefault({ ...session, draft }),
+              }))
             )
           : Effect.fail(fail()),
       AddReminder: () =>
@@ -146,6 +172,16 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
           draft: { ...session.draft, colorId: value },
         });
       },
+      ConfirmConferencing: () => {
+        const reason = editorMeetUnavailable(session, permissions.editMeeting);
+
+        return reason === undefined
+          ? Effect.succeed({
+              ...session,
+              draft: requestEditorConferencing(session, { kind: "googleMeet" }),
+            })
+          : Effect.fail(new EditorInputFailure({ message: reason }));
+      },
       ParticipantOptional: ({ email }) =>
         permissions.editGuests
           ? Effect.succeed({
@@ -160,6 +196,13 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
                     : person
                 ),
               },
+            })
+          : Effect.fail(fail()),
+      RemoveConferencing: () =>
+        permissions.editMeeting
+          ? Effect.succeed({
+              ...session,
+              draft: requestEditorConferencing(session, { kind: "none" }),
             })
           : Effect.fail(fail()),
       RemoveParticipant: ({ email }) =>

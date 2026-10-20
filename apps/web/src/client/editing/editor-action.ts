@@ -27,19 +27,23 @@ export const RepeatTextField = Schema.Literals([
 ]);
 
 export const EditorAction = Schema.TaggedUnion({
+  AddMeet: {},
   AddParticipant: {},
   AddReminder: {},
   CalendarSelected: { value: Schema.String },
   Cancel: {},
   ColorSelected: { value: Schema.NullOr(Schema.String) },
+  ConfirmConferencing: {},
   ConfirmRemoval: {},
   ConfirmScope: {},
   DeleteSelected: {},
+  DismissConferencingNotice: { id: Schema.String },
   DismissUndo: { id: Schema.String },
   DuplicateSelected: {},
   OpenCreate: {},
   OpenEdit: {},
   ParticipantOptional: { email: Schema.String },
+  RemoveConferencing: {},
   RemoveParticipant: { email: Schema.String },
   RemoveReminder: { reminder: Reminder },
   RepeatAccepted: {},

@@ -7,6 +7,7 @@ import {
 import { Option, Schema } from "effect";
 
 import { NavigationState } from "../../layout/navigation.js";
+import { EditorConferencingContext } from "../editing/conferencing-draft.js";
 
 export const ClipboardCreationFields = Schema.Struct({
   guestsCanInviteOthers: EventFields.fields.guestsCanInviteOthers,
@@ -83,6 +84,7 @@ export const ClipboardPasteMetadata = Schema.Struct({
 
 export const ClipboardPasteTarget = Schema.Struct({
   calendar: Calendar,
+  conferencingContext: Schema.optional(EditorConferencingContext),
   navigation: NavigationState,
   primaryZone: Schema.String,
   selection: Schema.Option(Schema.String),

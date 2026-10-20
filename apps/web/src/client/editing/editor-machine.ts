@@ -4,6 +4,10 @@ import { types } from "xstate";
 import type { SnapshotFrom } from "xstate";
 
 import { changeEditorLogic } from "./change-editor.js";
+import {
+  editorMeetUnavailable,
+  editorNeedsConferenceReplacement,
+} from "./conferencing-draft.js";
 import { EditorAction } from "./editor-action.js";
 import { EditorView, RepeatForm } from "./editor-model.js";
 import {
@@ -27,6 +31,7 @@ type EditorState =
   | "loading"
   | "editing"
   | "changing"
+  | "confirmingConferencing"
   | "custom"
   | "validating"
   | "scope"
@@ -73,6 +78,24 @@ const routeAction = (
 ): Transition => {
   if (EditorAction.guards.Cancel(action)) {
     return { target: "closed" };
+  }
+
+  if (EditorAction.guards.ConfirmConferencing(action)) {
+    return {};
+  }
+
+  if (EditorAction.guards.AddMeet(action)) {
+    const session = sessionFor(context);
+
+    if (
+      editorNeedsConferenceReplacement(session) &&
+      editorMeetUnavailable(
+        session,
+        permissionsForEditor(session).editMeeting
+      ) === undefined
+    ) {
+      return { context: { queue: [] }, target: "confirmingConferencing" };
+    }
   }
 
   if (EditorAction.guards.Save(action) || EditorAction.guards.Retry(action)) {
@@ -139,7 +162,8 @@ const prepared = (result: typeof EditorPlanResult.Type): Transition =>
         plan.session.kind === "edit" &&
         !plan.calendarMoved &&
         !plan.removeRecurrence &&
-        Object.keys(plan.changes).length === 0
+        Object.keys(plan.changes).length === 0 &&
+        plan.session.draft.conferencing?.request === undefined
       ) {
         return { context, target: "closed" };
       }
@@ -259,6 +283,22 @@ export const eventEditorMachine = setupEffect({
       },
     },
     closed: {},
+    confirmingConferencing: {
+      on: {
+        ACTION: ({ event }) => {
+          if (EditorAction.guards.Cancel(event.action)) {
+            return { context: { queue: [] }, target: "editing" };
+          }
+
+          return EditorAction.guards.ConfirmConferencing(event.action)
+            ? {
+                context: { action: event.action, queue: [] },
+                target: "changing",
+              }
+            : {};
+        },
+      },
+    },
     custom: {
       on: {
         ACTION: ({ context, event }) => customAction(context, event.action),
@@ -435,6 +475,10 @@ export const projectEditor = (
     original: session.original,
     permissions: permissionsForEditor(session),
   };
+
+  if (snapshot.matches("confirmingConferencing")) {
+    return EditorView.cases.ConfirmConferencing.make(fields);
+  }
 
   if (snapshot.matches("custom")) {
     return EditorView.cases.CustomRepeat.make({

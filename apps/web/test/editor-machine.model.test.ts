@@ -4,6 +4,7 @@ import {
   SeriesMoveRetimeUncertain,
 } from "@calendar/calendar/contracts";
 import type {
+  CalendarEventValue,
   CreateEventInput,
   UpdateEventInput,
 } from "@calendar/calendar/contracts";
@@ -92,11 +93,13 @@ const observeAction = Effect.fn("observeEditorAction")(function* observeAction(
 });
 
 const harness = Effect.fn("editorMachineHarness")(
-  function* editorMachineHarness(refuse?: boolean | MutationFailureValue) {
+  function* editorMachineHarness(
+    refuse?: boolean | MutationFailureValue,
+    original: CalendarEventValue = editorOriginal
+  ) {
     const created: (typeof CreateEventInput.Type)[] = [];
     const updated: (typeof UpdateEventInput.Type)[] = [];
     const deleted: string[] = [];
-    const original = editorOriginal;
 
     const master = {
       ...original,
@@ -552,4 +555,100 @@ it.effect(
         sendUpdates: "none",
       });
     }).pipe(Effect.provide(NodeServices.layer))
+);
+
+it.effect.prop(
+  "conferencing replacement requires confirmation and still passes through scope and email without changing event times",
+  {
+    confirm: Schema.Boolean,
+    native: Schema.Boolean,
+    title: Schema.String,
+  },
+  ({ confirm, native, title }) =>
+    Effect.gen(function* conferencingConfirmationHistory() {
+      const original = {
+        ...editorOriginal,
+        conferenceUrl: native
+          ? "https://meet.google.com/abc-defg-hij"
+          : undefined,
+        location: native
+          ? "Studio"
+          : "Studio https://zoom.us/j/123; north door",
+        title,
+      };
+
+      const h = yield* harness(undefined, original);
+
+      const request = {
+        ...existingRequest(),
+        calendars: editorCalendars.map((calendar) => ({
+          ...calendar,
+          allowedConferenceSolutionTypes: ["hangoutsMeet"],
+        })),
+      };
+
+      yield* send(h.actor, { request, type: "OPEN" });
+
+      const before = projectEditor(
+        yield* waitFor(h.actor, (snapshot) => snapshot.matches("editing"))
+      );
+
+      expect(EditorView.guards.Editing(before)).toBe(true);
+
+      const pending = projectEditor(
+        yield* observeAction(h.actor, EditorAction.cases.AddMeet.make({}))
+      );
+
+      expect(pending._tag).toBe("ConfirmConferencing");
+
+      const ignoredSave = yield* observeAction(
+        h.actor,
+        EditorAction.cases.Save.make({})
+      );
+
+      expect(projectEditor(ignoredSave)._tag).toBe("ConfirmConferencing");
+      expect(h.updated).toHaveLength(0);
+      expect(h.created).toHaveLength(0);
+
+      if (!confirm) {
+        yield* act(h.actor, EditorAction.cases.Cancel.make({}));
+
+        const cancelled = projectEditor(
+          yield* waitFor(h.actor, (snapshot) => snapshot.matches("editing"))
+        );
+
+        expect(cancelled).toEqual(before);
+
+        const ignoredConfirm = yield* observeAction(
+          h.actor,
+          EditorAction.cases.ConfirmConferencing.make({})
+        );
+
+        expect(projectEditor(ignoredConfirm)).toEqual(before);
+        expect(h.updated).toHaveLength(0);
+
+        return;
+      }
+
+      yield* act(h.actor, EditorAction.cases.ConfirmConferencing.make({}));
+      yield* waitFor(h.actor, (snapshot) => snapshot.matches("editing"));
+      yield* act(h.actor, EditorAction.cases.Save.make({}));
+      yield* waitFor(h.actor, (snapshot) => snapshot.matches("scope"));
+      expect(h.updated).toHaveLength(0);
+      yield* act(h.actor, EditorAction.cases.ConfirmScope.make({}));
+      yield* waitFor(h.actor, (snapshot) => snapshot.matches("email"));
+      expect(h.updated).toHaveLength(0);
+      yield* act(h.actor, EditorAction.cases.SendUpdates.make({ send: false }));
+      yield* waitFor(h.actor, (snapshot) => snapshot.matches("closed"));
+      expect(h.updated).toHaveLength(1);
+      expect(h.updated[0]).toMatchObject({
+        conferencingRequest: { kind: "googleMeet" },
+        sendUpdates: "none",
+      });
+      expect(h.updated[0]?.changes.start).toBeUndefined();
+      expect(h.updated[0]?.changes.end).toBeUndefined();
+      expect(h.updated[0]?.changes.title).toBeUndefined();
+      expect(h.created).toHaveLength(0);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 20 } }
 );
