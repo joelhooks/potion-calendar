@@ -26,7 +26,7 @@ import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { view } from "../src/features/app.js";
 import { visibleEvents } from "../src/layout/presentation.js";
-import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
+import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
 import { fixtureModel } from "./fixture.js";
 import { unexpectedSearchClient } from "./search-fixture.js";
 
@@ -171,7 +171,7 @@ it.effect(
       expect(rendered.html).toContain("Reconnect");
     }).pipe(
       Effect.scoped,
-      Effect.provide(unusedClipboardLayer),
+      Effect.provide(unusedBrowserLayers),
       Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
     )
 );

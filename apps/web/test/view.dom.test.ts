@@ -140,15 +140,15 @@ it.effect("declined and month overflow controls change the rendered view", () =>
       Message.ClickedView({ days: 7, mode: "month" })
     ).model;
 
-    expect(
-      documentFor((yield* render(month)).html).querySelectorAll(".month-cell")
-    ).toHaveLength(42);
+    const fullMonth = documentFor((yield* render(month)).html);
+    expect(fullMonth.querySelectorAll(".month-week")).toHaveLength(18);
+    expect(fullMonth.querySelectorAll(".month-cell")).toHaveLength(126);
     const weekdays = update(month, Message.ClickedWeekends()).model;
     expect(
       documentFor((yield* render(weekdays)).html).querySelectorAll(
         ".month-cell"
       )
-    ).toHaveLength(30);
+    ).toHaveLength(90);
   })
 );
 

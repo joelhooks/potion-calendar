@@ -16,10 +16,11 @@ const compare = (a: DaySpan, b: DaySpan): number =>
 
 export const packAllDay = (
   spans: readonly DaySpan[],
-  previous: ReadonlyMap<string, number> = new Map()
+  previous: ReadonlyMap<string, number> = new Map(),
+  order: (a: DaySpan, b: DaySpan) => number = compare
 ): readonly DayPlacement[] => {
   const ordered = spans
-    .toSorted(compare)
+    .toSorted(order)
     .toSorted(
       (a, b) => Number(previous.has(b.id)) - Number(previous.has(a.id))
     );
@@ -40,7 +41,7 @@ export const packAllDay = (
     packed.push({ ...span, row });
   }
 
-  return packed.toSorted(compare);
+  return packed.toSorted(order);
 };
 
 export const allDayHeight = (

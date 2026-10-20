@@ -19,7 +19,7 @@ import { CalendarSearchClient } from "../src/client/search/client.js";
 import { view } from "../src/features/app.js";
 import { remindersPermission } from "../src/features/reminders-permission.js";
 import { SettingsRoute } from "../src/layout/route.js";
-import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
+import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
 import { fakeNotificationPort } from "./reminders-port-fixture.js";
 import {
   savedUpcomingEvent,
@@ -92,7 +92,7 @@ const executeNotifications = Effect.fn("executeTestNotifications")(
         ].includes(command.name)
       ) {
         const message = yield* command.effect.pipe(
-          Effect.provide(unusedClipboardLayer),
+          Effect.provide(unusedBrowserLayers),
           Effect.provideService(NotificationPort, port),
           Effect.provideService(EditingRuntime, noEditing),
           Effect.provideService(CalendarSearchClient, noSearch)
@@ -168,7 +168,7 @@ it.effect(
       }
 
       const completion = yield* command.effect.pipe(
-        Effect.provide(unusedClipboardLayer),
+        Effect.provide(unusedBrowserLayers),
         Effect.provideService(NotificationPort, fake.port),
         Effect.provideService(EditingRuntime, noEditing),
         Effect.provideService(CalendarSearchClient, noSearch)

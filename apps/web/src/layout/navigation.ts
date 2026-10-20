@@ -63,6 +63,14 @@ const minimum = dayFromIso("2015-01-01");
 
 const maximum = dayFromIso("2040-12-31");
 
+export const displayDayBounds = Object.freeze({
+  end: maximum + 1,
+  start: minimum,
+});
+
+export const isDisplayDay = (day: number): boolean =>
+  day >= minimum && day <= maximum;
+
 const clampDay = (day: number): number =>
   Math.max(minimum, Math.min(maximum, day));
 

@@ -7,6 +7,7 @@ import { Message } from "../client/app.js";
 import { calendarKey } from "../client/calendar-state.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { writableCalendar } from "../client/editing/load-editor.js";
+import { monthNavigation } from "../client/month/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
 import { conferenceLink } from "../layout/conferencing.js";
@@ -28,7 +29,6 @@ import {
 import type { DisplayEvent } from "../layout/presentation.js";
 import { SettingsRoute, printRoute } from "../layout/route.js";
 import { chipColors } from "../layout/settings-colors.js";
-import { weekNumber } from "../layout/settings-week.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import type { ResolvedTimeFormat } from "../layout/time-format.js";
 import { eventRsvp } from "./event-rsvp.js";
@@ -42,6 +42,7 @@ export const chip = (
   appearance: {
     readonly theme: "light" | "dark";
     readonly timeFormat: ResolvedTimeFormat;
+    readonly timeDisplay?: "start" | "range";
   } = defaultChipAppearance
 ): Html => {
   const colors = chipColors(item.color, appearance.theme);
@@ -113,7 +114,9 @@ export const chip = (
             h.span(
               [h.Class("event-time")],
               [
-                `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
+                appearance.timeDisplay === "start"
+                  ? clockLabel(item.startMinute, appearance.timeFormat)
+                  : `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
               ]
             ),
           ]),
@@ -172,8 +175,14 @@ export const systemZonePrompt = (
     )
   );
 
+const rangeHeading = (first: number, last: number): string =>
+  first === last
+    ? dayLabel(first, { day: "numeric", month: "long", year: "numeric" })
+    : `${dayLabel(first, { day: "numeric", month: "short" })} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" })}`;
+
 export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
-  const days = visibleDays(model.calendar.navigation);
+  const navigation = monthNavigation(model);
+  const days = visibleDays(navigation);
   const first = days[0] ?? model.calendar.navigation.anchor;
   const last = days.at(-1) ?? first;
 
@@ -217,13 +226,9 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
       h.h2(
         [],
         [
-          first === last
-            ? dayLabel(first, {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })
-            : `${dayLabel(first, { day: "numeric", month: "short" })} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" })}`,
+          navigation.mode === "month"
+            ? dayLabel(navigation.anchor, { month: "long", year: "numeric" })
+            : rangeHeading(first, last),
         ]
       ),
       h.div(
@@ -267,7 +272,7 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
 };
 
 const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
-  const { anchor } = model.calendar.navigation;
+  const { anchor } = monthNavigation(model);
   const parts = partsFromDay(anchor);
   const first = anchor - parts.day + 1;
   const start = weekStart(first, model.calendar.navigation.weekStartsOn);
@@ -302,20 +307,7 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                 h.OnClick(Message.ClickedDate({ day })),
                 h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
               ],
-              [
-                String(partsFromDay(day).day),
-                ...(model.settings.showWeekNumbers && index % 7 === 0
-                  ? [
-                      h.span(
-                        [
-                          h.Class("mini-week-number"),
-                          h.Title("ISO week number"),
-                        ],
-                        [`W${weekNumber(day + 3)}`]
-                      ),
-                    ]
-                  : []),
-              ]
+              [String(partsFromDay(day).day)]
             );
           }),
         ]

@@ -32,6 +32,7 @@ import { prepareEditor } from "../../src/client/editing/prepare-editor.js";
 import { EditingRuntime } from "../../src/client/editing/runtime.js";
 import { mutationReceived } from "../../src/client/editing/update.js";
 import { writeEditor } from "../../src/client/editing/write-editor.js";
+import { MonthRuntime } from "../../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../../src/client/search/client.js";
 import { DevelopmentRuntime } from "../../src/dev/native-runtime.js";
 import { view } from "../../src/features/app.js";
@@ -358,7 +359,9 @@ layer(fixtureLayer, { excludeTestServices: true })(
             ),
             Effect.provideService(FetchHttpClient.Fetch, fetcher)
           );
-        }).pipe(Effect.provide(NodeServices.layer))
+        }).pipe(
+          Effect.provide(Layer.merge(NodeServices.layer, MonthRuntime.layer))
+        )
     );
   }
 );

@@ -19,7 +19,7 @@ import {
   StoredPreferences,
 } from "../src/client/settings/model.js";
 import { preferenceSnapshot } from "../src/client/settings/update.js";
-import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
+import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
 import { fixtureIndex, fixtureModel } from "./fixture.js";
 
 const noEditing = EditingRuntime.of({
@@ -97,7 +97,7 @@ it.effect(
       yield* pipe(
         changed.commands ?? [],
         Effect.forEach((command) => command.effect),
-        Effect.provide(unusedClipboardLayer),
+        Effect.provide(unusedBrowserLayers),
         Effect.provideService(FetchHttpClient.Fetch, fetcher),
         Effect.provideService(EditingRuntime, noEditing),
         Effect.provideService(CalendarSearchClient, noSearch)
@@ -146,7 +146,7 @@ it.effect(
       yield* pipe(
         saves,
         Effect.forEach((command) => command.effect),
-        Effect.provide(unusedClipboardLayer),
+        Effect.provide(unusedBrowserLayers),
         Effect.provideService(EditingRuntime, noEditing),
         Effect.provideService(CalendarSearchClient, noSearch)
       );

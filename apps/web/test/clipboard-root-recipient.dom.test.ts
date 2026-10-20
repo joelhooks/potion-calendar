@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Option, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Option, Stream } from "effect";
 
 import { Message, update } from "../src/client/app.js";
 import { ClipboardDelivery } from "../src/client/clipboard/delivery.js";
@@ -17,6 +17,7 @@ import { CalendarEditingClient } from "../src/client/editing/calendar-client.js"
 import { DeletionWriter } from "../src/client/editing/delete-actor.js";
 import type { EditingCommand } from "../src/client/editing/runtime.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
+import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import {
   clipboardClient,
@@ -234,7 +235,9 @@ it.effect.each(["copy", "cut"] as const)(
 
           yield* Fiber.interrupt(notices);
         }).pipe(
-          Effect.provide(ClipboardRuntime.layer),
+          Effect.provide(
+            Layer.merge(ClipboardRuntime.layer, MonthRuntime.layer)
+          ),
           Effect.provideService(CalendarEditingClient, memory.client),
           Effect.provideService(
             DeletionWriter,

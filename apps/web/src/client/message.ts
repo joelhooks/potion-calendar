@@ -20,6 +20,7 @@ import { EditorAction } from "./editing/editor-action.js";
 import { GestureResult } from "./editing/gesture-model.js";
 import { EditingNotice } from "./editing/runtime.js";
 import { LiveNotice } from "./live/protocol.js";
+import { MonthNotice } from "./month/model.js";
 import {
   NotificationEvent,
   NotificationFailure,
@@ -71,6 +72,7 @@ export const Message = defineMessageUnion({
     personId: Schema.String,
   },
   CompletedGridScroll: {},
+  CompletedMonthRead: {},
   CycledTheme: {},
   DispatchedClipboard: {},
   DispatchedEditing: {},
@@ -148,6 +150,7 @@ export const Message = defineMessageUnion({
     result: ListEventsOutput,
   },
   ReceivedLive: { notice: LiveNotice, personId: Schema.String },
+  ReceivedMonth: { notice: MonthNotice },
   ReceivedPreferences: { person: Schema.String, preferences: SavedPreferences },
   ReceivedSearch: { notice: SearchNotice },
   ReceivedSession: { snapshot: SessionSnapshot },

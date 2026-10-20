@@ -12,6 +12,7 @@ import type { EditingRuntime } from "../editing/runtime.js";
 import { editAction } from "../editing/update.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
+import type { MonthRuntime } from "../month/runtime.js";
 import type { CalendarSearchClient } from "../search/client.js";
 import { FocusShortcutSearch } from "./browser.js";
 import { commandChoices, enterChoice, moveHighlight } from "./choices.js";
@@ -27,7 +28,7 @@ import {
 export type KeyboardResult = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient | ClipboardRuntime
+  EditingRuntime | CalendarSearchClient | ClipboardRuntime | MonthRuntime
 >;
 
 type Apply = (model: AppModel, message: AppMessage) => KeyboardResult;

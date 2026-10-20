@@ -13,7 +13,9 @@ interface Input {
 }
 
 const scrollEdge = (root: HTMLElement, event: PointerEvent): void => {
-  const viewport = root.querySelector<HTMLElement>("#time-viewport");
+  const viewport = root.querySelector<HTMLElement>(
+    root.classList.contains("month-view") ? "#month-viewport" : "#time-viewport"
+  );
 
   if (viewport === null) {
     return;
@@ -28,6 +30,16 @@ const scrollEdge = (root: HTMLElement, event: PointerEvent): void => {
 
   viewport.scrollTop += vertical;
 };
+
+const startsOnSurface = (
+  element: Element,
+  chip: HTMLElement | null
+): boolean =>
+  chip === null
+    ? element.closest("button,input,select,textarea,a") === null &&
+      element.closest(".day-column,.all-day-cell,.month-cell[data-day]") !==
+        null
+    : chip.classList.contains("selected");
 
 export const bindGestureEvents = ({
   actor,
@@ -52,18 +64,14 @@ export const bindGestureEvents = ({
 
     const chip = event.target.closest<HTMLElement>(".event-chip");
 
-    if (chip !== null && !chip.classList.contains("selected")) {
+    if (!startsOnSurface(event.target, chip)) {
       return;
     }
 
-    if (
-      chip === null &&
-      event.target.closest(".day-column,.all-day-cell") === null
-    ) {
-      return;
-    }
+    const allDay =
+      root.classList.contains("month-view") ||
+      event.target.closest(".all-day") !== null;
 
-    const allDay = event.target.closest(".all-day") !== null;
     const point = pointerPoint(root, event, scale, allDay);
 
     if (Option.isNone(point)) {
@@ -110,7 +118,10 @@ export const bindGestureEvents = ({
       return;
     }
 
-    if (actor.getSnapshot().matches("dragging") && !start.allDay) {
+    if (
+      actor.getSnapshot().matches("dragging") &&
+      (!start.allDay || root.classList.contains("month-view"))
+    ) {
       scrollEdge(root, event);
     }
 

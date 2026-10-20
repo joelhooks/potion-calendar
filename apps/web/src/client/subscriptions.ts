@@ -17,6 +17,9 @@ import { keyboardStream } from "./keyboard/subscription.js";
 import { liveSocketStream } from "./live/socket.js";
 import { Message } from "./message.js";
 import type { AppMessage } from "./message.js";
+import { monthHostKey } from "./month/host.js";
+import type { MonthRuntime } from "./month/runtime.js";
+import { monthScrollStream } from "./month/subscription.js";
 import { reminderNotificationStream } from "./reminders/subscription.js";
 import { searchInteractions } from "./search/browser.js";
 import { SearchTask } from "./search/model.js";
@@ -28,7 +31,7 @@ import { upcomingStream } from "./upcoming/read.js";
 export const subscriptions = Subscription.make<
   AppModel,
   AppMessage,
-  EditingRuntime | SearchRuntime | ClipboardRuntime
+  EditingRuntime | SearchRuntime | ClipboardRuntime | MonthRuntime
 >()((entry) => ({
   calendarChanges: Subscription.persistentEntry(
     Stream.suspend(() =>
@@ -116,6 +119,17 @@ export const subscriptions = Subscription.make<
         return Message.Ticked({ now: yield* Clock.currentTimeMillis });
       })
     )
+  ),
+  month: entry(
+    { model: Model },
+    {
+      dependenciesToStream: ({ model }, readDependencies) =>
+        monthScrollStream(model, () => readDependencies().model),
+      keepAliveEquivalence: (left, right) =>
+        Option.getOrUndefined(monthHostKey(left.model)) ===
+        Option.getOrUndefined(monthHostKey(right.model)),
+      modelToDependencies: (model) => ({ model }),
+    }
   ),
   pageHidden: Subscription.persistentEntry(
     Stream.suspend(() =>

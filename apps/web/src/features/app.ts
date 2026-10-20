@@ -11,6 +11,8 @@ import { EditorView } from "../client/editing/editor-model.js";
 import { PrepareGestures } from "../client/editing/gesture-mount.js";
 import { PrepareKeyboard } from "../client/keyboard/mount.js";
 import { bindingHints } from "../client/keyboard/registry.js";
+import { monthFrame, monthHostKey } from "../client/month/host.js";
+import { PrepareMonthViewport } from "../client/month/viewport.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
@@ -185,21 +187,28 @@ const pageToolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html =>
 const workspaceContent = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  prepare: typeof PrepareGestures
+  prepare: typeof PrepareGestures,
+  prepareMonth: typeof PrepareMonthViewport
 ): Html => {
   if (Predicate.isTagged(model.route, "Search")) {
     return searchPanel(model, h);
   }
 
   return model.calendar.navigation.mode === "month"
-    ? monthGrid(model, h)
+    ? monthGrid(
+        model,
+        h,
+        Option.isSome(monthHostKey(model)) ? monthFrame(model) : undefined,
+        prepareMonth
+      )
     : timeGrid(model, h, prepare);
 };
 
 const routedPage = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  prepare: typeof PrepareGestures
+  prepare: typeof PrepareGestures,
+  prepareMonth: typeof PrepareMonthViewport
 ): Html => {
   if (Predicate.isTagged(model.route, "Shortcuts")) {
     return shortcutsPage(model, h);
@@ -215,7 +224,7 @@ const routedPage = (
     [h.Class("workspace")],
     [
       ...(model.keyboard.sidebar ? [sidebar(model, h)] : []),
-      workspaceContent(model, h, prepare),
+      workspaceContent(model, h, prepare, prepareMonth),
       ...(model.settings.hideContextPanel
         ? []
         : [...detailPanel(model, h), ...upcomingMeetingPanel(model, h)]),
@@ -226,7 +235,8 @@ const routedPage = (
 export const view = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  prepare: typeof PrepareGestures = PrepareGestures
+  prepare: typeof PrepareGestures = PrepareGestures,
+  prepareMonth: typeof PrepareMonthViewport = PrepareMonthViewport
 ): Document => ({
   body: h.keyed("main")(
     Option.getOrElse(model.person, () => "signed-out"),
@@ -302,7 +312,7 @@ export const view = (
                       ),
                     ]
                   : []),
-                routedPage(model, h, prepare),
+                routedPage(model, h, prepare, prepareMonth),
                 ...systemZonePrompt(model, h),
               ],
       }),

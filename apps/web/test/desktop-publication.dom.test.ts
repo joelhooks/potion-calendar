@@ -17,7 +17,7 @@ import { DesktopNotice } from "../src/client/desktop/model.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { SearchRuntime } from "../src/client/search/runtime.js";
 import { subscriptions } from "../src/client/subscriptions.js";
-import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
+import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
 import {
   savedUpcomingEvent,
   upcomingFixture,
@@ -29,7 +29,7 @@ const unusedDomainWork = Effect.die(
 );
 
 const domainFence = Layer.mergeAll(
-  unusedClipboardLayer,
+  unusedBrowserLayers,
   Layer.succeed(
     EditingRuntime,
     EditingRuntime.of({

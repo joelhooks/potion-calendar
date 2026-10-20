@@ -619,11 +619,19 @@ h3 {
 }
 .month-weekdays {
   height: 29px;
+  flex-shrink: 0;
   display: grid;
   text-align: center;
   align-items: center;
   color: var(--muted);
   font-size: 11px;
+}
+.month-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-anchor: none;
 }
 .month-cells {
   flex: 1;
@@ -631,7 +639,30 @@ h3 {
   display: grid;
   grid-template-rows: repeat(6, 1fr);
 }
+.month-week {
+  position: relative;
+  display: grid;
+  min-height: 0;
+}
+.month-week.is-parked {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.month-week-number {
+  border-top: 1px solid var(--line);
+  padding-top: 5px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 9px;
+}
 .month-cell {
+  position: relative;
+  min-width: 0;
   border-left: 1px solid var(--line);
   border-top: 1px solid var(--line);
   min-height: 0;
@@ -641,6 +672,7 @@ h3 {
 .month-date {
   border: none;
   padding: 3px 5px;
+  height: 24px;
   background: transparent;
   font-size: 11px;
 }
@@ -652,8 +684,66 @@ h3 {
   width: 100%;
   margin-bottom: 2px;
 }
-.month-cell .event-time {
+.month-span-layer {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  display: grid;
+  grid-auto-rows: 21px;
+  pointer-events: none;
+}
+.month-span {
+  min-width: 0;
+  padding: 0 2px;
+  pointer-events: auto;
+}
+.month-item {
+  height: 21px;
+  min-width: 0;
+}
+.month-item-timed .event-chip {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+  border-color: transparent;
+}
+.month-item-timed .event-chip strong {
+  flex: 1;
+  min-width: 0;
+}
+.month-item-timed .event-time {
+  order: -1;
+  flex-shrink: 0;
+}
+.month-item-timed .calendar-ribbons {
+  top: 6px;
+  bottom: auto;
+}
+.month-item-timed .calendar-ribbon {
+  height: 5px;
+  width: 3px;
+  border-radius: 50%;
+}
+.month-item-timed .event-chip.status-declined,
+.month-item-timed .event-chip.status-unanswered,
+.month-item-timed .event-chip.status-unconfirmed {
+  border-color: var(--event-border);
+}
+.month-item-timed .event-chip.selected,
+.month-item-timed .event-chip:hover {
+  background: var(--event-selected-fill);
+}
+.month-item-timed .resize-handle {
   display: none;
+}
+.month-cell .overflow-count {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 19px;
 }
 .overflow-count {
   border: none;

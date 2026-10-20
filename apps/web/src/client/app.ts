@@ -9,6 +9,7 @@ import type { Url } from "foldkit/url";
 
 import { packAllDay } from "../layout/all-day.js";
 import { hourHeight, minuteInZone } from "../layout/geometry.js";
+import { monthWindowRange } from "../layout/month-window.js";
 import {
   dayInZone,
   initialNavigation,
@@ -96,6 +97,14 @@ import { JoinMeeting } from "./meetings/commands.js";
 import { joinSelection } from "./meetings/selection.js";
 import { Message } from "./message.js";
 import type { AppMessage } from "./message.js";
+import { monthFrame, monthHostKey, monthNavigation } from "./month/host.js";
+import { MonthUi, initialMonthUi } from "./month/model.js";
+import type { MonthRuntime } from "./month/runtime.js";
+import {
+  receiveMonthNotice,
+  retainedMonthSources,
+  settleMonthRead,
+} from "./month/update.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
@@ -188,6 +197,7 @@ export const Model = Schema.Struct({
   editing: EditingUi,
   error: Schema.Option(Schema.String),
   keyboard: KeyboardUi,
+  month: MonthUi,
   person: Schema.Option(Schema.String),
   reminders: ReminderState,
   route: Route,
@@ -204,7 +214,7 @@ export type AppModel = typeof Model.Type;
 type Result = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient | ClipboardRuntime
+  EditingRuntime | CalendarSearchClient | ClipboardRuntime | MonthRuntime
 >;
 
 export const initialModel = (now: number, zone: string): AppModel => ({
@@ -253,6 +263,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   },
   error: Option.none(),
   keyboard: initialKeyboard(),
+  month: initialMonthUi(),
   person: Option.none(),
   reminders: initialReminderState(),
   route: CalendarRoute.make({}),
@@ -327,8 +338,27 @@ export const reloadRange = (
   previous: AppModel = model
 ): Result => {
   const days = visibleDays(model.calendar.navigation);
-  const [first] = days;
-  const last = days.at(-1);
+
+  const monthRange =
+    model.calendar.navigation.mode === "month"
+      ? (model.month.pending.pipe(
+          Option.filter((pending) =>
+            Option.contains(monthHostKey(model), pending.session.hostKey)
+          ),
+          Option.map((pending) => pending.request.range),
+          Option.getOrUndefined
+        ) ?? monthWindowRange(monthFrame(model).firstWeek))
+      : undefined;
+
+  const first =
+    monthRange === undefined
+      ? days.at(0)
+      : initialNavigation(monthRange.start).anchor;
+
+  const last =
+    monthRange === undefined
+      ? days.at(-1)
+      : initialNavigation(monthRange.end - 1).anchor;
 
   if (first === undefined || last === undefined) {
     return { model };
@@ -382,9 +412,12 @@ export const reloadRange = (
         ...model.calendar,
         rangeRequest: request,
         reads: accounts.map((accountId) => {
-          const saved = overlapping
-            ? model.calendar.reads.find((read) => read.accountId === accountId)
-            : undefined;
+          const saved =
+            overlapping || monthRange !== undefined
+              ? model.calendar.reads.find(
+                  (read) => read.accountId === accountId
+                )
+              : undefined;
 
           const data =
             saved === undefined
@@ -401,6 +434,14 @@ export const reloadRange = (
           };
         }),
       },
+      month:
+        monthRange === undefined
+          ? model.month
+          : {
+              ...model.month,
+              range: Option.some(monthRange),
+              rangeHost: monthHostKey(model),
+            },
     },
   };
 };
@@ -411,7 +452,7 @@ const changeNavigation = (
   previous: AppModel = model
 ): Result => {
   const navigation = navigate(
-    model.calendar.navigation,
+    action.type === "page" ? monthNavigation(model) : model.calendar.navigation,
     action,
     dayInZone(model.calendar.now, model.calendar.zone)
   );
@@ -420,6 +461,11 @@ const changeNavigation = (
     {
       ...model,
       calendar: { ...model.calendar, navigation, selected: Option.none() },
+      month: {
+        ...model.month,
+        epoch: model.month.epoch + 1,
+        pending: Option.none(),
+      },
     },
     false,
     [],
@@ -669,6 +715,7 @@ const updateCore = (
           )
         : { model },
     CompletedGridScroll: () => ({ model }),
+    CompletedMonthRead: () => ({ model }),
     CycledTheme: () => {
       const themes: Record<
         typeof SettingsUi.Type.theme,
@@ -723,22 +770,28 @@ const updateCore = (
     }),
     FailedEvents: ({ accountId, failure, request }) =>
       request === model.calendar.rangeRequest
-        ? {
-            model: {
-              ...model,
-              calendar: {
-                ...model.calendar,
-                reads: model.calendar.reads.map((item) =>
-                  item.accountId === accountId
-                    ? {
-                        ...item,
-                        events: RemoteEvents.Failure({ error: failure }),
-                      }
-                    : item
-                ),
-              },
+        ? settleMonthRead({
+            ...model,
+            calendar: {
+              ...model.calendar,
+              reads: model.calendar.reads.map((item) =>
+                item.accountId === accountId
+                  ? {
+                      ...item,
+                      events:
+                        model.calendar.navigation.mode === "month"
+                          ? Option.match(AsyncData.getData(item.events), {
+                              onNone: () =>
+                                RemoteEvents.Failure({ error: failure }),
+                              onSome: (data) =>
+                                RemoteEvents.Stale({ data, error: failure }),
+                            })
+                          : RemoteEvents.Failure({ error: failure }),
+                    }
+                  : item
+              ),
             },
-          }
+          })
         : { model },
     FailedPreferenceSave: ({ person }) =>
       Option.contains(model.person, person)
@@ -1011,8 +1064,8 @@ const updateCore = (
     },
     ReceivedEvents: ({ accountId, request, result }) =>
       request === model.calendar.rangeRequest
-        ? {
-            model: receivedEventRows(
+        ? settleMonthRead(
+            receivedEventRows(
               reconcileEditingRead(
                 {
                   ...model,
@@ -1022,7 +1075,19 @@ const updateCore = (
                       item.accountId === accountId
                         ? {
                             ...item,
-                            events: RemoteEvents.Success({ data: result }),
+                            events: RemoteEvents.Success({
+                              data: {
+                                ...result,
+                                events: retainedMonthSources(
+                                  model,
+                                  Option.match(AsyncData.getData(item.events), {
+                                    onNone: () => [],
+                                    onSome: (data) => data.events,
+                                  }),
+                                  result.events
+                                ),
+                              },
+                            }),
                           }
                         : item
                     ),
@@ -1031,8 +1096,8 @@ const updateCore = (
                 accountId,
                 request
               )
-            ),
-          }
+            )
+          )
         : { model },
     ReceivedLive: ({ notice, personId }) => {
       if (!Option.contains(model.person, personId)) {
@@ -1056,6 +1121,8 @@ const updateCore = (
         ? reloadRange(refreshed)
         : { commands: readCalendarsFor(refreshed), model: refreshed };
     },
+    ReceivedMonth: ({ notice }) =>
+      receiveMonthNotice(model, notice, reloadRange),
     ReceivedPreferences: ({ person, preferences }) => {
       if (!Option.contains(model.person, person)) {
         return { model };
@@ -1086,8 +1153,14 @@ const updateCore = (
     },
     ReceivedSearch: ({ notice }) => receiveSearch(model, notice),
     ReceivedSession: ({ snapshot }) => {
+      const initial = initialModel(model.calendar.now, model.timeZones.system);
+
       const cleared = {
-        ...initialModel(model.calendar.now, model.timeZones.system),
+        ...initial,
+        calendar: {
+          ...initial.calendar,
+          rangeRequest: model.calendar.rangeRequest,
+        },
         conferencing: clearConferencing(model.conferencing),
         desktop: {
           availability: model.desktop.availability,

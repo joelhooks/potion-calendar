@@ -3,6 +3,7 @@ import { DateTime, Option, Schema } from "effect";
 import { minuteInZone } from "../../layout/geometry.js";
 import { dayInZone, dayFromIso } from "../../layout/navigation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
+import { monthPointerPoint } from "../month/pointer.js";
 import { GesturePoint, GestureTarget } from "./gesture-model.js";
 
 export const gestureTarget = (
@@ -48,6 +49,10 @@ export const pointerPoint = (
   scale: number,
   allDay: boolean
 ): Option.Option<typeof GesturePoint.Type> => {
+  if (root.classList.contains("month-view")) {
+    return monthPointerPoint(root, event);
+  }
+
   const columns = [
     ...root.querySelectorAll<HTMLElement>(
       allDay ? ".all-day-cell[data-day]" : ".day-column[data-day]"

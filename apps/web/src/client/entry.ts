@@ -21,6 +21,9 @@ import { gestureMountFor } from "./editing/gesture-mount.js";
 import { gestureSubscriptions } from "./editing/gesture-subscription.js";
 import { gestureTargetRegistry } from "./editing/gesture-targets.js";
 import { EditingRuntime } from "./editing/runtime.js";
+import { MonthRuntime } from "./month/runtime.js";
+import { monthViewRegistry } from "./month/view-state.js";
+import { monthViewportMountFor } from "./month/viewport.js";
 import { CalendarSearchClient } from "./search/client.js";
 import { SearchRuntime } from "./search/runtime.js";
 import { subscriptions } from "./subscriptions.js";
@@ -48,6 +51,8 @@ interface DesktopProofOptions {
 const browserApplication = () => {
   const registry = gestureTargetRegistry();
   const prepare = gestureMountFor(registry);
+  const monthViews = monthViewRegistry();
+  const prepareMonth = monthViewportMountFor(monthViews);
   const diagnostics: DesktopProofOptions = {};
 
   if (
@@ -65,7 +70,7 @@ const browserApplication = () => {
     container: document.querySelector("#root"),
     devTools: false,
     init: initWithRoute,
-    resources,
+    resources: Layer.merge(resources, MonthRuntime.layerFor(monthViews)),
     routing: {
       onUrlChange,
       onUrlRequest,
@@ -76,7 +81,7 @@ const browserApplication = () => {
       gestureSubscriptions(registry)
     ),
     update,
-    view: (model, h) => view(model, h, prepare),
+    view: (model, h) => view(model, h, prepare, prepareMonth),
   });
 };
 

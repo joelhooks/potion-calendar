@@ -20,6 +20,7 @@ import {
   EditingNotice,
   EditingRuntime,
 } from "../src/client/editing/runtime.js";
+import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { clipboardClient } from "./clipboard-runtime-fixture.js";
 import { fixtureSelection, fixtureEvents } from "./fixture.js";
@@ -143,7 +144,11 @@ it.effect.each(["undo", "dismiss"] as const)(
           yield* Fiber.interrupt(observer);
         }).pipe(
           Effect.provide(
-            Layer.merge(EditingRuntime.layer, ClipboardRuntime.layer)
+            Layer.mergeAll(
+              EditingRuntime.layer,
+              ClipboardRuntime.layer,
+              MonthRuntime.layer
+            )
           ),
           Effect.provideService(CalendarEditingClient, client),
           Effect.provideService(
