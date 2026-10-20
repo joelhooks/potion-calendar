@@ -1,6 +1,10 @@
-# Calendar
+# 🧪 Potion Calendar
 
-A private Google Calendar app for Joel. This slice contains the signed-in account shell. Calendar behavior comes from the read-only `spec/` corpus.
+A personal Google Calendar app for Joel: one week view over every linked Google account, behind an allowlisted Google sign-in. Calendar behavior comes from the read-only `spec/` corpus.
+
+![The week view with two linked fake Google accounts](docs/week-view.png)
+
+The screenshot is the development build against the in-process Google fake. The accounts and events are fixtures.
 
 ## Run locally
 
