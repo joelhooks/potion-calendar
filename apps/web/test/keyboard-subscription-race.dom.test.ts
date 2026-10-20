@@ -16,22 +16,25 @@ import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppModel, AppMessage } from "../src/client/app.js";
+import type { ClipboardRuntime } from "../src/client/clipboard/runtime.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { SearchRuntime } from "../src/client/search/runtime.js";
 import { subscriptions } from "../src/client/subscriptions.js";
+import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 
 type KeyboardEntry = Subscription.Subscription<
   AppModel,
   AppMessage,
   { model: AppModel },
-  EditingRuntime | SearchRuntime
+  EditingRuntime | SearchRuntime | ClipboardRuntime
 >;
 
 const dependencyEquivalence = (entry: KeyboardEntry) =>
   entry.keepAliveEquivalence ?? Schema.toEquivalence(entry.dependenciesSchema);
 
 const unusedRuntimes = Layer.mergeAll(
+  unusedClipboardLayer,
   Layer.succeed(EditingRuntime, {
     connect: () => Effect.die("Keyboard stream must not connect editing"),
     dispatch: () => Effect.die("Keyboard stream must not dispatch editing"),
@@ -49,7 +52,7 @@ it.effect(
         AppModel,
         AppMessage,
         { model: AppModel },
-        EditingRuntime | SearchRuntime
+        EditingRuntime | SearchRuntime | ClipboardRuntime
       > = subscriptions.keyboard;
 
       const base = keyboardFixture();
@@ -151,7 +154,7 @@ it.effect.prop(
         AppModel,
         AppMessage,
         { model: AppModel },
-        EditingRuntime | SearchRuntime
+        EditingRuntime | SearchRuntime | ClipboardRuntime
       > = subscriptions.keyboard;
 
       const base = keyboardFixture();

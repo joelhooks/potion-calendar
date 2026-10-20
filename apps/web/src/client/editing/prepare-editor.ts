@@ -14,6 +14,7 @@ import {
   addReminder,
   parseReminderInput,
 } from "../../layout/editor-reminders.js";
+import { composeClipboardCreationFields } from "../clipboard/template.js";
 import type { EditorPermissions } from "./editor-model.js";
 import {
   EditorPlanResult,
@@ -179,7 +180,13 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   input: typeof LoadedEditor.Type
 ) {
   const session = yield* finalizeInputs(input);
-  const fields = yield* draftEventFields(session.draft);
+  const ordinaryFields = yield* draftEventFields(session.draft);
+
+  const fields =
+    session.clipboard === undefined
+      ? ordinaryFields
+      : composeClipboardCreationFields(ordinaryFields, session.clipboard);
+
   const delta = draftChanges(session.draft, session.baseline, fields);
   const permissions = permissionsForEditor(session);
 

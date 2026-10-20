@@ -11,6 +11,10 @@ import {
   initialRepeat,
 } from "../../layout/editor-draft.js";
 import { rebaseEditorRange } from "../../layout/editor-zone.js";
+import {
+  clipboardPasteMetadata,
+  composeClipboardDraft,
+} from "../clipboard/template.js";
 import { CalendarEditingClient } from "./calendar-client.js";
 import {
   EditorLoadResult,
@@ -60,15 +64,20 @@ const loadNew = Effect.fn("loadNewEditor")(function* loadNew(
     request.primaryZone
   );
 
-  const draft = yield* createDraft({
+  const baseDraft = yield* createDraft({
     ...range,
     ref: request.ref,
     timeZone: request.primaryZone,
   });
 
+  const draft =
+    request.template === undefined
+      ? baseDraft
+      : composeClipboardDraft(baseDraft, request.template);
+
   const client = yield* CalendarEditingClient;
 
-  return LoadedEditor.make({
+  const session = LoadedEditor.make({
     baseline: draft,
     calendars: request.calendars,
     createId: Option.some(id.replaceAll("-", "")),
@@ -82,6 +91,14 @@ const loadNew = Effect.fn("loadNewEditor")(function* loadNew(
     original: Option.none(),
     selection: request.selection,
   });
+
+  return request.template === undefined
+    ? session
+    : LoadedEditor.make({
+        ...session,
+        clipboard: clipboardPasteMetadata(request.template),
+        direct: true,
+      });
 });
 
 const loadExisting = Effect.fn("loadExistingEditor")(function* loadExisting(

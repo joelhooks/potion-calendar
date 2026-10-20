@@ -11,6 +11,7 @@ import {
   update,
 } from "./app.js";
 import type { AppModel, AppMessage } from "./app.js";
+import { ClipboardRuntime } from "./clipboard/runtime.js";
 import { desktopProofObserver } from "./desktop/proof.js";
 import {
   CalendarEditingClient,
@@ -30,7 +31,10 @@ const editingServices = deletionWriterLayer.pipe(
   Layer.provideMerge(CalendarEditingClient.layer("available"))
 );
 
-const resources = Layer.merge(
+const resources = Layer.mergeAll(
+  ClipboardRuntime.layer.pipe(
+    Layer.provide(Layer.merge(BrowserCrypto.layer, editingServices))
+  ),
   EditingRuntime.layer.pipe(
     Layer.provide(Layer.merge(BrowserCrypto.layer, editingServices))
   ),

@@ -5,6 +5,7 @@ import { dayInZone, visibleDays } from "../../layout/navigation.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { CalendarRoute, ShortcutsRoute } from "../../layout/route.js";
 import type { AppModel } from "../app.js";
+import type { ClipboardRuntime } from "../clipboard/runtime.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
 import type { EditingRuntime } from "../editing/runtime.js";
@@ -26,7 +27,7 @@ import {
 export type KeyboardResult = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient
+  EditingRuntime | CalendarSearchClient | ClipboardRuntime
 >;
 
 type Apply = (model: AppModel, message: AppMessage) => KeyboardResult;

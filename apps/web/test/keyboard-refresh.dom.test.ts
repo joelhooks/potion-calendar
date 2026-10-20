@@ -13,6 +13,7 @@ import { Message, update } from "../src/client/app.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { LiveNotice } from "../src/client/live/protocol.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 import { unexpectedSearchClient } from "./search-fixture.js";
 
@@ -153,6 +154,7 @@ it.effect(
       expect(calls.every((call) => call.operation === "read")).toBe(true);
     }).pipe(
       Effect.scoped,
+      Effect.provide(unusedClipboardLayer),
       Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
     )
 );

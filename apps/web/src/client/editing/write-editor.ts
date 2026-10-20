@@ -68,9 +68,9 @@ const saveCreated = Effect.fn("saveCreatedEvent")(function* saveCreated(
     calendarId: plan.session.draft.calendarId,
     event: {
       ...plan.fields,
-      guestsCanInviteOthers: true,
-      guestsCanModify: true,
-      guestsCanSeeOtherGuests: true,
+      guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
+      guestsCanModify: plan.fields.guestsCanModify ?? true,
+      guestsCanSeeOtherGuests: plan.fields.guestsCanSeeOtherGuests ?? true,
     },
     id,
     sendUpdates: plan.sendUpdates,

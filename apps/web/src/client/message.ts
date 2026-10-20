@@ -12,6 +12,8 @@ import { Url } from "foldkit/url";
 import { NavigationState, maximumDisplayedDays } from "../layout/navigation.js";
 import { Route } from "../layout/route.js";
 import { ReadFailure } from "./calendar-state.js";
+import { ClipboardDelivery } from "./clipboard/delivery.js";
+import { ClipboardAction } from "./clipboard/runtime.js";
 import { ConferencingChange } from "./conferencing/model.js";
 import { DesktopNotice, DesktopRequest } from "./desktop/model.js";
 import { EditorAction } from "./editing/editor-action.js";
@@ -57,6 +59,11 @@ export const Message = defineMessageUnion({
   },
   ClickedWeekends: {},
   ClickedZoom: { step: Schema.Int },
+  ClipboardAction: {
+    action: ClipboardAction,
+    personId: Schema.String,
+    sessionId: Schema.String,
+  },
   ClosedDetail: {},
   CompletedGesture: {
     gesture: GestureResult,
@@ -65,6 +72,7 @@ export const Message = defineMessageUnion({
   },
   CompletedGridScroll: {},
   CycledTheme: {},
+  DispatchedClipboard: {},
   DispatchedEditing: {},
   EditingAction: {
     action: EditorAction,
@@ -74,6 +82,11 @@ export const Message = defineMessageUnion({
   FailedCalendars: {
     failure: ReadFailure,
     personId: Schema.optionalKey(Schema.String),
+  },
+  FailedClipboard: {
+    message: Schema.String,
+    personId: Schema.String,
+    sessionId: Schema.String,
   },
   FailedEditing: { message: Schema.String },
   FailedEvents: {
@@ -126,6 +139,7 @@ export const Message = defineMessageUnion({
     personId: Schema.optionalKey(Schema.String),
     result: ListCalendarsOutput,
   },
+  ReceivedClipboard: { delivery: ClipboardDelivery },
   ReceivedDesktop: { notice: DesktopNotice },
   ReceivedEditing: { notice: EditingNotice, personId: Schema.String },
   ReceivedEvents: {

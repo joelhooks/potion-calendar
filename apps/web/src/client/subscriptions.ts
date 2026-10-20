@@ -5,6 +5,8 @@ import { Subscription } from "foldkit";
 
 import { Model } from "./app.js";
 import type { AppModel } from "./app.js";
+import type { ClipboardRuntime } from "./clipboard/runtime.js";
+import { clipboardStream } from "./clipboard/subscription.js";
 import {
   desktopActionStream,
   desktopAgendaStream,
@@ -26,7 +28,7 @@ import { upcomingStream } from "./upcoming/read.js";
 export const subscriptions = Subscription.make<
   AppModel,
   AppMessage,
-  EditingRuntime | SearchRuntime
+  EditingRuntime | SearchRuntime | ClipboardRuntime
 >()((entry) => ({
   calendarChanges: Subscription.persistentEntry(
     Stream.suspend(() =>
@@ -34,6 +36,22 @@ export const subscriptions = Subscription.make<
         Stream.map(() => Message.CalendarChanged())
       )
     )
+  ),
+  clipboard: entry(
+    { model: Model },
+    {
+      dependenciesToStream: ({ model }, readDependencies) =>
+        clipboardStream(
+          model.person,
+          model.clipboard.epoch,
+          () => readDependencies().model
+        ),
+      keepAliveEquivalence: (left, right) =>
+        Option.getOrUndefined(left.model.person) ===
+          Option.getOrUndefined(right.model.person) &&
+        left.model.clipboard.epoch === right.model.clipboard.epoch,
+      modelToDependencies: (model) => ({ model }),
+    }
   ),
   desktopActions: Subscription.persistentEntry(desktopActionStream()),
   desktopAgenda: entry(

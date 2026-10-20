@@ -316,7 +316,7 @@ const deleteSettled = (
     }),
   });
 
-const mutationReceived = (
+export const mutationReceived = (
   model: AppModel,
   mutation: typeof EditorMutation.Type
 ): NoticeResult =>

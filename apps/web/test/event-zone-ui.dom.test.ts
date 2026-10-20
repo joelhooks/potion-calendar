@@ -22,6 +22,7 @@ import { keyboardRegistry } from "../src/client/keyboard/registry.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { view } from "../src/features/app.js";
 import { zoneCatalog } from "../src/layout/time-zones-display.js";
+import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
 import { editorViewFields } from "./editor-fixture.js";
 import {
   eventZoneUiFixture,
@@ -277,6 +278,7 @@ const capturedOpen = Effect.fn("test.capturedEditorOpen")(
 
     for (const command of result.commands ?? []) {
       yield* command.effect.pipe(
+        Effect.provide(unusedClipboardLayer),
         Effect.provideService(EditingRuntime, runtime),
         Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
       );

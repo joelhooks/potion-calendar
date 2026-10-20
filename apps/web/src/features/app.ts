@@ -5,6 +5,7 @@ import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
+import { PrepareClipboardDialogs } from "../client/clipboard/dialog-mount.js";
 import { PrepareEditingDialogs } from "../client/editing/dialog-mount.js";
 import { EditorView } from "../client/editing/editor-model.js";
 import { PrepareGestures } from "../client/editing/gesture-mount.js";
@@ -15,6 +16,7 @@ import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { detailPanel, sidebar, systemZonePrompt, toolbar } from "./calendar.js";
+import { clipboardPanel } from "./clipboard.js";
 import { commandMenu } from "./command-menu.js";
 import { editorDialogs } from "./event-editor.js";
 import { searchPanel } from "./search.js";
@@ -222,6 +224,34 @@ export const view = (
         ],
         editingLayers(model, h)
       ),
+      ...(Option.isSome(model.person) &&
+      Option.isSome(model.clipboard.sessionId)
+        ? [
+            h.div(
+              [
+                h.Style({ display: "contents" }),
+                h.OnMount(
+                  PrepareClipboardDialogs({
+                    personId: model.person.value,
+                    sessionId: model.clipboard.sessionId.value,
+                  })
+                ),
+              ],
+              [
+                clipboardPanel(h, model.clipboard.view, (action) =>
+                  Message.ClipboardAction({
+                    action,
+                    personId: Option.getOrElse(model.person, () => ""),
+                    sessionId: Option.getOrElse(
+                      model.clipboard.sessionId,
+                      () => ""
+                    ),
+                  })
+                ),
+              ]
+            ),
+          ]
+        : []),
       ...commandMenu(model, h),
       ...dateFlash(model, h),
       ...(Option.isNone(model.error)

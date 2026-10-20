@@ -15,6 +15,7 @@ import { Message } from "../src/client/message.js";
 import { SearchRuntime } from "../src/client/search/runtime.js";
 import { subscriptions } from "../src/client/subscriptions.js";
 import { upcomingStream } from "../src/client/upcoming/read.js";
+import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
 import {
   upcomingFixture,
   upcomingPerson,
@@ -106,6 +107,7 @@ it.effect(
       expect(calls).toHaveLength(1);
     }).pipe(
       Effect.scoped,
+      Effect.provide(unusedClipboardLayer),
       Effect.provideService(
         SearchRuntime,
         SearchRuntime.of({

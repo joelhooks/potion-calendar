@@ -963,6 +963,9 @@ h3 {
   box-shadow: 0 6px 24px #182b2033;
   font-size: 13px;
 }
+.clipboard-toast {
+  bottom: 88px;
+}
 .undo-toast button {
   flex-shrink: 0;
   color: #fff;
@@ -1067,6 +1070,9 @@ h3 {
 .app [role="alert"],
 .app .editor-error {
   color: var(--error);
+}
+.app .clipboard-toast[role="alert"] {
+  color: #fff;
 }
 .app .editor-dialog .editor-primary,
 .app .mini-days .is-today {

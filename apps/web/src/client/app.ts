@@ -26,6 +26,19 @@ import {
   calendarKey,
 } from "./calendar-state.js";
 import {
+  DispatchClipboard,
+  DispatchClipboardCut,
+} from "./clipboard/commands.js";
+import { receiveClipboardDelivery } from "./clipboard/delivery.js";
+import { clipboardCutEvents } from "./clipboard/host.js";
+import { ClipboardReceipt } from "./clipboard/machine.js";
+import {
+  ClipboardUi,
+  initialClipboard,
+  resetClipboardScope,
+} from "./clipboard/model.js";
+import type { ClipboardRuntime } from "./clipboard/runtime.js";
+import {
   BeginGoogle,
   PreserveTimePosition,
   ReadCalendars,
@@ -61,6 +74,7 @@ import {
   leaveEditing,
   receiveEditing,
   reconcileEditingRead,
+  mutationReceived,
 } from "./editing/update.js";
 import { KeyboardUi, initialKeyboard } from "./keyboard/state.js";
 import {
@@ -135,6 +149,7 @@ import {
   TimeZonesUi,
   TimeZoneAction,
   activeZone,
+  homeZone,
   initialTimeZones,
 } from "./time-zones/model.js";
 import { changeTimeZones } from "./time-zones/update.js";
@@ -164,6 +179,7 @@ export const RemoteSession = AsyncData.Schema(SessionSnapshot, Schema.String);
 export const Model = Schema.Struct({
   action: Schema.Literals(["idle", "pending"]),
   calendar: CalendarUi,
+  clipboard: ClipboardUi,
   conferencing: ConferencingState,
   desktop: DesktopUi,
   editing: EditingUi,
@@ -185,7 +201,7 @@ export type AppModel = typeof Model.Type;
 type Result = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient
+  EditingRuntime | CalendarSearchClient | ClipboardRuntime
 >;
 
 export const initialModel = (now: number, zone: string): AppModel => ({
@@ -211,6 +227,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     zone,
     zoom: 0,
   },
+  clipboard: initialClipboard,
   conferencing: initialConferencing(),
   desktop: initialDesktop(),
   editing: {
@@ -627,6 +644,14 @@ const updateCore = (
         },
       },
     }),
+    ClipboardAction: ({ action, personId, sessionId }) =>
+      Option.contains(model.person, personId) &&
+      Option.contains(model.clipboard.sessionId, sessionId)
+        ? {
+            commands: [DispatchClipboard({ action, personId, sessionId })],
+            model,
+          }
+        : { model },
     ClosedDetail: () => ({
       model: {
         ...model,
@@ -654,6 +679,7 @@ const updateCore = (
         },
       });
     },
+    DispatchedClipboard: () => ({ model }),
     DispatchedEditing: () => ({ model }),
     EditingAction: ({ action, personId }) =>
       personId !== undefined && !Option.contains(model.person, personId)
@@ -684,6 +710,11 @@ const updateCore = (
         },
       };
     },
+    FailedClipboard: ({ message: failureMessage, personId, sessionId }) =>
+      Option.contains(model.person, personId) &&
+      Option.contains(model.clipboard.sessionId, sessionId)
+        ? { model: { ...model, error: Option.some(failureMessage) } }
+        : { model },
     FailedEditing: ({ message: failureMessage }) => ({
       model: { ...model, error: Option.some(failureMessage) },
     }),
@@ -842,6 +873,51 @@ const updateCore = (
       return accepted.migrationCompleted
         ? persistPreferences(refreshed)
         : refreshed;
+    },
+    ReceivedClipboard: ({ delivery }) => {
+      const received = receiveClipboardDelivery(
+        model.clipboard,
+        model.person,
+        delivery
+      );
+
+      const next = { ...model, clipboard: received.state };
+
+      if (Option.isNone(received.receipt)) {
+        return { model: next };
+      }
+
+      return ClipboardReceipt.match<Result>(received.receipt.value, {
+        Created: ({ mutation }) => {
+          const saved = mutationReceived(next, mutation);
+
+          return saved.reload
+            ? reloadRange(
+                refreshSearch(saved.model),
+                false,
+                saved.reconcile,
+                model
+              )
+            : { model: saved.model };
+        },
+        Cut: ({ source }) => ({
+          commands: [
+            DispatchClipboardCut({
+              input: {
+                calendars: next.calendar.calendars,
+                events: clipboardCutEvents(next),
+                navigation: next.calendar.navigation,
+                primaryZone: homeZone(next),
+                selection: next.calendar.selected,
+                source,
+              },
+              personId: delivery.personId,
+              sessionId: delivery.sessionId,
+            }),
+          ],
+          model: next,
+        }),
+      });
     },
     ReceivedDesktop: ({ notice }) => {
       if (!DesktopNotice.guards.Action(notice)) {
@@ -1197,8 +1273,25 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     return { model };
   }
 
-  return withReminders(
+  const result = withReminders(
     model,
     withUpcoming(model, updateCore(model, message, update), message)
   );
+
+  if (
+    Option.getOrUndefined(model.person) !==
+    Option.getOrUndefined(result.model.person)
+  ) {
+    return {
+      ...result,
+      model: {
+        ...result.model,
+        clipboard: resetClipboardScope(model.clipboard),
+      },
+    };
+  }
+
+  return Predicate.isTagged(message, "ReceivedSession")
+    ? { ...result, model: { ...result.model, clipboard: model.clipboard } }
+    : result;
 };

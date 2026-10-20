@@ -20,6 +20,7 @@ import {
   ShortcutsRoute,
   parseRoute,
 } from "../src/layout/route.js";
+import { unusedClipboardLayer } from "./clipboard-unused-fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 import { unexpectedSearchClient } from "./search-fixture.js";
 
@@ -27,6 +28,7 @@ const execute = (result: ReturnType<typeof update>) =>
   Effect.forEach(result.commands ?? [], (command) => command.effect, {
     discard: true,
   }).pipe(
+    Effect.provide(unusedClipboardLayer),
     Effect.provideService(CalendarSearchClient, unexpectedSearchClient),
     Effect.provideService(
       EditingRuntime,

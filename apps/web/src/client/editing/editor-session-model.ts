@@ -8,6 +8,10 @@ import {
 import { Schema } from "effect";
 
 import { NavigationState } from "../../layout/navigation.js";
+import {
+  ClipboardPasteMetadata,
+  ClipboardTemplate,
+} from "../clipboard/model.js";
 import { DeleteIntent } from "./delete-actor.js";
 import { EditorAction } from "./editor-action.js";
 import { EventDraft, RepeatForm } from "./editor-model.js";
@@ -39,12 +43,14 @@ export const EditorRequest = Schema.TaggedUnion({
     ref: CalendarRef,
     startDate: Schema.String,
     startTime: Schema.String,
+    template: Schema.optionalKey(ClipboardTemplate),
   },
 });
 
 export const LoadedEditor = Schema.Struct({
   baseline: EventDraft,
   calendars: Schema.Array(Calendar),
+  clipboard: Schema.optionalKey(ClipboardPasteMetadata),
   createId: Schema.Option(CreateEventInput.fields.id),
   direct: Schema.optionalKey(Schema.Boolean),
   draft: EventDraft,
