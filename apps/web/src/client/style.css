@@ -1176,6 +1176,36 @@ h3 {
   width: 185px;
   flex-shrink: 0;
 }
+.settings-content select[id^="desktop-"] {
+  height: 32px;
+}
+.desktop-shortcut-row > label {
+  flex: 1;
+  min-width: 0;
+}
+.desktop-shortcut-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 400px;
+  width: 400px;
+}
+.desktop-shortcut-controls > input,
+.desktop-shortcut-controls > button {
+  box-sizing: border-box;
+  height: 32px;
+}
+.desktop-shortcut-controls > input {
+  min-width: 0;
+  width: 100%;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 9px;
+  font: inherit;
+}
 .settings-intro,
 .settings-device-note {
   color: var(--muted);

@@ -4,6 +4,8 @@ import type {
   DesktopPreferencesValue,
 } from "@calendar/core/desktop-bridge";
 
+export const singleLine = (title: string) => title.replaceAll(/\s+/gu, " ");
+
 const minuteMilliseconds = 60_000;
 
 const dayMilliseconds = 24 * 60 * minuteMilliseconds;
@@ -52,3 +54,21 @@ export const previewMeeting = (
           event.start <= now + preferences.previewMinutes * minuteMilliseconds
       )
     : undefined;
+
+export const previewLabel = (
+  snapshot: AgendaSnapshotValue,
+  preferences: DesktopPreferencesValue,
+  now: number,
+  formatTime: (value: number) => string
+): string => {
+  const preview = previewMeeting(snapshot, preferences, now);
+
+  return preview === undefined
+    ? ""
+    : [
+        preferences.showTime ? formatTime(preview.start) : "",
+        preferences.showTitle ? singleLine(preview.title).slice(0, 90) : "",
+      ]
+        .filter((part) => part.length > 0)
+        .join(" ");
+};

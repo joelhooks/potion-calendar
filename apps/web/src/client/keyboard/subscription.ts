@@ -9,10 +9,10 @@ import { observeKeyboard } from "./input.js";
 type KeyboardQueue = Queue.Queue<AppMessage, Cause.Done>;
 
 const onKeydown =
-  (model: AppModel, queue: KeyboardQueue) =>
+  (readModel: () => AppModel, queue: KeyboardQueue) =>
   (event: KeyboardEvent): void => {
     const message = observeKeyboard(
-      model,
+      readModel(),
       event,
       DateTime.toEpochMillis(DateTime.nowUnsafe())
     );
@@ -22,18 +22,19 @@ const onKeydown =
     }
   };
 
-const onFocus = (model: AppModel, queue: KeyboardQueue) => (): void => {
-  if (model.keyboard.prefix !== "") {
-    Queue.offerUnsafe(queue, Message.KeyboardResetSequence());
-  }
-};
+const onFocus =
+  (readModel: () => AppModel, queue: KeyboardQueue) => (): void => {
+    if (readModel().keyboard.prefix !== "") {
+      Queue.offerUnsafe(queue, Message.KeyboardResetSequence());
+    }
+  };
 
-export const keyboardStream = (model: AppModel) =>
+export const keyboardStream = (readModel: () => AppModel) =>
   Stream.callback<AppMessage>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const keydown = onKeydown(model, queue);
-        const focusin = onFocus(model, queue);
+        const keydown = onKeydown(readModel, queue);
+        const focusin = onFocus(readModel, queue);
         window.addEventListener("keydown", keydown);
         window.addEventListener("focusin", focusin);
 

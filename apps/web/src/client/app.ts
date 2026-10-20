@@ -1,7 +1,7 @@
 import type { CalendarRefValue } from "@calendar/calendar/contracts";
 import { SessionSnapshot } from "@calendar/core/contracts";
 import { MeetingJoinOutcome } from "@calendar/core/desktop-bridge";
-import { DateTime, Option, Predicate, Schema } from "effect";
+import { DateTime, Match, Option, Predicate, Schema } from "effect";
 import { AsyncData } from "foldkit";
 import type { Runtime, Update } from "foldkit";
 import type { UrlRequest } from "foldkit/navigation";
@@ -18,7 +18,7 @@ import {
 } from "../layout/navigation.js";
 import type { NavigationAction } from "../layout/navigation.js";
 import { allDaySection, visibleEvents } from "../layout/presentation.js";
-import { CalendarRoute, Route } from "../layout/route.js";
+import { CalendarRoute, Route, SettingsRoute } from "../layout/route.js";
 import {
   CalendarUi,
   RemoteCalendars,
@@ -42,6 +42,15 @@ import {
   clearConferencing,
 } from "./conferencing/model.js";
 import { changeConferencing } from "./conferencing/update.js";
+import { ApplyDesktopRequest } from "./desktop/commands.js";
+import {
+  DesktopNotice,
+  DesktopRequest,
+  DesktopUi,
+  initialDesktop,
+} from "./desktop/model.js";
+import { desktopSelection } from "./desktop/selection.js";
+import { beginDesktopRequest, receiveDesktopNotice } from "./desktop/update.js";
 import { EditorView } from "./editing/editor-model.js";
 import { acceptsGesture } from "./editing/gesture-targets.js";
 import type { EditingRuntime } from "./editing/runtime.js";
@@ -156,6 +165,7 @@ export const Model = Schema.Struct({
   action: Schema.Literals(["idle", "pending"]),
   calendar: CalendarUi,
   conferencing: ConferencingState,
+  desktop: DesktopUi,
   editing: EditingUi,
   error: Schema.Option(Schema.String),
   keyboard: KeyboardUi,
@@ -202,6 +212,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     zoom: 0,
   },
   conferencing: initialConferencing(),
+  desktop: initialDesktop(),
   editing: {
     conferencingResult: Option.none(),
     deletes: [],
@@ -257,7 +268,12 @@ const persistPreferences = (result: Result): Result => {
 };
 
 export const init: Runtime.ApplicationInit<AppModel, AppMessage> = () => ({
-  commands: [ReadSession()],
+  commands: [
+    ReadSession(),
+    ApplyDesktopRequest({
+      request: DesktopRequest.cases.Read.make({ request: 0 }),
+    }),
+  ],
   model: initialModel(
     DateTime.toEpochMillis(DateTime.nowUnsafe()),
     Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -268,7 +284,13 @@ export const initWithRoute: Runtime.RoutingApplicationInit<
   AppModel,
   AppMessage
 > = (url) => ({
-  commands: [InitializeRouteHistory(), ReadSession()],
+  commands: [
+    InitializeRouteHistory(),
+    ReadSession(),
+    ApplyDesktopRequest({
+      request: DesktopRequest.cases.Read.make({ request: 0 }),
+    }),
+  ],
   model: {
     ...initialModel(
       DateTime.toEpochMillis(DateTime.nowUnsafe()),
@@ -281,7 +303,8 @@ export const initWithRoute: Runtime.RoutingApplicationInit<
 export const reloadRange = (
   model: AppModel,
   sync = false,
-  reconcile: readonly CalendarRefValue[] = []
+  reconcile: readonly CalendarRefValue[] = [],
+  previous: AppModel = model
 ): Result => {
   const days = visibleDays(model.calendar.navigation);
   const [first] = days;
@@ -290,6 +313,17 @@ export const reloadRange = (
   if (first === undefined || last === undefined) {
     return { model };
   }
+
+  const previousDays = visibleDays(previous.calendar.navigation);
+  const [previousFirst] = previousDays;
+  const previousLast = previousDays.at(-1);
+
+  const overlapping =
+    previous.calendar.zone === model.calendar.zone &&
+    previousFirst !== undefined &&
+    previousLast !== undefined &&
+    previousFirst <= last &&
+    first <= previousLast;
 
   const request = model.calendar.rangeRequest + 1;
 
@@ -327,10 +361,25 @@ export const reloadRange = (
       calendar: {
         ...model.calendar,
         rangeRequest: request,
-        reads: accounts.map((accountId) => ({
-          accountId,
-          events: RemoteEvents.Loading(),
-        })),
+        reads: accounts.map((accountId) => {
+          const saved = overlapping
+            ? model.calendar.reads.find((read) => read.accountId === accountId)
+            : undefined;
+
+          const data =
+            saved === undefined
+              ? Option.none()
+              : AsyncData.getData(saved.events);
+
+          return {
+            accountId,
+            events: Option.match(data, {
+              onNone: () => RemoteEvents.Loading(),
+              onSome: (savedData) =>
+                RemoteEvents.Refreshing({ data: savedData }),
+            }),
+          };
+        }),
       },
     },
   };
@@ -338,7 +387,8 @@ export const reloadRange = (
 
 const changeNavigation = (
   model: AppModel,
-  action: NavigationAction
+  action: NavigationAction,
+  previous: AppModel = model
 ): Result => {
   const navigation = navigate(
     model.calendar.navigation,
@@ -346,10 +396,15 @@ const changeNavigation = (
     dayInZone(model.calendar.now, model.calendar.zone)
   );
 
-  const result = reloadRange({
-    ...model,
-    calendar: { ...model.calendar, navigation, selected: Option.none() },
-  });
+  const result = reloadRange(
+    {
+      ...model,
+      calendar: { ...model.calendar, navigation, selected: Option.none() },
+    },
+    false,
+    [],
+    previous
+  );
 
   return action.type === "today"
     ? {
@@ -436,7 +491,7 @@ const updateCore = (
       return persistPreferences(
         SettingsChange.guards.WeekStart(change) ||
           SettingsChange.guards.Weekends(change)
-          ? reloadRange(next)
+          ? reloadRange(next, false, [], model)
           : { model: receivedEventRows(next) }
       );
     },
@@ -497,7 +552,8 @@ const updateCore = (
               },
             }
           : model,
-        { day, type: "date" }
+        { day, type: "date" },
+        model
       ),
     ClickedDeclined: () =>
       persistPreferences({
@@ -781,17 +837,79 @@ const updateCore = (
       }
 
       const accepted = receiveManagedInventory(model, result);
-      const refreshed = reloadRange(accepted.model);
+      const refreshed = reloadRange(accepted.model, false, [], model);
 
       return accepted.migrationCompleted
         ? persistPreferences(refreshed)
         : refreshed;
     },
+    ReceivedDesktop: ({ notice }) => {
+      if (!DesktopNotice.guards.Action(notice)) {
+        return {
+          model: {
+            ...model,
+            desktop: receiveDesktopNotice(model.desktop, notice),
+          },
+        };
+      }
+
+      return Match.value(notice.action).pipe(
+        Match.tagsExhaustive({
+          OpenSettings: ({ page }) =>
+            dispatch(
+              model,
+              Message.RequestedRoute({
+                replace: false,
+                route: SettingsRoute.make({ page }),
+              })
+            ),
+          RequestedJoinMeeting: () =>
+            dispatch(
+              model,
+              Message.RequestedJoinMeeting({ key: Option.none() })
+            ),
+          ShowEvent: ({ key }) => {
+            const selected = desktopSelection(model, key);
+
+            if (selected === undefined) {
+              return {
+                model: {
+                  ...model,
+                  error: Option.some("This event is no longer available."),
+                },
+              };
+            }
+
+            const route = CalendarRoute.make({});
+
+            const result = changeNavigation(
+              { ...model, route },
+              { day: selected.startDay, type: "date" }
+            );
+
+            return {
+              ...result,
+              commands: [
+                ...(result.commands ?? []),
+                NavigateRoute({ replace: false, route }),
+              ],
+              model: {
+                ...result.model,
+                calendar: {
+                  ...result.model.calendar,
+                  selected: Option.some(selected.key),
+                },
+              },
+            };
+          },
+        })
+      );
+    },
     ReceivedEditing: ({ notice, personId }) => {
       const next = receiveEditing(model, personId, notice);
 
       return next.reload
-        ? reloadRange(refreshSearch(next.model), false, next.reconcile)
+        ? reloadRange(refreshSearch(next.model), false, next.reconcile, model)
         : finishKeyboardOpening(model, next.model);
     },
     ReceivedEvents: ({ accountId, request, result }) =>
@@ -852,7 +970,13 @@ const updateCore = (
         commands: readCalendarsFor(applied),
         model: {
           ...applied,
-          calendar: { ...applied.calendar, index: RemoteCalendars.Loading() },
+          calendar: {
+            ...applied.calendar,
+            index: Option.match(AsyncData.getData(applied.calendar.index), {
+              onNone: () => RemoteCalendars.Loading(),
+              onSome: (data) => RemoteCalendars.Refreshing({ data }),
+            }),
+          },
         },
       };
 
@@ -868,6 +992,12 @@ const updateCore = (
       const cleared = {
         ...initialModel(model.calendar.now, model.timeZones.system),
         conferencing: clearConferencing(model.conferencing),
+        desktop: {
+          availability: model.desktop.availability,
+          error: Option.none(),
+          request: model.desktop.request,
+          settings: model.desktop.settings,
+        },
         route: model.route,
         search: initialSearch(model.search.revision + 1),
         session: RemoteSession.Success({ data: snapshot }),
@@ -909,6 +1039,31 @@ const updateCore = (
     ReminderEffectCompleted: () => ({ model }),
     ReminderPermissionCompleted: (result) =>
       completeReminderPermission(model, result),
+    RequestedDesktop: ({ request }) => {
+      const desktop = beginDesktopRequest(model.desktop);
+
+      const current = Match.value(request).pipe(
+        Match.tagsExhaustive({
+          Read: () =>
+            DesktopRequest.cases.Read.make({ request: desktop.request }),
+          Save: ({ preferences }) =>
+            DesktopRequest.cases.Save.make({
+              preferences,
+              request: desktop.request,
+            }),
+          Startup: ({ enabled }) =>
+            DesktopRequest.cases.Startup.make({
+              enabled,
+              request: desktop.request,
+            }),
+        })
+      );
+
+      return {
+        commands: [ApplyDesktopRequest({ request: current })],
+        model: { ...model, desktop },
+      };
+    },
     RequestedJoinMeeting: ({ key }) =>
       Option.match(model.person, {
         onNone: () => ({ model }),
@@ -971,7 +1126,7 @@ const updateCore = (
         return { commands: selected.commands ?? [], model: selected.model };
       }
 
-      const loaded = reloadRange(selected.model);
+      const loaded = reloadRange(selected.model, false, [], model);
 
       return {
         ...loaded,
@@ -1024,7 +1179,9 @@ const updateCore = (
       };
 
       const result =
-        zone === model.calendar.zone ? { model: closed } : reloadRange(closed);
+        zone === model.calendar.zone
+          ? { model: closed }
+          : reloadRange(closed, false, [], model);
 
       return persistPreferences(result);
     },

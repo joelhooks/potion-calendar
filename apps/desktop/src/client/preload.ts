@@ -101,9 +101,40 @@ const origin = process.argv
   .find((argument) => argument.startsWith("--potion-origin="))
   ?.slice("--potion-origin=".length);
 
+const creationArgument = process.argv
+  .find((argument) => argument.startsWith("--potion-window-created-at="))
+  ?.slice("--potion-window-created-at=".length);
+
+const windowCreatedAt = Option.fromUndefinedOr(creationArgument).pipe(
+  Option.flatMap(Schema.decodeOption(Schema.FiniteFromString))
+);
+
+declare const potionPreloadStartedAt: number;
+
+const exposeWithTiming = (createdAt: number) => {
+  const timing = { availableAt: potionPreloadStartedAt };
+
+  contextBridge.exposeInMainWorld("potionDesktop", {
+    ...bridge,
+    getStartupTiming: () => ({
+      bridgeAvailableAt: performance.timeOrigin + timing.availableAt,
+      coldLoadMilliseconds:
+        performance.timeOrigin + timing.availableAt - createdAt,
+      preloadMilliseconds: timing.availableAt - potionPreloadStartedAt,
+      preloadStartedAt: performance.timeOrigin + potionPreloadStartedAt,
+      windowCreatedAt: createdAt,
+    }),
+  });
+  timing.availableAt = performance.now();
+};
+
 if (
   origin !== undefined &&
   acceptsDesktopFrame(origin, window.location.href, process.isMainFrame)
 ) {
-  contextBridge.exposeInMainWorld("potionDesktop", bridge);
+  if (Option.isSome(windowCreatedAt)) {
+    exposeWithTiming(windowCreatedAt.value);
+  } else {
+    contextBridge.exposeInMainWorld("potionDesktop", bridge);
+  }
 }

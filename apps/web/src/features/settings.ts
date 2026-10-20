@@ -10,6 +10,8 @@ import {
   SettingsRoute,
   printRoute,
 } from "../layout/route.js";
+import { desktopSettingsView } from "./desktop-settings-actions.js";
+import { desktopMenuRows } from "./desktop-settings-menu.js";
 import { settingsCalendars } from "./settings-calendars.js";
 import { settingsGeneral } from "./settings-general.js";
 import { settingsNotifications } from "./settings-notifications.js";
@@ -17,7 +19,7 @@ import { settingsNotifications } from "./settings-notifications.js";
 export const settingsPage = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  page: "general" | "calendars" | "calendar" | "notifications",
+  page: "general" | "calendars" | "calendar" | "notifications" | "menu-bar",
   accountId?: string
 ): Html => {
   const accounts =
@@ -27,10 +29,15 @@ export const settingsPage = (
     calendar: "Calendar settings",
     calendars: "Calendar settings",
     general: "General settings",
+    "menu-bar": "Menu bar settings",
     notifications: "Notification settings",
   }[page];
 
   const content = () => {
+    if (page === "menu-bar") {
+      return desktopSettingsView(model.desktop, h, desktopMenuRows);
+    }
+
     if (page === "general") {
       return settingsGeneral(model, h);
     }
@@ -86,6 +93,19 @@ export const settingsPage = (
             ],
             ["Notifications"]
           ),
+          ...(model.desktop.availability === "available"
+            ? [
+                h.a(
+                  [
+                    h.Href(
+                      printRoute(SettingsRoute.make({ page: "menu-bar" }))
+                    ),
+                    h.AriaCurrent(page === "menu-bar" ? "page" : "false"),
+                  ],
+                  ["Menu bar"]
+                ),
+              ]
+            : []),
           ...accounts.map((account) =>
             h.a(
               [

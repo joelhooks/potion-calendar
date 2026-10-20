@@ -5,6 +5,11 @@ import type { Update } from "foldkit";
 
 import type { AppModel } from "../app.js";
 import { RemoteEvents, calendarKey } from "../calendar-state.js";
+import { DeleteOutcome } from "../editing/delete-actor.js";
+import { DeleteNotice } from "../editing/deletion-session.js";
+import { EditorMutation } from "../editing/editor-session-model.js";
+import { RsvpResult } from "../editing/rsvp-machine.js";
+import { EditingNotice } from "../editing/runtime.js";
 import { noticeAffectsSelection } from "../live/socket.js";
 import type { AppMessage } from "../message.js";
 import {
@@ -75,6 +80,7 @@ const beginUpcoming = (
               onNone: () => RemoteEvents.Loading(),
               onSome: (data) => RemoteEvents.Refreshing({ data }),
             }),
+      deferredRefresh: Option.none(),
       query:
         calendars.length === 0
           ? Option.none()
@@ -109,6 +115,76 @@ const liveRefresh = (
   Option.contains(model.person, message.personId) &&
   noticeAffectsSelection(message.notice, calendars);
 
+const completedEditingRefresh = (
+  previous: AppModel,
+  next: AppModel,
+  message: AppMessage,
+  calendars: readonly CalendarRefValue[]
+) => {
+  if (
+    !Predicate.isTagged(message, "ReceivedEditing") ||
+    !Option.contains(next.person, message.personId)
+  ) {
+    return false;
+  }
+
+  const selected = (written: CalendarRefValue) =>
+    calendars.some(
+      (ref) =>
+        ref.accountId === written.accountId &&
+        ref.calendarId === written.calendarId
+    );
+
+  const rangeChanged =
+    previous.calendar.rangeRequest !== next.calendar.rangeRequest;
+
+  return EditingNotice.match(message.notice, {
+    Delete: ({ notice }) =>
+      DeleteNotice.match(notice, {
+        Changed: () => false,
+        Settled: ({ intent, outcome }) =>
+          DeleteOutcome.match(outcome, {
+            Committed: () =>
+              selected(intent.event) &&
+              !previous.editing.deletes.some(
+                (mark) =>
+                  mark.intent.id === intent.id && mark.phase === "acknowledged"
+              ) &&
+              next.editing.deletes.some(
+                (mark) =>
+                  mark.intent.id === intent.id && mark.phase === "acknowledged"
+              ),
+            Failed: () => false,
+            Undone: () => rangeChanged,
+          }),
+      }),
+    Editor: ({ mutation }) =>
+      Option.match(mutation, {
+        onNone: () => rangeChanged,
+        onSome: (result) =>
+          EditorMutation.match(result, {
+            DeletedStaged: () => false,
+            Saved: ({ id, event, plan }) =>
+              !Option.contains(previous.editing.handledMutation, id) &&
+              Option.contains(next.editing.handledMutation, id) &&
+              [event, ...Option.toArray(plan.session.original)].some(selected),
+          }),
+      }),
+    Rsvp: ({ view }) =>
+      Option.match(view.result, {
+        onNone: () => false,
+        onSome: (result) =>
+          RsvpResult.match(result, {
+            Failed: () => false,
+            Saved: ({ intent, event }) =>
+              intent.id > previous.editing.handledResponse &&
+              next.editing.handledResponse === intent.id &&
+              selected(event),
+          }),
+      }),
+  });
+};
+
 const refreshTriggered = (
   previous: AppModel,
   next: AppModel,
@@ -124,9 +200,8 @@ const refreshTriggered = (
         next.calendar.now < previous.calendar.now
     ),
     Match.tag("ReceivedLive", () => liveRefresh(next, message, calendars)),
-    Match.tag(
-      "ReceivedEditing",
-      () => previous.calendar.rangeRequest !== next.calendar.rangeRequest
+    Match.tag("ReceivedEditing", () =>
+      completedEditingRefresh(previous, next, message, calendars)
     ),
     Match.tag("CalendarChanged", () => true),
     Match.tag("ClickedRefresh", () => true),
@@ -168,27 +243,48 @@ export const withUpcoming = <R>(
     calendars
   );
 
+  const triggered =
+    selectionChanged || refreshTriggered(previous, next, message, calendars);
+
+  const live = liveRefresh(next, message, calendars);
+
   if (Option.isNone(AsyncData.getData(next.calendar.index))) {
-    return selectionChanged
-      ? {
-          ...result,
-          model: {
-            ...next,
-            upcoming: initialUpcoming(next.upcoming.request + 1),
-          },
-        }
-      : result;
+    if (!triggered) {
+      return result;
+    }
+
+    const upcoming = selectionChanged
+      ? initialUpcoming(next.upcoming.request + 1)
+      : next.upcoming;
+
+    return {
+      ...result,
+      model: {
+        ...next,
+        upcoming: {
+          ...upcoming,
+          deferredRefresh: live
+            ? Option.some("live")
+            : Option.orElse(upcoming.deferredRefresh, () =>
+                Option.some("snapshot")
+              ),
+        },
+      },
+    };
   }
 
-  return selectionChanged ||
-    refreshTriggered(previous, next, message, calendars)
+  return triggered || Option.isSome(next.upcoming.deferredRefresh)
     ? {
         ...result,
         model: beginUpcoming(
           next,
           calendars,
           next.person.value,
-          liveRefresh(next, message, calendars) ? "live" : "snapshot"
+          live ||
+            (!selectionChanged &&
+              Option.contains(next.upcoming.deferredRefresh, "live"))
+            ? "live"
+            : "snapshot"
         ),
       }
     : result;

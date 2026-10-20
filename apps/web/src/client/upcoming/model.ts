@@ -22,6 +22,7 @@ export const UpcomingQuery = Schema.Struct({
 export const Upcoming = Schema.Struct({
   accepted: Schema.Option(UpcomingReceipt),
   data: RemoteEvents.schema,
+  deferredRefresh: Schema.Option(UpcomingReceipt.fields.origin),
   query: Schema.Option(UpcomingQuery),
   refreshAt: Schema.Finite,
   request: Schema.Int,
@@ -36,6 +37,7 @@ export type UpcomingQueryValue = typeof UpcomingQuery.Type;
 export const initialUpcoming = (request = 0): UpcomingValue => ({
   accepted: Option.none(),
   data: RemoteEvents.Idle(),
+  deferredRefresh: Option.none(),
   query: Option.none(),
   refreshAt: 0,
   request,

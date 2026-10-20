@@ -1,5 +1,6 @@
 import { watchActor } from "@calendar/capability/actor-watch";
 import {
+  AgendaKey,
   AgendaSnapshot,
   DesktopPreferences,
 } from "@calendar/core/desktop-bridge";
@@ -45,7 +46,12 @@ export const promptMachine = (work: PromptWork) => {
       events: {
         Agenda: Schema.Struct({ snapshot: AgendaSnapshot }),
         Closed: Schema.Struct({}),
-        Dismiss: Schema.Struct({ eventId: Schema.String }),
+        Dismiss: Schema.Struct({ key: AgendaKey }),
+        Input: Schema.Struct({
+          now: Schema.Finite,
+          preferences: DesktopPreferences,
+          snapshot: AgendaSnapshot,
+        }),
         Settings: Schema.Struct({ preferences: DesktopPreferences }),
         Tick: Schema.Struct({ now: Schema.Finite }),
       },
@@ -65,7 +71,16 @@ export const promptMachine = (work: PromptWork) => {
         target: ".idle",
       }),
       Dismiss: ({ context, event }) => ({
-        context: dismissPrompt(context, event.eventId),
+        context: dismissPrompt(context, event.key),
+        reenter: true,
+        target: ".evaluating",
+      }),
+      Input: ({ context, event }) => ({
+        context: reconcilePrompts(context, {
+          now: event.now,
+          preferences: event.preferences,
+          snapshot: event.snapshot,
+        }),
         reenter: true,
         target: ".evaluating",
       }),

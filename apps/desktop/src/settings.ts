@@ -6,7 +6,7 @@ import type {
   DesktopPreferencesValue,
   DesktopSettingsValue,
 } from "@calendar/core/desktop-bridge";
-import { Effect, Option, Ref, Schema, Semaphore } from "effect";
+import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 
 import { DesktopError } from "./config.js";
 
@@ -241,3 +241,11 @@ export const makeNativeSettings = Effect.fn("Desktop.makeNativeSettings")(
     };
   }
 );
+
+export class NativeSettings extends Context.Service<
+  NativeSettings,
+  Effect.Success<ReturnType<typeof makeNativeSettings>>
+>()("@calendar/desktop/NativeSettings") {
+  static readonly layer = (port: NativeSettingsPort) =>
+    Layer.effect(NativeSettings, makeNativeSettings(port));
+}

@@ -1,10 +1,14 @@
 import type {
   AgendaEventValue,
+  AgendaKeyValue,
   AgendaSnapshotValue,
   DesktopPreferencesValue,
 } from "@calendar/core/desktop-bridge";
 
 const minuteMilliseconds = 60_000;
+
+export const promptIdentity = (key: AgendaKeyValue): string =>
+  JSON.stringify([key.accountId, key.calendarId, key.eventId]);
 
 export interface PromptContext {
   readonly now: number;
@@ -67,21 +71,21 @@ export const reconcilePrompts = (
   const remembered = new Map(context.remembered);
 
   const byId = new Map(
-    next.snapshot.events.map((event) => [event.key.eventId, event])
+    next.snapshot.events.map((event) => [promptIdentity(event.key), event])
   );
 
   for (const event of byId.values()) {
-    const start = remembered.get(event.key.eventId);
+    const start = remembered.get(promptIdentity(event.key));
 
     if (start !== undefined && start !== event.start) {
-      remembered.delete(event.key.eventId);
+      remembered.delete(promptIdentity(event.key));
     }
   }
 
   const pending = new Map<string, AgendaEventValue>();
 
   for (const previous of context.visible) {
-    const current = byId.get(previous.key.eventId);
+    const current = byId.get(promptIdentity(previous.key));
 
     if (
       current !== undefined &&
@@ -89,17 +93,17 @@ export const reconcilePrompts = (
       eligibleMeeting(current, next.preferences) &&
       !expired(current, next.now)
     ) {
-      pending.set(current.key.eventId, current);
+      pending.set(promptIdentity(current.key), current);
     }
   }
 
   for (const event of byId.values()) {
     if (
-      !remembered.has(event.key.eventId) &&
+      !remembered.has(promptIdentity(event.key)) &&
       eligibleMeeting(event, next.preferences) &&
       due(event, next.preferences, next.now)
     ) {
-      pending.set(event.key.eventId, event);
+      pending.set(promptIdentity(event.key), event);
     }
   }
 
@@ -110,7 +114,7 @@ export const presentedPrompts = (context: PromptContext): PromptContext => {
   const remembered = new Map(context.remembered);
 
   for (const event of context.pending) {
-    remembered.set(event.key.eventId, event.start);
+    remembered.set(promptIdentity(event.key), event.start);
   }
 
   return { ...context, remembered, visible: context.pending };
@@ -118,23 +122,25 @@ export const presentedPrompts = (context: PromptContext): PromptContext => {
 
 export const dismissPrompt = (
   context: PromptContext,
-  eventId: string
+  key: AgendaKeyValue
 ): PromptContext => {
   const remembered = new Map(context.remembered);
 
   const event = context.snapshot.events.find(
-    (candidate) => candidate.key.eventId === eventId
+    (candidate) => promptIdentity(candidate.key) === promptIdentity(key)
   );
 
   if (event !== undefined) {
-    remembered.set(eventId, event.start);
+    remembered.set(promptIdentity(key), event.start);
   }
 
   return reconcilePrompts(
     {
       ...context,
       remembered,
-      visible: context.visible.filter((card) => card.key.eventId !== eventId),
+      visible: context.visible.filter(
+        (card) => promptIdentity(card.key) !== promptIdentity(key)
+      ),
     },
     {}
   );
@@ -144,7 +150,7 @@ export const dismissAllPrompts = (context: PromptContext): PromptContext => {
   const remembered = new Map(context.remembered);
 
   for (const event of [...context.visible, ...context.pending]) {
-    remembered.set(event.key.eventId, event.start);
+    remembered.set(promptIdentity(event.key), event.start);
   }
 
   return { ...context, pending: [], remembered, visible: [] };

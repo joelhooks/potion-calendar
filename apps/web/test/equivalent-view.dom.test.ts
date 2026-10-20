@@ -178,7 +178,17 @@ it.effect(
       );
 
       const shown = visibleEvents(result.model);
-      expect(shown).toHaveLength(0);
+      expect(shown).toHaveLength(2);
+      expect(
+        shown.every((event) =>
+          event.copies.every((copy) => copy.source.accountId === "personal")
+        )
+      ).toBe(true);
+      expect(
+        documentFor((yield* render(result.model)).html).querySelectorAll(
+          ".event-chip"
+        )
+      ).toHaveLength(2);
 
       const events = copyFixtureEvents.filter(
         (event) => event.accountId === "personal"

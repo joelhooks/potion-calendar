@@ -1,0 +1,48 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+}
+body {
+  margin: 0;
+  background: light-dark(#f8fafc, #17212b);
+  color: light-dark(#17212b, #f1f5f9);
+}
+main {
+  padding: 12px;
+}
+article {
+  padding: 12px;
+  border: 1px solid light-dark(#d7dee5, #465361);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+h2 {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+p {
+  margin: 5px 0 10px;
+  opacity: 0.8;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+button {
+  font: inherit;
+  padding: 5px 10px;
+  border: 1px solid light-dark(#aab7c4, #637587);
+  border-radius: 5px;
+  background: light-dark(#fff, #263544);
+  color: inherit;
+  cursor: pointer;
+}
+button:focus-visible {
+  outline: 2px solid #5486b0;
+  outline-offset: 2px;
+}
+button:disabled {
+  opacity: 0.5;
+}

@@ -28,6 +28,9 @@ const eventAt = (eventId: string, hours: number): CalendarEventValue => ({
     ),
   },
   eventId,
+  iCalUID: `${eventId}@calendar-fixture.test`,
+  originalStartTime: undefined,
+  recurringEventId: undefined,
   start: {
     dateTime: DateTime.formatIso(
       DateTime.makeUnsafe(upcomingNow + hours * hour)

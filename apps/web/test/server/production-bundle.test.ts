@@ -71,6 +71,7 @@ it.effect(
           "calendar-development-only-signing-key"
         );
         expect(artifact.code).not.toContain("fake-google-access-");
+        expect(artifact.code).not.toContain("__calendarDesktopProof");
       }
     })
 );

@@ -185,7 +185,7 @@ it.effect(
       );
 
       const waiting = yield* Effect.forkChild(
-        keyboardStream(model).pipe(Stream.runHead)
+        keyboardStream(() => model).pipe(Stream.runHead)
       );
 
       yield* Deferred.await(ready);

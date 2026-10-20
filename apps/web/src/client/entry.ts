@@ -10,6 +10,8 @@ import {
   onUrlRequest,
   update,
 } from "./app.js";
+import type { AppModel, AppMessage } from "./app.js";
+import { desktopProofObserver } from "./desktop/proof.js";
 import {
   CalendarEditingClient,
   deletionWriterLayer,
@@ -35,9 +37,24 @@ const resources = Layer.merge(
   SearchRuntime.layer.pipe(Layer.provideMerge(CalendarSearchClient.layer))
 );
 
+interface DesktopProofOptions {
+  slow?: Runtime.SlowConfig<AppModel, AppMessage>;
+}
+
 const browserApplication = () => {
   const registry = gestureTargetRegistry();
   const prepare = gestureMountFor(registry);
+  const diagnostics: DesktopProofOptions = {};
+
+  if (
+    import.meta.hot &&
+    ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) &&
+    window.__calendarDesktopProof !== undefined
+  ) {
+    diagnostics.slow = desktopProofObserver((state) => {
+      window.__calendarDesktopProof?.(state);
+    });
+  }
 
   return Runtime.makeApplication({
     Model,
@@ -49,6 +66,7 @@ const browserApplication = () => {
       onUrlChange,
       onUrlRequest,
     },
+    ...diagnostics,
     subscriptions: Subscription.aggregate(
       subscriptions,
       gestureSubscriptions(registry)

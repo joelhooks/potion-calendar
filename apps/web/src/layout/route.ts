@@ -16,7 +16,7 @@ export const CalendarRoute = Schema.TaggedStruct("Calendar", {});
 export const SearchRoute = Schema.TaggedStruct("Search", { q: RouteText });
 
 export const SettingsRoute = Schema.TaggedStruct("Settings", {
-  page: Schema.Literals(["general", "calendars", "notifications"]),
+  page: Schema.Literals(["general", "calendars", "notifications", "menu-bar"]),
 });
 
 export const AccountSettingsRoute = Schema.TaggedStruct("Settings", {
@@ -64,6 +64,10 @@ const recognizedRoute = (
 
   if (pathname === "/settings/notifications") {
     return Option.some(SettingsRoute.make({ page: "notifications" }));
+  }
+
+  if (pathname === "/settings/menu-bar") {
+    return Option.some(SettingsRoute.make({ page: "menu-bar" }));
   }
 
   if (pathname === "/settings/calendars") {

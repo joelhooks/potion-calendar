@@ -16,10 +16,12 @@ import {
 } from "electron";
 
 import { authNavigation } from "./auth-navigation.js";
+import { desktopPermission } from "./bridge-policy.js";
 import { runBrowserAccount } from "./browser-account-machine.js";
 import { DesktopError, desktopOrigin } from "./config.js";
 import { waitForSignIn } from "./loopback.js";
 import { applicationMenu } from "./menus.js";
+import { DesktopRuntime } from "./native-runtime.js";
 import { navigation, startsSystemSignIn } from "./navigation.js";
 import { runSignIn } from "./sign-in-machine.js";
 import { startMain } from "./startup.js";
@@ -52,13 +54,6 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
   const origin = yield* desktopOrigin(app.isPackaged, originArgument);
   const partition = session.fromPartition("persist:potion-calendar");
 
-  // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Electron requires a native permission decision callback.
-  partition.setPermissionRequestHandler((_contents, _permission, callback) => {
-    // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Electron permission decisions require a synchronous callback.
-    callback(false);
-  });
-  // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Electron permission checks are synchronous native callbacks.
-  partition.setPermissionCheckHandler(() => false);
   partition.setDevicePermissionHandler(() => false);
   partition.on("will-download", (event) => {
     event.preventDefault();
@@ -80,11 +75,18 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
     screen.getAllDisplays().map((display) => display.workArea)
   );
 
+  const windowCreatedAt = performance.timeOrigin + performance.now();
+
   const window = new BrowserWindow({
     ...bounds,
     show: false,
     title: "Potion Calendar",
     webPreferences: {
+      additionalArguments: [
+        `--potion-origin=${origin}`,
+        `--potion-window-created-at=${windowCreatedAt}`,
+      ],
+      backgroundThrottling: false,
       contextIsolation: true,
       navigateOnDragDrop: false,
       nodeIntegration: false,
@@ -95,6 +97,35 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
       webviewTag: false,
     },
   });
+
+  // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Electron requires a synchronous decision for this window's trusted main frame.
+  partition.setPermissionRequestHandler(
+    (contents, permission, callback, details) => {
+      // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Only notifications from the trusted calendar frame are allowed.
+      callback(
+        !window.isDestroyed() &&
+          contents === window.webContents &&
+          desktopPermission(
+            permission,
+            origin,
+            details.requestingUrl,
+            details.isMainFrame
+          )
+      );
+    }
+  );
+  // oxlint-disable-next-line promise/prefer-await-to-callbacks -- The check mirrors the notification-only request policy.
+  partition.setPermissionCheckHandler(
+    (contents, permission, _requestingOrigin, details) =>
+      !window.isDestroyed() &&
+      contents === window.webContents &&
+      desktopPermission(
+        permission,
+        origin,
+        details.requestingUrl ?? "",
+        details.isMainFrame
+      )
+  );
 
   const focus = () => {
     if (window.isMinimized()) {
@@ -394,8 +425,14 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
     );
   });
   Menu.setApplicationMenu(applicationMenu(startSignIn));
-  yield* loadWindow(window, origin);
-});
+  yield* Effect.gen(function* nativeApplication() {
+    const native = yield* DesktopRuntime;
+    yield* Effect.raceFirst(
+      loadWindow(window, origin).pipe(Effect.andThen(native.done)),
+      native.done
+    );
+  }).pipe(Effect.provide(DesktopRuntime.layer(window, origin, focus)));
+}, Effect.scoped);
 
 if (app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => {

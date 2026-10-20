@@ -1,9 +1,15 @@
+import { AgendaSnapshot } from "@calendar/core/desktop-bridge";
 import * as BrowserStream from "@effect/platform-browser/BrowserStream";
 import { Clock, Effect, Option, Predicate, Schema, Stream } from "effect";
 import { Subscription } from "foldkit";
 
 import { Model } from "./app.js";
 import type { AppModel } from "./app.js";
+import {
+  desktopActionStream,
+  desktopAgendaStream,
+  desktopDependencies,
+} from "./desktop/subscription.js";
 import { EditingRuntime } from "./editing/runtime.js";
 import { keyboardStream } from "./keyboard/subscription.js";
 import { liveSocketStream } from "./live/socket.js";
@@ -28,6 +34,15 @@ export const subscriptions = Subscription.make<
         Stream.map(() => Message.CalendarChanged())
       )
     )
+  ),
+  desktopActions: Subscription.persistentEntry(desktopActionStream()),
+  desktopAgenda: entry(
+    { active: Schema.Boolean, snapshot: AgendaSnapshot },
+    {
+      dependenciesToStream: ({ active, snapshot }) =>
+        desktopAgendaStream(active, snapshot),
+      modelToDependencies: desktopDependencies,
+    }
   ),
   editing: entry(
     { person: Schema.Option(Schema.String) },
@@ -54,7 +69,9 @@ export const subscriptions = Subscription.make<
   keyboard: entry(
     { model: Model },
     {
-      dependenciesToStream: ({ model }) => keyboardStream(model),
+      dependenciesToStream: (_dependencies, readDependencies) =>
+        keyboardStream(() => readDependencies().model),
+      keepAliveEquivalence: () => true,
       modelToDependencies: (model) => ({ model }),
     }
   ),

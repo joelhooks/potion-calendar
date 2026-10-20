@@ -51,6 +51,14 @@ it("settings aliases and account path encoding use the agreed URLs", () => {
     "/settings/notifications"
   );
   expect(isDocumentRoute("/settings/notifications")).toBe(true);
+  expect(parseRoute("/settings/menu-bar")).toEqual(
+    SettingsRoute.make({ page: "menu-bar" })
+  );
+  expect(printRoute(SettingsRoute.make({ page: "menu-bar" }))).toBe(
+    "/settings/menu-bar"
+  );
+  expect(isDocumentRoute("/settings/menu-bar")).toBe(true);
+  expect(isDocumentRoute("/settings/desktop")).toBe(false);
   const account = "work/📅?a=b&c#fragment";
   expect(printRoute(AccountSettingsRoute.make({ accountId: account }))).toBe(
     `/settings/calendar/${encodeURIComponent(account)}`

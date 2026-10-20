@@ -14,6 +14,8 @@ import {
 import { TimeZoneAction } from "../client/time-zones/model.js";
 import { viewLabel } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
+import { desktopSettingsView } from "./desktop-settings-actions.js";
+import { desktopGeneralRows } from "./desktop-settings.js";
 
 const choice = <A extends string | number>(
   h: HtmlBuilder<AppMessage>,
@@ -86,6 +88,7 @@ export const settingsGeneral = (
 
   return [
     h.h1([], ["General"]),
+    ...desktopSettingsView(model.desktop, h, desktopGeneralRows),
     h.section(
       [h.Class("settings-section")],
       [

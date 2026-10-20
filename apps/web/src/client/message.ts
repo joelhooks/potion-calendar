@@ -13,6 +13,7 @@ import { NavigationState, maximumDisplayedDays } from "../layout/navigation.js";
 import { Route } from "../layout/route.js";
 import { ReadFailure } from "./calendar-state.js";
 import { ConferencingChange } from "./conferencing/model.js";
+import { DesktopNotice, DesktopRequest } from "./desktop/model.js";
 import { EditorAction } from "./editing/editor-action.js";
 import { GestureResult } from "./editing/gesture-model.js";
 import { EditingNotice } from "./editing/runtime.js";
@@ -125,6 +126,7 @@ export const Message = defineMessageUnion({
     personId: Schema.optionalKey(Schema.String),
     result: ListCalendarsOutput,
   },
+  ReceivedDesktop: { notice: DesktopNotice },
   ReceivedEditing: { notice: EditingNotice, personId: Schema.String },
   ReceivedEvents: {
     accountId: Schema.String,
@@ -152,6 +154,7 @@ export const Message = defineMessageUnion({
     outcome: PermissionOutcome,
     personId: Schema.String,
   },
+  RequestedDesktop: { request: DesktopRequest },
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },
   RequestedRoute: { replace: Schema.Boolean, route: Route },
   RequestedRouteBack: {},

@@ -8,6 +8,7 @@ import { Arbitrary, Deferred, Effect, Ref, Schema } from "effect";
 import { DesktopError } from "../src/config.js";
 import type { promptMachine } from "../src/prompt-machine.js";
 import { startPrompt } from "../src/prompt-machine.js";
+import { promptIdentity } from "../src/prompt-model.js";
 
 const minute = 60_000;
 
@@ -150,7 +151,7 @@ it.effect("does not repeat a dismissed id until its saved start changes", () =>
     const first = yield* settled(actor);
     expect(first.context.visible).toHaveLength(1);
 
-    yield* send(actor, { eventId: meeting.key.eventId, type: "Dismiss" });
+    yield* send(actor, { key: meeting.key, type: "Dismiss" });
     yield* settled(
       actor,
       (snapshot) =>
@@ -246,7 +247,9 @@ it.effect("a failed presentation is not remembered as shown", () =>
     });
 
     const failed = yield* settled(actor);
-    expect(failed.context.remembered.has(meeting.key.eventId)).toBe(false);
+    expect(failed.context.remembered.has(promptIdentity(meeting.key))).toBe(
+      false
+    );
     expect(failed.context.visible).toEqual([]);
 
     yield* Ref.set(port.fail, false);
@@ -295,6 +298,8 @@ it.effect(
       );
 
       expect(snapshot.context.visible).toEqual([]);
-      expect(snapshot.context.remembered.has(meeting.key.eventId)).toBe(false);
+      expect(snapshot.context.remembered.has(promptIdentity(meeting.key))).toBe(
+        false
+      );
     })
 );

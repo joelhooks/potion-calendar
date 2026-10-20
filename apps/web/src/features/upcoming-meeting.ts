@@ -31,9 +31,7 @@ export const upcomingMeetingPanel = (
     onFailure: (error) => [h.p([h.Role("alert")], [error.message])],
     onIdle: () => [h.p([h.Role("status")], ["Loading upcoming meetings…"])],
     onLoading: () => [h.p([h.Role("status")], ["Loading upcoming meetings…"])],
-    onRefreshing: () => [
-      h.p([h.Role("status")], ["Updating upcoming meetings…"]),
-    ],
+    onRefreshing: () => [],
     onStale: ({ error }) => [h.p([h.Role("alert")], [error.message])],
     onSuccess: () => [],
   });
@@ -49,7 +47,7 @@ export const upcomingMeetingPanel = (
         [
           h.h2([], ["Upcoming meeting"]),
           ...notices,
-          ...(AsyncData.isSuccess(read)
+          ...(AsyncData.isSuccess(read) || AsyncData.isRefreshing(read)
             ? [h.p([h.Role("status")], ["No upcoming meeting"])]
             : []),
         ]

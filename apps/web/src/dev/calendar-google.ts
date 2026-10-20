@@ -170,7 +170,7 @@ const visibleEvents = (
       return false;
     }
 
-    if (singleEvents && event.recurrence !== undefined) {
+    if (singleEvents && (event.recurrence?.length ?? 0) > 0) {
       return false;
     }
 

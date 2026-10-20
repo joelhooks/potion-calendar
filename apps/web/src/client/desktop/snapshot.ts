@@ -1,15 +1,19 @@
+import { conferenceLink } from "@calendar/calendar/conferencing";
 import type {
   CalendarEventValue,
   EventTimeValue,
 } from "@calendar/calendar/contracts";
+import { ConferenceUrl } from "@calendar/core/desktop-bridge";
 import type {
   AgendaEventValue,
   AgendaSnapshotValue,
   DesktopPreferencesValue,
 } from "@calendar/core/desktop-bridge";
-import { DateTime, Option } from "effect";
+import { DateTime, Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
+import { mergeEquivalentEvents } from "../../layout/equivalent-events.js";
+import { displayEvent } from "../../layout/presentation.js";
 import type { AppModel } from "../app.js";
 import { calendarKey } from "../calendar-state.js";
 import { upcomingSelection } from "../upcoming/update.js";
@@ -67,16 +71,13 @@ const eventTimes = (
     : Option.none();
 };
 
-const conferenceUrl = (event: CalendarEventValue): string | null => {
-  const url = URL.parse(event.conferenceUrl ?? "");
-
-  return url !== null &&
-    url.protocol === "https:" &&
-    url.username === "" &&
-    url.password === ""
-    ? url.href
-    : null;
-};
+const conferenceUrl = (event: CalendarEventValue): string | null =>
+  Option.getOrNull(
+    Schema.decodeOption(ConferenceUrl)(
+      conferenceLink(event.conferenceUrl, event.location, event.description) ??
+        ""
+    )
+  );
 
 const eventResponse = (
   event: CalendarEventValue
@@ -163,37 +164,75 @@ export const agendaSnapshot = (
 
   const until = model.calendar.now + agendaHorizonMilliseconds(preferences);
   const seen = new Set<string>();
-  const events: AgendaEventValue[] = [];
 
-  for (const event of rows) {
+  const displayed = rows.flatMap((event) => {
     const ref = calendarKey(event.accountId, event.calendarId);
 
-    if (!selected.has(ref)) {
-      continue;
-    }
+    const identity = JSON.stringify([
+      event.accountId,
+      event.calendarId,
+      event.eventId,
+    ]);
 
-    const projected = projectSavedEvent(
-      event,
-      model.calendar.zone,
-      calendars.get(ref)?.backgroundColor ?? "#64748b"
-    );
+    const calendar = calendars.get(ref);
 
     if (
-      Option.isNone(projected) ||
-      !includedInPublication(
+      !selected.has(ref) ||
+      seen.has(identity) ||
+      calendar === undefined ||
+      calendar.accessRole === "freeBusyReader" ||
+      event.status === "cancelled" ||
+      eventResponse(event) === "declined"
+    ) {
+      return [];
+    }
+
+    const item = displayEvent(
+      event,
+      calendar,
+      model.calendar.zone,
+      Option.none()
+    );
+
+    if (item === undefined) {
+      return [];
+    }
+
+    seen.add(identity);
+
+    return [item];
+  });
+
+  const session = Option.getOrUndefined(AsyncData.getData(model.session));
+  const accounts = session?.accounts ?? [];
+
+  const primary =
+    accounts.find((account) => account.email === session?.user.email)?.id ??
+    accounts[0]?.id;
+
+  const merged = mergeEquivalentEvents(
+    displayed,
+    accounts.map((account) => account.id),
+    primary
+  );
+
+  const events = merged.flatMap((item) => {
+    const projected = projectSavedEvent(
+      item.source,
+      model.calendar.zone,
+      item.calendar.backgroundColor ?? "#64748b"
+    );
+
+    return Option.isSome(projected) &&
+      includedInPublication(
         projected.value,
         preferences,
         model.calendar.now,
         until
-      ) ||
-      seen.has(event.eventId)
-    ) {
-      continue;
-    }
-
-    seen.add(event.eventId);
-    events.push(projected.value);
-  }
+      )
+      ? [projected.value]
+      : [];
+  });
 
   return {
     events: events.toSorted(

@@ -6,8 +6,8 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "pnpm --filter @calendar/core build && tsc --noEmit -p tsconfig.build.json && node --experimental-strip-types scripts/build.ts",
-    "check": "pnpm run typecheck",
+    "build": "tsc --noEmit -p tsconfig.build.json && node --experimental-strip-types scripts/build.ts",
+    "check": "pnpm run typecheck && node --experimental-strip-types e2e/desktop.ts --resolve-only",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "dev": "pnpm build && electron .",

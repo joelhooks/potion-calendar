@@ -92,6 +92,13 @@ export const DesktopSettings = Schema.Struct({
   openAtLogin: Schema.Boolean,
   preferences: DesktopPreferences,
   revision: Schema.Int,
+  runtime: Schema.optional(
+    Schema.Struct({
+      navigationStartedAt: Schema.optional(Schema.Finite),
+      prompt: Schema.Boolean,
+      tray: Schema.Boolean,
+    })
+  ),
 });
 
 export const DesktopSettingsReply = Schema.Struct({
@@ -126,6 +133,30 @@ export const PromptAction = Schema.Struct({
   action: Schema.Literals(["join", "show", "dismiss"]),
   key: AgendaKey,
 });
+
+export const PromptView = Schema.Struct({
+  events: Schema.Array(AgendaEvent),
+  revision: Schema.Int,
+});
+
+export interface PromptBridge {
+  readonly act: (action: typeof PromptAction.Type) => void;
+  readonly getView: () => Promise<typeof PromptView.Type>;
+  readonly onView: (
+    receive: (view: typeof PromptView.Type) => void
+  ) => () => void;
+}
+
+export const promptChannels = {
+  action: "potion:prompt:action:1",
+  read: "potion:prompt:read:1",
+  view: "potion:prompt:view:1",
+};
+
+export const promptWire = {
+  action: Schema.fromJsonString(PromptAction),
+  view: Schema.fromJsonString(PromptView),
+};
 
 export const desktopWire = {
   action: Schema.fromJsonString(DesktopAction),
@@ -164,7 +195,16 @@ export type DesktopSettingsValue = typeof DesktopSettings.Type;
 
 export type DesktopActionValue = typeof DesktopAction.Type;
 
+export const DesktopStartupTiming = Schema.Struct({
+  bridgeAvailableAt: Schema.Finite,
+  coldLoadMilliseconds: Schema.Finite,
+  preloadMilliseconds: Schema.Finite,
+  preloadStartedAt: Schema.Finite,
+  windowCreatedAt: Schema.Finite,
+});
+
 export interface DesktopBridge {
+  readonly getStartupTiming?: () => typeof DesktopStartupTiming.Type;
   readonly getSettings: () => Promise<DesktopSettingsValue>;
   readonly joinMeeting: (
     request: MeetingJoinRequestValue
