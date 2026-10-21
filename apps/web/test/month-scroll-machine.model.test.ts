@@ -78,6 +78,34 @@ it.effect.prop(
     })
 );
 
+it.effect.each([
+  { offset: 299, rebasing: true, weekShift: -28 },
+  { offset: 300, rebasing: false, weekShift: 0 },
+  { offset: 900, rebasing: false, weekShift: 0 },
+  { offset: 901, rebasing: true, weekShift: 21 },
+])(
+  "month scroll boundary at $offset preserves symmetric edge clearance",
+  ({ offset, rebasing, weekShift }) =>
+    Effect.gen(function* boundaryScroll() {
+      const h = yield* harness();
+      const { firstWeek } = h.actor.getSnapshot().context.position;
+
+      const state = yield* h.send({
+        firstWeek,
+        focusedDay: Option.none(),
+        scrollTop: offset,
+        type: "SCROLL",
+      });
+
+      expect(state.matches("rebasing")).toBe(rebasing);
+      expect(state.matches("tracking")).toBe(!rebasing);
+      const pending = Option.getOrUndefined(state.context.pendingRebase);
+      expect(pending?.position.firstWeek).toBe(
+        rebasing ? firstWeek + weekShift : undefined
+      );
+    })
+);
+
 it.effect.prop(
   "scroll histories coalesce or withdraw an unrendered rebase before the matching frame commits",
   {
@@ -87,27 +115,29 @@ it.effect.prop(
   },
   ({ offsets }) =>
     Effect.gen(function* coalescedFrames() {
-      const h = yield* harness();
-      const { firstWeek } = h.actor.getSnapshot().context.position;
+      for (const history of [[300], [900], offsets]) {
+        const h = yield* harness();
+        const { firstWeek } = h.actor.getSnapshot().context.position;
 
-      for (const offset of offsets) {
-        const state = yield* h.send({
-          firstWeek,
-          focusedDay: Option.none(),
-          scrollTop: offset,
-          type: "SCROLL",
-        });
+        for (const offset of history) {
+          const state = yield* h.send({
+            firstWeek,
+            focusedDay: Option.none(),
+            scrollTop: offset,
+            type: "SCROLL",
+          });
 
-        expect(state.context.position.scrollTop).toBe(offset);
-        const row = Math.floor(offset / 100);
-        const pending = Option.getOrUndefined(state.context.pendingRebase);
+          expect(state.context.position.scrollTop).toBe(offset);
+          const row = Math.floor(offset / 100);
+          const pending = Option.getOrUndefined(state.context.pendingRebase);
 
-        if (row < 3 || row >= 9) {
-          expect(pending?.position.firstWeek).toBe(firstWeek + (row - 6) * 7);
-          expect(state.matches("rebasing")).toBe(true);
-        } else {
-          expect(pending).toBeUndefined();
-          expect(state.matches("tracking")).toBe(true);
+          if (offset < 300 || offset > 900) {
+            expect(pending?.position.firstWeek).toBe(firstWeek + (row - 6) * 7);
+            expect(state.matches("rebasing")).toBe(true);
+          } else {
+            expect(pending).toBeUndefined();
+            expect(state.matches("tracking")).toBe(true);
+          }
         }
       }
     })
