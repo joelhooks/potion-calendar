@@ -138,6 +138,10 @@ export const keyboardMessage = (
 
   const match = resolveBinding(model, input, now, scope);
 
+  if (match.action?.id === "create" && !navigator.onLine) {
+    return Option.none();
+  }
+
   if (match.action === undefined && !match.prefix) {
     return Option.none();
   }
