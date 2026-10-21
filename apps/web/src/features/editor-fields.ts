@@ -43,6 +43,7 @@ export interface InputProps<Message> {
   readonly id: string;
   readonly label: string;
   readonly onInput: (value: string) => Message;
+  readonly placeholder?: string | undefined;
   readonly required?: boolean;
   readonly type?: string;
   readonly value: string;
@@ -61,12 +62,20 @@ export const editorInput = <Message>(
         h.Name(props.id),
         h.Type(props.type ?? "text"),
         h.Value(props.value),
+        ...(props.placeholder === undefined
+          ? []
+          : [h.Placeholder(props.placeholder)]),
         h.Disabled(props.disabled),
         h.Required(props.required ?? false),
         h.OnInput(props.onInput),
       ]),
     ]
   );
+
+const textPlaceholders = new Map([
+  ["title", "Title"],
+  ["location", "Location"],
+]);
 
 const draftInput = <Message>(
   h: HtmlBuilder<Message>,
@@ -88,6 +97,7 @@ const draftInput = <Message>(
           value: type === "time" ? canonicalClockInput(value) : value,
         })
       ),
+    placeholder: textPlaceholders.get(field),
     required: type === "date" || type === "time",
     type: type === "time" ? "text" : type,
     value:
@@ -205,6 +215,7 @@ export const eventTextFields = <Message>(
             h.textarea([
               h.Id("event-description"),
               h.Name("description"),
+              h.Placeholder("Description"),
               h.Value(props.model.draft.description),
               h.Disabled(
                 EditorView.guards.Saving(props.model) ||

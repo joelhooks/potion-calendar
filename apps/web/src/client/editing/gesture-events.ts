@@ -16,9 +16,15 @@ interface Input {
   readonly refused?: (reason: MonthGestureRefused["reason"]) => void;
 }
 
-const scrollEdge = (root: HTMLElement, event: PointerEvent): void => {
+const scrollEdge = (
+  root: HTMLElement,
+  event: PointerEvent,
+  allDay: boolean
+): void => {
+  const month = root.classList.contains("month-view");
+
   const viewport = root.querySelector<HTMLElement>(
-    root.classList.contains("month-view") ? "#month-viewport" : "#time-viewport"
+    month ? "#month-viewport" : "#time-viewport"
   );
 
   if (viewport === null) {
@@ -27,12 +33,30 @@ const scrollEdge = (root: HTMLElement, event: PointerEvent): void => {
 
   const rect = viewport.getBoundingClientRect();
 
-  const vertical =
-    event.clientY < rect.top
-      ? event.clientY - rect.top
-      : Math.max(0, event.clientY - rect.bottom);
+  if (!month) {
+    const horizontal =
+      event.clientX < rect.left
+        ? event.clientX - rect.left
+        : Math.max(0, event.clientX - rect.right);
 
-  viewport.scrollTop += vertical;
+    const maximum = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+
+    if (horizontal !== 0 && maximum > 0) {
+      viewport.scrollLeft = Math.max(
+        0,
+        Math.min(maximum, viewport.scrollLeft + horizontal)
+      );
+    }
+  }
+
+  if (month || !allDay) {
+    const vertical =
+      event.clientY < rect.top
+        ? event.clientY - rect.top
+        : Math.max(0, event.clientY - rect.bottom);
+
+    viewport.scrollTop += vertical;
+  }
 };
 
 const startsOnSurface = (
@@ -161,11 +185,8 @@ export const bindGestureEvents = ({
       return;
     }
 
-    if (
-      actor.getSnapshot().matches("dragging") &&
-      (!start.allDay || root.classList.contains("month-view"))
-    ) {
-      scrollEdge(root, event);
+    if (actor.getSnapshot().matches("dragging")) {
+      scrollEdge(root, event, start.allDay);
     }
 
     const point = pointerPoint(root, event, scale, start.allDay);
