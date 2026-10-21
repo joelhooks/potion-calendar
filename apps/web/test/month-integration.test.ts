@@ -216,7 +216,7 @@ it.effect.prop(
         calendar: {
           ...base.calendar,
           navigation: { ...base.calendar.navigation, mode: "month" as const },
-          selected: Option.some(selected.key),
+          selected: [selected.key],
         },
         month: {
           ...base.month,

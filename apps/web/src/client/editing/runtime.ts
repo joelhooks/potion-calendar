@@ -13,6 +13,10 @@ import {
 } from "effect";
 import type { Scope } from "effect";
 
+import { BulkPlan } from "../../layout/bulk-plans.js";
+import { SelectionSet } from "../../layout/selection-set.js";
+import { bulkMachine } from "../bulk/machine.js";
+import { BulkView } from "../bulk/model.js";
 import { CalendarEditingClient } from "./calendar-client.js";
 import { DeletionWriter } from "./delete-actor.js";
 import {
@@ -33,6 +37,8 @@ import { RsvpView, projectRsvp, rsvpMachine } from "./rsvp-machine.js";
 
 export const EditingCommand = Schema.TaggedUnion({
   Action: { action: EditorAction },
+  Bulk: { plan: BulkPlan, selection: SelectionSet },
+  ClearBulk: {},
   Leave: {},
   Open: { request: EditorRequest },
   Rsvp: {
@@ -43,6 +49,7 @@ export const EditingCommand = Schema.TaggedUnion({
 });
 
 export const EditingNotice = Schema.TaggedUnion({
+  Bulk: { view: BulkView },
   Delete: { notice: DeleteNotice },
   Editor: {
     error: Schema.Option(Schema.String),
@@ -65,6 +72,13 @@ const editorActor = Effect.gen(function* editorActor() {
   const actor = yield* createEffectActor(eventEditorMachine);
 
   yield* watchActor("calendar.editor", actor);
+
+  return actor;
+});
+
+const bulkActor = Effect.gen(function* bulkActor() {
+  const actor = yield* createEffectActor(bulkMachine);
+  yield* watchActor("calendar.bulk", actor);
 
   return actor;
 });
@@ -117,6 +131,12 @@ export class EditingRuntime extends Context.Service<
             Effect.provideService(DeletionSession, deletion)
           );
 
+          const bulk = yield* bulkActor.pipe(
+            Effect.provideService(CalendarEditingClient, client),
+            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(DeletionSession, deletion)
+          );
+
           const rsvp = yield* responseActor.pipe(
             Effect.provideService(CalendarEditingClient, client)
           );
@@ -139,6 +159,14 @@ export class EditingRuntime extends Context.Service<
 
                   return send(editor, { action, type: "ACTION" });
                 },
+                Bulk: ({ plan, selection }) =>
+                  crypto.randomUUIDv4.pipe(
+                    Effect.orDie,
+                    Effect.flatMap((id) =>
+                      send(bulk, { id, plan, selection, type: "RUN" })
+                    )
+                  ),
+                ClearBulk: () => send(bulk, { type: "CLEAR" }),
                 Leave: () =>
                   deletion.dispatch(DeleteCommand.cases.Leaving.make({})),
                 Open: ({ request }) => send(editor, { request, type: "OPEN" }),
@@ -202,7 +230,22 @@ export class EditingRuntime extends Context.Service<
             )
           );
 
-          return Stream.merge(editorAndDeletes, responses);
+          const bulkNotices = snapshots(bulk).pipe(
+            Stream.mapEffect((snapshot) =>
+              snapshot.status === "error"
+                ? Effect.die(snapshot.error)
+                : Effect.succeed(
+                    EditingNotice.cases.Bulk.make({
+                      view: snapshot.context.view,
+                    })
+                  )
+            )
+          );
+
+          return Stream.merge(
+            Stream.merge(editorAndDeletes, responses),
+            bulkNotices
+          );
         }),
         dispatch: Effect.fn("EditingRuntime.dispatch")(function* dispatch(
           personId: string,

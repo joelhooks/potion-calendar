@@ -128,11 +128,9 @@ export const retainedMonthSources = (
     return incoming;
   }
 
-  const selected = Option.getOrUndefined(model.calendar.selected);
-
   const selectionKeys = new Set(
     visibleEvents(model)
-      .filter((item) => item.key === selected)
+      .filter((item) => model.calendar.selected.includes(item.key))
       .flatMap((item) => item.copies.map((copy) => eventKey(copy.source)))
   );
 

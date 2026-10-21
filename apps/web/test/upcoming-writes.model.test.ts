@@ -24,6 +24,7 @@ import {
 import { EditingNotice } from "../src/client/editing/runtime.js";
 import { normalizePreferences } from "../src/client/settings/model.js";
 import { createDraft } from "../src/layout/editor-draft.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import {
   upcomingCalendars,
   upcomingFixture,
@@ -68,7 +69,7 @@ const writeFixture = Effect.fn("writeFixture")(function* writeFixture(
         scope: "single",
         sendUpdates: "none",
       },
-      selection: base.calendar.selected,
+      selection: primarySelection(base.calendar.selected),
       title: event.title ?? "Event",
     });
 
@@ -167,7 +168,7 @@ const writeFixture = Effect.fn("writeFixture")(function* writeFixture(
     navigation: base.calendar.navigation,
     operation: "save",
     original: kind === "create" ? Option.none() : Option.some(event),
-    selection: base.calendar.selected,
+    selection: primarySelection(base.calendar.selected),
   });
 
   const plan = yield* prepareEditor(session);

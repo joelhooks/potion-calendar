@@ -2,6 +2,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
+import { monthHostKey } from "../client/month/host.js";
 import { PrepareMonthViewport } from "../client/month/viewport.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { monthWeekLayout } from "../layout/month-week.js";
@@ -12,6 +13,7 @@ import { dayInZone } from "../layout/navigation.js";
 import { dayLabel, visibleEvents } from "../layout/presentation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { chip } from "./calendar.js";
+import { selectionSurface } from "./selection-surface.js";
 
 export const monthGrid = (
   model: AppModel,
@@ -52,191 +54,197 @@ export const monthGrid = (
   return h.section(
     [
       h.Class("calendar-view month-view"),
+      h.DataAttribute(
+        "selection-count",
+        String(model.calendar.selected.length)
+      ),
       h.AriaLabel("Month grid"),
       h.OnMount(prepare()),
     ],
     [
-      h.div(
-        [
-          h.Class("month-weekdays"),
-          h.Style(
-            frame === undefined
-              ? { "grid-template-columns": template }
-              : {
-                  "grid-template-columns": template,
-                  "margin-right": `${model.calendar.scrollbarGutter}px`,
-                }
-          ),
-        ],
-        [
-          ...(model.settings.showWeekNumbers
-            ? [h.span([h.AriaHidden(true)])]
-            : []),
-          ...(weeks[0]?.days ?? []).map(({ day }) =>
-            h.div([], [dayLabel(day, { weekday: "short" })])
-          ),
-        ]
-      ),
-      scroll(
+      selectionSurface(model, h, monthHostKey(model), [
         h.div(
           [
-            h.Class("month-cells"),
-            ...(frame === undefined
-              ? []
-              : [
-                  h.Style({
-                    flex: "none",
-                    "grid-template-rows": `repeat(${monthWindowWeeks}, ${geometry.rowHeight}px)`,
-                    height: `${monthWindowWeeks * geometry.rowHeight}px`,
-                    position: "relative",
-                  }),
-                ]),
+            h.Class("month-weekdays"),
+            h.Style(
+              frame === undefined
+                ? { "grid-template-columns": template }
+                : {
+                    "grid-template-columns": template,
+                    "margin-right": `${model.calendar.scrollbarGutter}px`,
+                  }
+            ),
           ],
-          weeks.map((week) => {
-            const layout = monthWeekLayout(
-              events,
-              week.days,
-              geometry.chipRows
-            );
+          [
+            ...(model.settings.showWeekNumbers
+              ? [h.span([h.AriaHidden(true)])]
+              : []),
+            ...(weeks[0]?.days ?? []).map(({ day }) =>
+              h.div([], [dayLabel(day, { weekday: "short" })])
+            ),
+          ]
+        ),
+        scroll(
+          h.div(
+            [
+              h.Class("month-cells"),
+              ...(frame === undefined
+                ? []
+                : [
+                    h.Style({
+                      flex: "none",
+                      "grid-template-rows": `repeat(${monthWindowWeeks}, ${geometry.rowHeight}px)`,
+                      height: `${monthWindowWeeks * geometry.rowHeight}px`,
+                      position: "relative",
+                    }),
+                  ]),
+            ],
+            weeks.map((week) => {
+              const layout = monthWeekLayout(
+                events,
+                week.days,
+                geometry.chipRows
+              );
 
-            return h.div(
-              [
-                h.Class(`month-week${week.parked ? " is-parked" : ""}`),
-                ...(week.parked
-                  ? [h.DataAttribute("month-parked", "true")]
-                  : []),
-                h.Key(String(week.start)),
-                h.DataAttribute("week-start", String(week.start)),
-                h.Style({ "grid-template-columns": template }),
-              ],
-              [
-                ...(model.settings.showWeekNumbers
-                  ? [
-                      h.div(
-                        [
-                          h.Class("month-week-number"),
-                          h.Title(`ISO week ${week.number}`),
-                        ],
-                        [`W${week.number}`]
-                      ),
-                    ]
-                  : []),
-                ...layout.cells.map(
-                  ({ day, enabled, displayed, overflow, startRow }) => {
-                    if (!enabled) {
-                      return h.div([
-                        h.Class("month-cell month-cell-unavailable"),
-                        h.Key(String(day)),
-                        h.AriaHidden(true),
-                      ]);
-                    }
-
-                    return h.div(
-                      [
-                        h.Class(
-                          `month-cell${day === today ? " is-today" : ""}`
-                        ),
-                        h.Key(String(day)),
-                        h.DataAttribute("day", String(day)),
-                      ],
-                      [
-                        h.button(
-                          [
-                            h.Class("month-date"),
-                            h.OnClick(Message.ClickedDate({ day })),
-                            h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
-                          ],
-                          [dayLabel(day, { day: "numeric" })]
-                        ),
+              return h.div(
+                [
+                  h.Class(`month-week${week.parked ? " is-parked" : ""}`),
+                  ...(week.parked
+                    ? [h.DataAttribute("month-parked", "true")]
+                    : []),
+                  h.Key(String(week.start)),
+                  h.DataAttribute("week-start", String(week.start)),
+                  h.Style({ "grid-template-columns": template }),
+                ],
+                [
+                  ...(model.settings.showWeekNumbers
+                    ? [
                         h.div(
                           [
-                            h.Class("month-timed-stack"),
-                            h.Style({
-                              "padding-top": `${startRow * monthMetrics.chipPitch}px`,
-                            }),
+                            h.Class("month-week-number"),
+                            h.Title(`ISO week ${week.number}`),
                           ],
-                          displayed.map((item) =>
-                            h.div(
-                              [
-                                h.Class("month-item month-item-timed"),
-                                h.Key(item.key),
-                              ],
-                              [
-                                chip(
-                                  h,
-                                  item,
-                                  {
-                                    height: `${monthMetrics.chipHeight}px`,
-                                    position: "relative",
-                                  },
-                                  { ...appearance, timeDisplay: "start" }
+                          [`W${week.number}`]
+                        ),
+                      ]
+                    : []),
+                  ...layout.cells.map(
+                    ({ day, enabled, displayed, overflow, startRow }) => {
+                      if (!enabled) {
+                        return h.div([
+                          h.Class("month-cell month-cell-unavailable"),
+                          h.Key(String(day)),
+                          h.AriaHidden(true),
+                        ]);
+                      }
+
+                      return h.div(
+                        [
+                          h.Class(
+                            `month-cell${day === today ? " is-today" : ""}`
+                          ),
+                          h.Key(String(day)),
+                          h.DataAttribute("day", String(day)),
+                        ],
+                        [
+                          h.button(
+                            [
+                              h.Class("month-date"),
+                              h.OnClick(Message.ClickedDate({ day })),
+                              h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
+                            ],
+                            [dayLabel(day, { day: "numeric" })]
+                          ),
+                          h.div(
+                            [
+                              h.Class("month-timed-stack"),
+                              h.Style({
+                                "padding-top": `${startRow * monthMetrics.chipPitch}px`,
+                              }),
+                            ],
+                            displayed.map((item) =>
+                              h.div(
+                                [
+                                  h.Class("month-item month-item-timed"),
+                                  h.Key(item.key),
+                                ],
+                                [
+                                  chip(
+                                    h,
+                                    item,
+                                    {
+                                      height: `${monthMetrics.chipHeight}px`,
+                                      position: "relative",
+                                    },
+                                    { ...appearance, timeDisplay: "start" }
+                                  ),
+                                ]
+                              )
+                            )
+                          ),
+                          ...(overflow > 0 && geometry.chipRows > 0
+                            ? [
+                                h.button(
+                                  [
+                                    h.Class("overflow-count"),
+                                    h.OnClick(Message.ClickedDate({ day })),
+                                    h.Style({
+                                      top: `${monthMetrics.dateHeight + (geometry.chipRows - 1) * monthMetrics.chipPitch}px`,
+                                    }),
+                                    h.AriaLabel(
+                                      `Show ${overflow} more events on ${dayLabel(day, { dateStyle: "full" })}`
+                                    ),
+                                  ],
+                                  [`+${overflow} more`]
                                 ),
                               ]
-                            )
-                          )
-                        ),
-                        ...(overflow > 0 && geometry.chipRows > 0
-                          ? [
-                              h.button(
-                                [
-                                  h.Class("overflow-count"),
-                                  h.OnClick(Message.ClickedDate({ day })),
-                                  h.Style({
-                                    top: `${monthMetrics.dateHeight + (geometry.chipRows - 1) * monthMetrics.chipPitch}px`,
-                                  }),
-                                  h.AriaLabel(
-                                    `Show ${overflow} more events on ${dayLabel(day, { dateStyle: "full" })}`
-                                  ),
-                                ],
-                                [`+${overflow} more`]
-                              ),
-                            ]
-                          : []),
-                      ]
-                    );
-                  }
-                ),
-                h.div(
-                  [
-                    h.Class("month-span-layer"),
-                    h.Style({
-                      "grid-template-columns": `repeat(${columns}, minmax(0, 1fr))`,
-                      left: `${model.settings.showWeekNumbers ? monthMetrics.weekGutter : 0}px`,
-                    }),
-                  ],
-                  layout.bars.map((bar) =>
-                    h.div(
-                      [
-                        h.Class("month-span month-item-all-day"),
-                        h.Key(bar.item.key),
-                        h.DataAttribute("month-span", bar.item.key),
-                        h.DataAttribute("start-column", String(bar.start)),
-                        h.DataAttribute("end-column", String(bar.end)),
-                        h.DataAttribute("span-row", String(bar.row)),
-                        h.Style({
-                          "grid-column": `${bar.start + 1} / span ${bar.end - bar.start}`,
-                          "grid-row": String(bar.row + 1),
-                        }),
-                      ],
-                      [
-                        chip(
-                          h,
-                          bar.item,
-                          {
-                            height: `${monthMetrics.chipHeight}px`,
-                            width: "100%",
-                          },
-                          appearance
-                        ),
-                      ]
+                            : []),
+                        ]
+                      );
+                    }
+                  ),
+                  h.div(
+                    [
+                      h.Class("month-span-layer"),
+                      h.Style({
+                        "grid-template-columns": `repeat(${columns}, minmax(0, 1fr))`,
+                        left: `${model.settings.showWeekNumbers ? monthMetrics.weekGutter : 0}px`,
+                      }),
+                    ],
+                    layout.bars.map((bar) =>
+                      h.div(
+                        [
+                          h.Class("month-span month-item-all-day"),
+                          h.Key(bar.item.key),
+                          h.DataAttribute("month-span", bar.item.key),
+                          h.DataAttribute("start-column", String(bar.start)),
+                          h.DataAttribute("end-column", String(bar.end)),
+                          h.DataAttribute("span-row", String(bar.row)),
+                          h.Style({
+                            "grid-column": `${bar.start + 1} / span ${bar.end - bar.start}`,
+                            "grid-row": String(bar.row + 1),
+                          }),
+                        ],
+                        [
+                          chip(
+                            h,
+                            bar.item,
+                            {
+                              height: `${monthMetrics.chipHeight}px`,
+                              width: "100%",
+                            },
+                            appearance
+                          ),
+                        ]
+                      )
                     )
-                  )
-                ),
-              ]
-            );
-          })
-        )
-      ),
+                  ),
+                ]
+              );
+            })
+          )
+        ),
+      ]),
     ]
   );
 };

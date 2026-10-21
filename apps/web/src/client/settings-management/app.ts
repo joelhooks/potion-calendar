@@ -156,7 +156,7 @@ export const manageSettings = (
           AsyncData.map((inventory) => removeAccounts(inventory, [removed]))
         ),
         reads: next.calendar.reads.filter((read) => read.accountId !== removed),
-        selected: Option.none(),
+        selected: [],
       },
       session: pipe(
         next.session,

@@ -187,7 +187,7 @@ export const fixtureModel = (): AppModel => {
           },
         }),
       })),
-      selected: Option.none(),
+      selected: [],
       viewport: 844,
       viewportWidth: 1220,
       visibility: { [calendarKey("work", "hidden")]: false },
@@ -228,7 +228,7 @@ export const fixtureSelection = (): AppModel => {
         ...model,
         calendar: {
           ...model.calendar,
-          selected: Option.some(eventKey(event)),
+          selected: [eventKey(event)],
           viewportWidth: 920,
         },
       };

@@ -18,6 +18,7 @@ import { view } from "../src/features/app.js";
 import { chip as eventChip, detailPanel } from "../src/features/calendar.js";
 import { visibleEvents } from "../src/layout/presentation.js";
 import { CalendarRoute, ShortcutsRoute } from "../src/layout/route.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 
 it.effect(
@@ -148,7 +149,7 @@ it.effect(
 
       const model = {
         ...base,
-        calendar: { ...base.calendar, selected: Option.none() },
+        calendar: { ...base.calendar, selected: [] },
       };
 
       const event = visibleEvents(model).find((item) => !item.allDay);
@@ -191,7 +192,7 @@ it.effect(
             mode: "edit",
             navigation: selected.calendar.navigation,
             primaryZone: homeZone(selected),
-            selection: selected.calendar.selected,
+            selection: primarySelection(selected.calendar.selected),
           }),
         }),
         personId: Option.getOrThrow(selected.person),
@@ -216,7 +217,7 @@ it.effect(
             ...calendar,
             accessRole: "reader",
           })),
-          selected: Option.none(),
+          selected: [],
         },
       };
 
@@ -262,7 +263,7 @@ it.effect.prop(
             ...calendar,
             accessRole: role,
           })),
-          selected: selected ? base.calendar.selected : Option.none(),
+          selected: selected ? base.calendar.selected : [],
         },
       };
 

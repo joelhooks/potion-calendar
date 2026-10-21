@@ -138,7 +138,7 @@ export const monthScrollingFixture = (
             }
           : read
       ),
-      selected: parked ? Option.some(selected.key) : Option.none(),
+      selected: parked ? [selected.key] : [],
     },
   };
 

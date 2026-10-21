@@ -9,6 +9,7 @@ import { PrepareTimeGrid } from "../src/client/grid-mount.js";
 import { formatKey } from "../src/client/keyboard/hints.js";
 import { view } from "../src/features/app.js";
 import { maximumDisplayedDays } from "../src/layout/navigation.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { keyboardDensityFixture, keyboardFixture } from "./keyboard-fixture.js";
 
 const render = (model: AppModel) =>
@@ -162,7 +163,9 @@ it.effect(
         ...model,
         calendar: { ...model.calendar, reads: base.calendar.reads },
       };
-      expect(Option.isNone(model.calendar.selected)).toBe(true);
+      expect(Option.isNone(primarySelection(model.calendar.selected))).toBe(
+        true
+      );
       const rendered = yield* render(model);
 
       const gridWidth = Number(

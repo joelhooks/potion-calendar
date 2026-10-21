@@ -20,6 +20,7 @@ import { PrepareTimeGrid } from "../src/client/grid-mount.js";
 import { PrepareKeyboard } from "../src/client/keyboard/mount.js";
 import { keyboardRegistry } from "../src/client/keyboard/registry.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { PrepareSelection } from "../src/client/selection/mount.js";
 import { view } from "../src/features/app.js";
 import { zoneCatalog } from "../src/layout/time-zones-display.js";
 import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
@@ -60,6 +61,7 @@ it.effect(
         { update, view },
         Scene.given(closed),
         Scene.Mount.resolve(PrepareKeyboard, Message.KeyboardClose()),
+        Scene.Mount.resolve(PrepareSelection, Message.PreparedSelection()),
         Scene.Mount.resolve(
           PrepareTimeGrid,
           Message.MeasuredViewport({ gutter: 0, height: 844, width: 1220 })
@@ -101,6 +103,7 @@ it.effect(
         Scene.Command.resolve(DispatchEditing, Message.DispatchedEditing()),
         Scene.Subscription.emit(notice("America/Los_Angeles")),
         Scene.Mount.expectEnded(PrepareGestures),
+        Scene.Mount.expectEnded(PrepareSelection),
         Scene.expect(Scene.selector("#event-editor-dialog")).toHaveAttr(
           "data-initial-focus",
           "event-timeZone"

@@ -105,9 +105,9 @@ it.effect(
       expect(visibleDays(selected.model.calendar.navigation)).toContain(
         dayFromIso("2026-10-29")
       );
-      expect(selected.model.calendar.selected).toEqual(
-        Option.some(notification.candidate.key)
-      );
+      expect(selected.model.calendar.selected).toEqual([
+        notification.candidate.key,
+      ]);
       expect(selected.model.editing.view).toBe(editor);
       expect(
         selected.commands?.some((command) => command.name === "ReadEvents")
@@ -171,9 +171,7 @@ it.effect(
         })
       );
 
-      expect(result.model.calendar.selected).toEqual(
-        Option.some(eventKey(futureEvent))
-      );
+      expect(result.model.calendar.selected).toEqual([eventKey(futureEvent)]);
     })
 );
 
@@ -204,7 +202,7 @@ it.effect(
       );
 
       expect(stale.model).toBe(signedOut.model);
-      expect(stale.model.calendar.selected).toEqual(Option.none());
+      expect(stale.model.calendar.selected).toEqual([]);
     })
 );
 

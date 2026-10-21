@@ -15,6 +15,7 @@ import {
   searchProblemLines,
   searchSelectionKey,
 } from "../layout/search-results.js";
+import { primarySelection } from "../layout/selection-set.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 
 const searchRow = (
@@ -32,7 +33,7 @@ const searchRow = (
     : `${clockLabel(minuteInZone(result.startMillis, model.calendar.zone), resolvedTimeFormat(model))} – ${clockLabel(minuteInZone(result.endMillis, model.calendar.zone), resolvedTimeFormat(model))}`;
 
   const selected = Option.contains(
-    model.calendar.selected,
+    primarySelection(model.calendar.selected),
     searchSelectionKey(result, model.calendar.mergeDuplicates)
   );
 

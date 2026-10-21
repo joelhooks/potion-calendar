@@ -4,7 +4,13 @@ import type { Update } from "foldkit";
 import { dayInZone, visibleDays } from "../../layout/navigation.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { CalendarRoute, ShortcutsRoute } from "../../layout/route.js";
+import {
+  primarySelection,
+  changeSelection,
+  SelectionAction,
+} from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
+import { bulkSummary } from "../bulk/selection.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
@@ -14,6 +20,7 @@ import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import type { MonthRuntime } from "../month/runtime.js";
 import type { CalendarSearchClient } from "../search/client.js";
+import { selectionRangeDays } from "../selection/range.js";
 import { FocusShortcutSearch } from "./browser.js";
 import { commandChoices, enterChoice, moveHighlight } from "./choices.js";
 import { resolveBinding } from "./input.js";
@@ -54,7 +61,7 @@ const selection = (model: AppModel, direction: -1 | 1): KeyboardResult => {
   );
 
   const index = events.findIndex((event) =>
-    Option.contains(model.calendar.selected, event.key)
+    Option.contains(primarySelection(model.calendar.selected), event.key)
   );
 
   const start = direction === 1 ? 0 : events.length - 1;
@@ -67,7 +74,7 @@ const selection = (model: AppModel, direction: -1 | 1): KeyboardResult => {
   return {
     model: {
       ...model,
-      calendar: { ...model.calendar, selected: cursor },
+      calendar: { ...model.calendar, selected: Option.toArray(cursor) },
       keyboard: { ...model.keyboard, cursor },
     },
   };
@@ -163,11 +170,106 @@ const openEvent = (model: AppModel, apply: Apply): KeyboardResult => {
     : apply(model, Message.KeyboardAction({ id: "show-context" }));
 };
 
+const SelectionKeyboardAction = Schema.Literals([
+  "undo",
+  "next-selection",
+  "previous-selection",
+  "toggle-selection",
+  "select-all",
+]);
+
+const selectionAction = (
+  model: AppModel,
+  id: typeof SelectionKeyboardAction.Type,
+  apply: Apply
+): KeyboardResult => {
+  switch (id) {
+    case "undo": {
+      if ((bulkSummary(model)?.undo.length ?? 0) > 0) {
+        return apply(model, Message.BulkControl({ control: "undo" }));
+      }
+
+      const mark = model.editing.deletes.findLast(
+        (item) => item.phase === "pending"
+      );
+
+      return mark === undefined
+        ? { model }
+        : editAction(
+            model,
+            EditorAction.cases.Undo.make({ id: mark.intent.id })
+          );
+    }
+
+    case "next-selection": {
+      return selection(model, 1);
+    }
+
+    case "previous-selection": {
+      return selection(model, -1);
+    }
+
+    case "toggle-selection": {
+      const cursor = Option.orElse(model.keyboard.cursor, () =>
+        primarySelection(model.calendar.selected)
+      );
+
+      const selected = Option.match(cursor, {
+        onNone: () => model.calendar.selected,
+        onSome: (key) =>
+          changeSelection(
+            model.calendar.selected,
+            SelectionAction.cases.Toggle.make({ key })
+          ),
+      });
+
+      return {
+        model: {
+          ...model,
+          calendar: { ...model.calendar, selected },
+          keyboard: { ...model.keyboard, cursor },
+        },
+      };
+    }
+
+    case "select-all": {
+      const days = selectionRangeDays(model);
+
+      const visible = visibleEvents(model)
+        .filter((event) =>
+          days.some((day) => event.startDay <= day && event.endDay > day)
+        )
+        .map((event) => event.key);
+
+      return {
+        model: {
+          ...model,
+          calendar: {
+            ...model.calendar,
+            selected: changeSelection(
+              model.calendar.selected,
+              SelectionAction.cases.SelectAll.make({ visible })
+            ),
+          },
+        },
+      };
+    }
+
+    default: {
+      return { model };
+    }
+  }
+};
+
 export const keyboardAction = (
   model: AppModel,
   id: string,
   apply: Apply
 ): KeyboardResult => {
+  if (Schema.is(SelectionKeyboardAction)(id)) {
+    return selectionAction(model, id, apply);
+  }
+
   if (id === "shortcuts") {
     return Predicate.isTagged(model.route, "Shortcuts")
       ? { commands: [FocusShortcutSearch()], model }
@@ -219,48 +321,6 @@ export const keyboardAction = (
 
     case "dismiss": {
       return dismiss(model, apply);
-    }
-
-    case "undo": {
-      const mark = model.editing.deletes.findLast(
-        (item) => item.phase === "pending"
-      );
-
-      return mark === undefined
-        ? { model }
-        : editAction(
-            model,
-            EditorAction.cases.Undo.make({ id: mark.intent.id })
-          );
-    }
-
-    case "next-selection": {
-      return selection(model, 1);
-    }
-
-    case "previous-selection": {
-      return selection(model, -1);
-    }
-
-    case "toggle-selection": {
-      return {
-        model: {
-          ...model,
-          calendar: {
-            ...model.calendar,
-            selected: Option.isSome(model.calendar.selected)
-              ? Option.none()
-              : model.keyboard.cursor,
-          },
-          keyboard: {
-            ...model.keyboard,
-            cursor: Option.orElse(
-              model.calendar.selected,
-              () => model.keyboard.cursor
-            ),
-          },
-        },
-      };
     }
 
     case "next": {

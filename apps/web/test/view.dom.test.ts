@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Effect, FileSystem, Option } from "effect";
+import { Effect, FileSystem } from "effect";
 import { renderToString } from "foldkit/experimental/server";
 
 import { Message, update } from "../src/client/app.js";
@@ -119,9 +119,7 @@ it.effect(
         expect(unsafe.querySelector(".description")?.textContent).toContain(
           "<img"
         );
-        expect(Option.contains(model.calendar.selected, eventKey(event))).toBe(
-          true
-        );
+        expect(model.calendar.selected.includes(eventKey(event))).toBe(true);
       }
     })
 );

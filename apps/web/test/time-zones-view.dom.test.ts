@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { DateTime, Effect, FileSystem, Option } from "effect";
+import { DateTime, Effect, FileSystem } from "effect";
 import { renderToString } from "foldkit/experimental/server";
 
 import { applyZonePreferences } from "../src/client/time-zones/update.js";
@@ -258,7 +258,7 @@ it.effect(
             name === "no-details"
               ? {
                   ...base,
-                  calendar: { ...base.calendar, selected: Option.none() },
+                  calendar: { ...base.calendar, selected: [] },
                 }
               : base;
 

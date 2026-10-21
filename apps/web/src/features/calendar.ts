@@ -31,6 +31,7 @@ import { SettingsRoute, printRoute } from "../layout/route.js";
 import { chipColors } from "../layout/settings-colors.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import type { ResolvedTimeFormat } from "../layout/time-format.js";
+import { bulkDetail } from "./bulk-actions.js";
 import { eventRsvp } from "./event-rsvp.js";
 
 const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
@@ -509,6 +510,10 @@ export const detailPanel = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>
 ): readonly Html[] => {
+  if (model.calendar.selected.length > 1) {
+    return bulkDetail(model, h);
+  }
+
   const selected = visibleEvents(model).find((item) => item.selected);
 
   if (selected === undefined) {

@@ -3,6 +3,7 @@ import { Effect, Option } from "effect";
 import { renderToString } from "foldkit/experimental/server";
 
 import { view } from "../src/features/app.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { undoFixture } from "./undo-fixture.js";
 
 const selectedBlocks = (document: Document | undefined, key: string) =>
@@ -37,7 +38,9 @@ it.effect(
       );
       expect(selectedBlocks(pending, key)).toHaveLength(0);
       expect(pending?.querySelector(".detail-panel")).toBeNull();
-      expect(Option.isNone(state.pending.calendar.selected)).toBe(true);
+      expect(
+        Option.isNone(primarySelection(state.pending.calendar.selected))
+      ).toBe(true);
       expect(pending?.querySelector(".undo-toast")?.textContent).toContain(
         state.intent.title
       );

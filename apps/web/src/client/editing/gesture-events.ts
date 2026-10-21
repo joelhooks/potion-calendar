@@ -41,6 +41,9 @@ const startsOnSurface = (
         null
     : chip.classList.contains("selected");
 
+const selectionGesture = (root: HTMLElement, event: PointerEvent): boolean =>
+  event.shiftKey || Number(root.dataset.selectionCount ?? 0) > 1;
+
 export const bindGestureEvents = ({
   actor,
   root,
@@ -50,6 +53,7 @@ export const bindGestureEvents = ({
   const down = (event: PointerEvent): void => {
     if (
       event.button !== 0 ||
+      selectionGesture(root, event) ||
       !event.isPrimary ||
       !(event.target instanceof Element)
     ) {

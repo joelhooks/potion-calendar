@@ -250,9 +250,7 @@ it.effect(
       };
       yield* fake.click(shown);
       const selected = update(model, yield* next);
-      expect(selected.model.calendar.selected).toEqual(
-        Option.some(shown.candidate.key)
-      );
+      expect(selected.model.calendar.selected).toEqual([shown.candidate.key]);
       expect(selected.model.route._tag).toBe("Calendar");
       expect(fake.focused).toEqual([upcomingPerson]);
 

@@ -10,7 +10,15 @@ import {
   visibleDays,
 } from "../../layout/navigation.js";
 import { visibleEvents } from "../../layout/presentation.js";
+import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel, AppMessage } from "../app.js";
+import { BulkView } from "../bulk/model.js";
+import {
+  bulkPlanFor,
+  bulkSummary,
+  bulkDeleteSelection,
+  finishBulkUndo,
+} from "../bulk/selection.js";
 import { eventKey } from "../calendar-state.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { defaultCreationCalendar } from "../settings/update.js";
@@ -28,6 +36,7 @@ import type { GestureResult } from "./gesture-model.js";
 import { RsvpResult } from "./rsvp-machine.js";
 import { EditingCommand, EditingNotice } from "./runtime.js";
 import type { EditingRuntime } from "./runtime.js";
+import { DeleteMark } from "./ui-model.js";
 
 type Result = Update.Return<AppModel, AppMessage, EditingRuntime>;
 
@@ -62,7 +71,7 @@ export const completeGesture = (
     navigation: model.calendar.navigation,
     primaryZone: homeZone(model),
     rangeZone: model.calendar.zone,
-    selection: model.calendar.selected,
+    selection: primarySelection(model.calendar.selected),
   };
 
   if (Option.isSome(gesture.target)) {
@@ -174,7 +183,7 @@ const openCreate = (model: AppModel): Result => {
     navigation: model.calendar.navigation,
     primaryZone: homeZone(model),
     ref: { accountId: target.accountId, calendarId: target.calendarId },
-    selection: model.calendar.selected,
+    selection: primarySelection(model.calendar.selected),
     startDate: isoFromDay(position.day),
     startTime: clock(position.minute),
   });
@@ -187,7 +196,7 @@ const openSelected = (
   mode: "edit" | "duplicate" | "delete"
 ): Result => {
   const selected = visibleEvents(model).find((item) =>
-    Option.contains(model.calendar.selected, item.key)
+    Option.contains(primarySelection(model.calendar.selected), item.key)
   );
 
   if (selected === undefined) {
@@ -204,7 +213,7 @@ const openSelected = (
         mode,
         navigation: model.calendar.navigation,
         primaryZone: homeZone(model),
-        selection: model.calendar.selected,
+        selection: primarySelection(model.calendar.selected),
       }),
     })
   );
@@ -217,7 +226,7 @@ const responseAction = (
     | typeof EditorAction.cases.RsvpNoteEdited.Type
 ): Result => {
   const selected = visibleEvents(model).find((item) =>
-    Option.contains(model.calendar.selected, item.key)
+    Option.contains(primarySelection(model.calendar.selected), item.key)
   );
 
   if (selected === undefined) {
@@ -240,8 +249,34 @@ const responseAction = (
 export const editAction = (
   model: AppModel,
   action: typeof EditorAction.Type
-): Result =>
-  EditorAction.matchOrElse(
+): Result => {
+  if (
+    BulkView.guards.Running(model.editing.bulk) ||
+    BulkView.guards.Undoing(model.editing.bulk)
+  ) {
+    return { model };
+  }
+
+  if (
+    model.calendar.selected.length > 1 &&
+    (EditorAction.guards.DeleteSelected(action) ||
+      EditorAction.guards.DuplicateSelected(action))
+  ) {
+    const plan = bulkPlanFor(
+      model,
+      EditorAction.guards.DeleteSelected(action) ? "delete" : "duplicate"
+    );
+
+    return dispatch(
+      model,
+      EditingCommand.cases.Bulk.make({
+        plan,
+        selection: model.calendar.selected,
+      })
+    );
+  }
+
+  return EditorAction.matchOrElse(
     action,
     {
       DeleteSelected: () => openSelected(model, "delete"),
@@ -264,6 +299,56 @@ export const editAction = (
     },
     () => dispatch(model, EditingCommand.cases.Action.make({ action }))
   );
+};
+
+export const bulkControl = (
+  model: AppModel,
+  control: "undo" | "dismiss"
+): Result => {
+  const summary = bulkSummary(model);
+
+  if (
+    summary === undefined ||
+    Option.isNone(model.person) ||
+    BulkView.guards.Undoing(model.editing.bulk)
+  ) {
+    return { model };
+  }
+
+  const personId = model.person.value;
+
+  const commands = summary.undo.map((request) =>
+    DispatchEditing({
+      command: EditingCommand.cases.Action.make({
+        action:
+          control === "undo"
+            ? EditorAction.cases.Undo.make({ id: request.id })
+            : EditorAction.cases.DismissUndo.make({ id: request.id }),
+      }),
+      personId,
+    })
+  );
+
+  const execution = BulkView.guards.Settled(model.editing.bulk)
+    ? model.editing.bulk.execution
+    : undefined;
+
+  const bulk =
+    control === "undo" && execution !== undefined && commands.length > 0
+      ? BulkView.cases.Undoing.make({ execution })
+      : BulkView.cases.Idle.make({});
+
+  if (control === "dismiss") {
+    commands.push(
+      DispatchEditing({
+        command: EditingCommand.cases.ClearBulk.make({}),
+        personId,
+      })
+    );
+  }
+
+  return { commands, model: { ...model, editing: { ...model.editing, bulk } } };
+};
 
 export const leaveEditing = (model: AppModel): Result =>
   dispatch(model, EditingCommand.cases.Leave.make({}));
@@ -287,6 +372,7 @@ const deleteSettled = (
         ...model,
         editing: {
           ...model.editing,
+          bulk: finishBulkUndo(model, intent.id),
           deletes: model.editing.deletes.map((mark) =>
             mark.intent.id === intent.id
               ? {
@@ -305,6 +391,7 @@ const deleteSettled = (
         ...model,
         editing: {
           ...model.editing,
+          bulk: finishBulkUndo(model, intent.id),
           deletes: model.editing.deletes.filter(
             (mark) => mark.intent.id !== intent.id
           ),
@@ -319,10 +406,14 @@ const deleteSettled = (
         calendar: {
           ...model.calendar,
           navigation: intent.navigation,
-          selected: intent.selection,
+          selected: Option.getOrElse(
+            bulkDeleteSelection(model, intent.id),
+            () => Option.toArray(intent.selection)
+          ),
         },
         editing: {
           ...model.editing,
+          bulk: finishBulkUndo(model, intent.id),
           deletes: model.editing.deletes.filter(
             (mark) => mark.intent.id !== intent.id
           ),
@@ -438,6 +529,66 @@ export const receiveEditing = (
   }
 
   return EditingNotice.match<NoticeResult>(notice, {
+    Bulk: ({ view }) => {
+      const fresh =
+        BulkView.guards.Running(view) &&
+        (!BulkView.guards.Running(model.editing.bulk) ||
+          model.editing.bulk.id !== view.id);
+
+      const next = {
+        ...model,
+        editing: {
+          ...model.editing,
+          bulk: view,
+          bulkOutcomes: fresh ? {} : model.editing.bulkOutcomes,
+        },
+      };
+
+      if (
+        !BulkView.guards.Settled(view) ||
+        Option.contains(model.editing.handledBulk, view.execution.id)
+      ) {
+        return { model: next, reload: false };
+      }
+
+      const knownIds = new Set(
+        next.editing.deletes.map((mark) => mark.intent.id)
+      );
+
+      const staged = view.execution.mutations.flatMap((mutation) => {
+        if (
+          !EditorMutation.guards.DeletedStaged(mutation) ||
+          next.editing.bulkOutcomes[mutation.id] !== undefined ||
+          knownIds.has(mutation.id)
+        ) {
+          return [];
+        }
+
+        knownIds.add(mutation.id);
+
+        return [
+          DeleteMark.make({
+            afterRead: Option.none(),
+            intent: mutation.intent,
+            phase: "pending",
+          }),
+        ];
+      });
+
+      const accepted = {
+        ...next,
+        editing: {
+          ...next.editing,
+          deletes: [...next.editing.deletes, ...staged],
+          handledBulk: Option.some(view.execution.id),
+        },
+      };
+
+      return {
+        model: accepted,
+        reload: view.execution.mutations.some(EditorMutation.guards.Saved),
+      };
+    },
     Delete: ({ notice: deletion }) =>
       DeleteNotice.match<NoticeResult>(deletion, {
         Changed: ({ intent, phase }) => ({
@@ -447,8 +598,10 @@ export const receiveEditing = (
               ...model.calendar,
               selected:
                 Option.isSome(intent.selection) &&
-                Option.contains(model.calendar.selected, intent.selection.value)
-                  ? Option.none()
+                model.calendar.selected.includes(intent.selection.value)
+                  ? model.calendar.selected.filter(
+                      (key) => !Option.contains(intent.selection, key)
+                    )
                   : model.calendar.selected,
             },
             editing: {
@@ -463,7 +616,23 @@ export const receiveEditing = (
           },
           reload: false,
         }),
-        Settled: ({ intent, outcome }) => deleteSettled(model, intent, outcome),
+        Settled: ({ intent, outcome }) =>
+          deleteSettled(
+            BulkView.guards.Idle(model.editing.bulk)
+              ? model
+              : {
+                  ...model,
+                  editing: {
+                    ...model.editing,
+                    bulkOutcomes: {
+                      ...model.editing.bulkOutcomes,
+                      [intent.id]: outcome,
+                    },
+                  },
+                },
+            intent,
+            outcome
+          ),
       }),
     Editor: (update) => {
       let editing = {
@@ -526,7 +695,7 @@ export const receiveEditing = (
           return {
             model: {
               ...next,
-              calendar: { ...next.calendar, selected: Option.none() },
+              calendar: { ...next.calendar, selected: [] },
               editing: { ...editing, handledRecovery: Option.some(session.id) },
               error: Option.some(
                 mutationFailureMessage(failure, model.calendar.calendars)

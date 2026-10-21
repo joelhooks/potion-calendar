@@ -4,6 +4,7 @@ import { AsyncData } from "foldkit";
 import type { Update } from "foldkit";
 
 import type { AppModel } from "../app.js";
+import { BulkView } from "../bulk/model.js";
 import { RemoteEvents, calendarKey } from "../calendar-state.js";
 import { DeleteOutcome } from "../editing/delete-actor.js";
 import { DeleteNotice } from "../editing/deletion-session.js";
@@ -139,6 +140,14 @@ const completedEditingRefresh = (
     previous.calendar.rangeRequest !== next.calendar.rangeRequest;
 
   return EditingNotice.match(message.notice, {
+    Bulk: ({ view }) =>
+      BulkView.guards.Settled(view) &&
+      !Option.contains(previous.editing.handledBulk, view.execution.id) &&
+      Option.contains(next.editing.handledBulk, view.execution.id) &&
+      view.execution.mutations.some(
+        (mutation) =>
+          EditorMutation.guards.Saved(mutation) && selected(mutation.event)
+      ),
     Delete: ({ notice }) =>
       DeleteNotice.match(notice, {
         Changed: () => false,

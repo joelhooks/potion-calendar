@@ -11,6 +11,7 @@ import type {
   SearchResponse,
 } from "../search-contract.js";
 import { dayInZone } from "./navigation.js";
+import { primarySelection } from "./selection-set.js";
 
 export interface SearchDay {
   readonly day: number;
@@ -137,10 +138,10 @@ export const searchSelectionKey = (
 export const selectedSearchResult = (
   model: AppModel
 ): SearchEventResultValue | undefined =>
-  Option.isSome(model.calendar.selected)
+  Option.isSome(primarySelection(model.calendar.selected))
     ? Option.getOrUndefined(model.search.response)?.results.find((result) =>
         Option.contains(
-          model.calendar.selected,
+          primarySelection(model.calendar.selected),
           searchSelectionKey(result, model.calendar.mergeDuplicates)
         )
       )

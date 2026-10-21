@@ -7,6 +7,7 @@ import { EditorView } from "../client/editing/editor-model.js";
 import { PrepareGestures } from "../client/editing/gesture-mount.js";
 import { gestureHostKey } from "../client/editing/gesture-targets.js";
 import { PrepareTimeGrid } from "../client/grid-mount.js";
+import { selectionHostKey } from "../client/selection/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import {
   TimeZoneAction,
@@ -32,6 +33,7 @@ import { zoneColumns } from "../layout/time-zones-grid.js";
 import { zoneLabel } from "../layout/time-zones.js";
 import { chip } from "./calendar.js";
 import { gesturePreview } from "./gesture-preview.js";
+import { selectionSurface } from "./selection-surface.js";
 
 const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const days = visibleDays(model.calendar.navigation);
@@ -494,6 +496,10 @@ export const timeGrid = (
     hostKey,
     [
       h.Id("gesture-host"),
+      h.DataAttribute(
+        "selection-count",
+        String(model.calendar.selected.length)
+      ),
       h.DataAttribute("gesture-host-key", hostKey),
       h.Class("gesture-host"),
       h.Style({ display: "contents" }),
@@ -502,7 +508,11 @@ export const timeGrid = (
         ? [h.OnMount(prepare({ hostKey, personId: model.person.value, scale }))]
         : []),
     ],
-    [timeGridBody(model, h)]
+    [
+      selectionSurface(model, h, selectionHostKey(model), [
+        timeGridBody(model, h),
+      ]),
+    ]
   );
 };
 

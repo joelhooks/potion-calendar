@@ -44,7 +44,7 @@ const currentGestureModel = (event: CalendarEventValue | null) => {
             }
           : read
       ),
-      selected: Option.some(target.key),
+      selected: [target.key],
     },
   };
 };

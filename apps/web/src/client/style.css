@@ -1408,3 +1408,41 @@ h3 {
   gap: 10px;
   margin-top: 24px;
 }
+.bulk-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bulk-detail p,
+.bulk-notice li {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.bulk-notice {
+  width: min(420px, calc(100vw - 48px));
+  max-height: min(50vh, 440px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+.bulk-notice h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.bulk-notice ul {
+  padding-left: 20px;
+}
+.bulk-notice details {
+  margin-bottom: 12px;
+}
+.selection-rectangle {
+  position: fixed;
+  z-index: 700;
+  pointer-events: none;
+  border: 1px solid var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}

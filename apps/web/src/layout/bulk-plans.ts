@@ -47,7 +47,11 @@ export const BulkPlan = Schema.Struct({
 
 export type BulkOpening = Pick<
   typeof EditorRequest.cases.Existing.Type,
-  "calendars" | "navigation" | "primaryZone" | "selection"
+  | "calendars"
+  | "conferencingContext"
+  | "navigation"
+  | "primaryZone"
+  | "selection"
 >;
 
 const identity = (event: typeof CalendarEvent.Type): string =>
@@ -98,6 +102,7 @@ export const planBulk = (
           ...opening,
           event: candidate.event,
           mode: operation,
+          selection: Option.some(key),
         }),
         scope: "single",
       })

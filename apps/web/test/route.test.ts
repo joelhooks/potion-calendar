@@ -109,7 +109,7 @@ it("route changes preserve calendar navigation and selection", () => {
 
   const selected = {
     ...initial,
-    calendar: { ...initial.calendar, selected: Option.some("chosen-event") },
+    calendar: { ...initial.calendar, selected: ["chosen-event"] },
   };
 
   const url = Url.make({
@@ -130,6 +130,6 @@ it("route changes preserve calendar navigation and selection", () => {
     Message.BrowserUrlChanged({ url: { ...url, pathname: "/" } })
   ).model;
 
-  expect(returned.calendar.selected).toEqual(Option.some("chosen-event"));
+  expect(returned.calendar.selected).toEqual(["chosen-event"]);
   expect(returned.calendar.navigation).toBe(selected.calendar.navigation);
 });

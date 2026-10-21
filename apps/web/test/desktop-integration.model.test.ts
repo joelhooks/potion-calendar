@@ -143,7 +143,7 @@ it.effect(
 
       expect(shown.route._tag).toBe("Calendar");
       expect(shown.calendar.selected).toEqual(
-        Option.fromUndefinedOr(selected?.key)
+        selected === undefined ? [] : [selected.key]
       );
       expect(
         visibleEvents(shown).some(
@@ -164,7 +164,7 @@ it.effect(
       const shown = update(
         {
           ...model,
-          calendar: { ...model.calendar, selected: Option.none() },
+          calendar: { ...model.calendar, selected: [] },
           person: Option.none(),
         },
         Message.ReceivedDesktop({
@@ -176,7 +176,7 @@ it.effect(
         })
       ).model;
 
-      expect(shown.calendar.selected).toEqual(Option.none());
+      expect(shown.calendar.selected).toEqual([]);
       expect(Option.isSome(shown.error)).toBe(true);
     })
 );

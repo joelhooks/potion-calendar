@@ -1,7 +1,8 @@
 import { Schema } from "effect";
 
+import { BulkView } from "../bulk/model.js";
 import { ConferencingSaveNotice } from "../conferencing/model.js";
-import { DeleteIntent } from "./delete-actor.js";
+import { DeleteIntent, DeleteOutcome } from "./delete-actor.js";
 import { EditorView } from "./editor-model.js";
 import { WritePlan } from "./editor-session-model.js";
 import { GestureResult } from "./gesture-model.js";
@@ -24,9 +25,12 @@ export const RsvpMark = Schema.Struct({
 });
 
 export const EditingUi = Schema.Struct({
+  bulk: BulkView,
+  bulkOutcomes: Schema.Record(Schema.String, DeleteOutcome),
   conferencingResult: Schema.Option(ConferencingSaveNotice),
   deletes: Schema.Array(DeleteMark),
   gesture: Schema.Option(GestureResult),
+  handledBulk: Schema.Option(Schema.String),
   handledMutation: Schema.Option(Schema.String),
   handledRecovery: Schema.Option(Schema.String),
   handledResponse: Schema.Int,

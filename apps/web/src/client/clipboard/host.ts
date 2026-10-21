@@ -4,6 +4,7 @@ import { AsyncData } from "foldkit";
 
 import { hourHeight } from "../../layout/geometry.js";
 import { allDaySection, visibleEvents } from "../../layout/presentation.js";
+import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { EditorView } from "../editing/editor-model.js";
@@ -97,13 +98,17 @@ export const clipboardNativeHost = (
   }
 
   const calendar = defaultCreationCalendar(model);
-  const selected = visibleEvents(model).find((event) => event.selected);
+
+  const selected = visibleEvents(model).find((event) =>
+    Option.contains(primarySelection(model.calendar.selected), event.key)
+  );
 
   return {
     anchor,
     copied: connection.copied(),
     personId: session.user.id,
-    selected: selected?.source,
+    selected:
+      model.calendar.selected.length === 1 ? selected?.source : undefined,
     selfEmails: [
       session.user.email,
       ...session.accounts.map((account) => account.email),
@@ -117,7 +122,7 @@ export const clipboardNativeHost = (
             conferencingContext: editorConferencingContext(model),
             navigation: model.calendar.navigation,
             primaryZone: homeZone(model),
-            selection: model.calendar.selected,
+            selection: primarySelection(model.calendar.selected),
           }),
   };
 };

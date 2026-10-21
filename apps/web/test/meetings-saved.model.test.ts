@@ -10,6 +10,7 @@ import { joinSelection } from "../src/client/meetings/selection.js";
 import { savedMeetings } from "../src/client/meetings/source.js";
 import { eventDraft } from "../src/layout/editor-draft.js";
 import { visibleEvents } from "../src/layout/presentation.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { meetingModel, savedMeeting } from "./meetings-fixture.js";
 
 it.effect(
@@ -54,7 +55,7 @@ it.effect(
         navigation: base.calendar.navigation,
         operation: "save",
         original: Option.some(source),
-        selection: selected.calendar.selected,
+        selection: primarySelection(selected.calendar.selected),
       });
 
       const plan = yield* prepareEditor(session);

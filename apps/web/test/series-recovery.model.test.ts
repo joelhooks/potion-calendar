@@ -17,6 +17,7 @@ import {
 } from "../src/client/editing/prepare-editor.js";
 import { EditingNotice } from "../src/client/editing/runtime.js";
 import { eventDraft } from "../src/layout/editor-draft.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { fixtureEvents, fixtureSelection } from "./fixture.js";
 
 it.effect.each(["partial", "uncertain"])(
@@ -59,7 +60,7 @@ it.effect.each(["partial", "uncertain"])(
         navigation: model.calendar.navigation,
         operation: "save",
         original: Option.some(event),
-        selection: model.calendar.selected,
+        selection: primarySelection(model.calendar.selected),
       });
 
       const plan = yield* prepareEditor(session);
@@ -129,7 +130,9 @@ it.effect.each(["partial", "uncertain"])(
           { accountId: "work", calendarId: "hidden" },
         ])
       );
-      expect(Option.isNone(first.model.calendar.selected)).toBe(true);
+      expect(
+        Option.isNone(primarySelection(first.model.calendar.selected))
+      ).toBe(true);
       expect(Option.getOrThrow(first.model.error)).toContain("confirm");
       const repeated = update(first.model, message);
       expect(repeated.commands).toBeUndefined();

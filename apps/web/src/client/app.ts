@@ -21,6 +21,12 @@ import type { NavigationAction } from "../layout/navigation.js";
 import { allDaySection, visibleEvents } from "../layout/presentation.js";
 import { CalendarRoute, Route, SettingsRoute } from "../layout/route.js";
 import {
+  primarySelection,
+  changeSelection,
+  SelectionAction,
+} from "../layout/selection-set.js";
+import { BulkView } from "./bulk/model.js";
+import {
   CalendarUi,
   RemoteCalendars,
   RemoteEvents,
@@ -79,6 +85,7 @@ import {
   receiveEditing,
   reconcileEditingRead,
   mutationReceived,
+  bulkControl,
 } from "./editing/update.js";
 import { KeyboardUi, initialKeyboard } from "./keyboard/state.js";
 import {
@@ -136,6 +143,7 @@ import {
   selectSearchResult,
   syncSearchRoute,
 } from "./search/update.js";
+import { acceptsSelection, selectionHostKey } from "./selection/host.js";
 import {
   manageSettings,
   receiveManagedInventory,
@@ -231,8 +239,9 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     now,
     rangeRequest: 0,
     reads: [],
+    rectangle: Option.none(),
     scrollbarGutter: 0,
-    selected: Option.none(),
+    selected: [],
     viewport: 700,
     viewportWidth: 1000,
     visibility: {},
@@ -244,9 +253,12 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   conferencing: initialConferencing(),
   desktop: initialDesktop(),
   editing: {
+    bulk: BulkView.cases.Idle.make({}),
+    bulkOutcomes: {},
     conferencingResult: Option.none(),
     deletes: [],
     gesture: Option.none(),
+    handledBulk: Option.none(),
     handledMutation: Option.none(),
     handledRecovery: Option.none(),
     handledResponse: 0,
@@ -460,7 +472,12 @@ const changeNavigation = (
   const result = reloadRange(
     {
       ...model,
-      calendar: { ...model.calendar, navigation, selected: Option.none() },
+      calendar: {
+        ...model.calendar,
+        navigation,
+        rectangle: Option.none(),
+        selected: [],
+      },
       month: {
         ...model.month,
         epoch: model.month.epoch + 1,
@@ -549,6 +566,10 @@ const updateCore = (
       commands: [FollowRouteRequest({ request })],
       model,
     }),
+    BulkControl: ({ control, personId }) =>
+      personId === undefined || Option.contains(model.person, personId)
+        ? bulkControl(model, control)
+        : { model },
     CalendarChanged: () => reloadRange(model),
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
     ChangedSettings: ({ change }) => {
@@ -602,7 +623,7 @@ const updateCore = (
 
       const result = reloadRange({
         ...model,
-        calendar: { ...model.calendar, ...visibility, selected: Option.none() },
+        calendar: { ...model.calendar, ...visibility, selected: [] },
       });
 
       return persistPreferences(result);
@@ -635,7 +656,8 @@ const updateCore = (
     ClickedEvent: ({ key }) => ({
       model: {
         ...model,
-        calendar: { ...model.calendar, selected: Option.some(key) },
+        calendar: { ...model.calendar, selected: [key] },
+        keyboard: { ...model.keyboard, cursor: Option.some(key) },
       },
     }),
     ClickedMergeDuplicates: () => {
@@ -647,7 +669,7 @@ const updateCore = (
           calendar: {
             ...model.calendar,
             mergeDuplicates,
-            selected: Option.none(),
+            selected: [],
           },
         }),
       });
@@ -704,7 +726,7 @@ const updateCore = (
     ClosedDetail: () => ({
       model: {
         ...model,
-        calendar: { ...model.calendar, selected: Option.none() },
+        calendar: { ...model.calendar, selected: [] },
       },
     }),
     CompletedGesture: ({ personId, gesture, hostKey }) =>
@@ -894,6 +916,22 @@ const updateCore = (
         },
       },
     }),
+    ModifiedEventSelection: ({ personId, hostKey, key, mod, shift }) =>
+      acceptsSelection(model, personId, hostKey)
+        ? {
+            model: {
+              ...model,
+              calendar: {
+                ...model.calendar,
+                selected: changeSelection(
+                  model.calendar.selected,
+                  SelectionAction.cases.Click.make({ key, mod, shift })
+                ),
+              },
+              keyboard: { ...model.keyboard, cursor: Option.some(key) },
+            },
+          }
+        : { model },
     Navigated: () => ({ model }),
     ObservedNotification: ({ event, now }) =>
       NotificationEvent.guards.Clicked(event)
@@ -902,6 +940,7 @@ const updateCore = (
     PageHidden: () => leaveEditing(model),
     PreparedGestureHost: () => ({ model }),
     PreparedGestureTargets: () => ({ model }),
+    PreparedSelection: () => ({ model }),
     PressedCalendarKey: ({ key, mod, shift, alt, now }) =>
       pressedKeyboard(
         model,
@@ -915,6 +954,15 @@ const updateCore = (
             model: {
               ...model,
               editing: { ...model.editing, gesture: preview },
+            },
+          }
+        : { model },
+    PreviewedSelectionRectangle: ({ personId, hostKey, box }) =>
+      acceptsSelection(model, personId, hostKey)
+        ? {
+            model: {
+              ...model,
+              calendar: { ...model.calendar, rectangle: box },
             },
           }
         : { model },
@@ -982,7 +1030,7 @@ const updateCore = (
                 events: clipboardCutEvents(next),
                 navigation: next.calendar.navigation,
                 primaryZone: homeZone(next),
-                selection: next.calendar.selected,
+                selection: primarySelection(next.calendar.selected),
                 source,
               },
               personId: delivery.personId,
@@ -1047,7 +1095,7 @@ const updateCore = (
                 ...result.model,
                 calendar: {
                   ...result.model.calendar,
-                  selected: Option.some(selected.key),
+                  selected: [selected.key],
                 },
               },
             };
@@ -1312,6 +1360,19 @@ const updateCore = (
         commands: [...(selected.commands ?? []), ...(loaded.commands ?? [])],
       };
     },
+    SelectedRectangle: ({ personId, hostKey, keys }) =>
+      acceptsSelection(model, personId, hostKey)
+        ? {
+            model: {
+              ...model,
+              calendar: {
+                ...model.calendar,
+                rectangle: Option.none(),
+                selected: keys,
+              },
+            },
+          }
+        : { model },
     Ticked: ({ now }) => ({
       model: { ...model, calendar: { ...model.calendar, now } },
     }),
@@ -1376,10 +1437,25 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     return { model };
   }
 
-  const result = withReminders(
+  const updated = withReminders(
     model,
     withUpcoming(model, updateCore(model, message, update), message)
   );
+
+  const result =
+    Option.isSome(updated.model.calendar.rectangle) &&
+    (!Predicate.isTagged(updated.model.route, "Calendar") ||
+      !EditorView.guards.Closed(updated.model.editing.view) ||
+      Option.getOrUndefined(selectionHostKey(model)) !==
+        Option.getOrUndefined(selectionHostKey(updated.model)))
+      ? {
+          ...updated,
+          model: {
+            ...updated.model,
+            calendar: { ...updated.model.calendar, rectangle: Option.none() },
+          },
+        }
+      : updated;
 
   if (
     Option.getOrUndefined(model.person) !==

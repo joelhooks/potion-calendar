@@ -15,6 +15,7 @@ import {
 } from "../src/client/keyboard/sequence.js";
 import { dayFromIso } from "../src/layout/navigation.js";
 import { ShortcutsRoute } from "../src/layout/route.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { editorViewFields } from "./editor-fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 import { undoFixture } from "./undo-fixture.js";
@@ -33,6 +34,7 @@ const bindings: readonly (readonly [string, string])[] = [
   ["Delete", "delete"],
   ["Backspace", "delete"],
   ["Mod+d", "duplicate"],
+  ["Mod+a", "select-all"],
   ["c", "create"],
   ["r", "refresh"],
   ["n", "next-selection"],
@@ -269,7 +271,7 @@ it.effect(
 
       const noSelection = {
         ...readonly,
-        calendar: { ...readonly.calendar, selected: Option.none() },
+        calendar: { ...readonly.calendar, selected: [] },
       };
 
       expect(
@@ -305,12 +307,12 @@ it.effect(
 
       const selected = press(noSelection, "n");
       const deselected = press(selected, "x");
-      expect(Option.isNone(deselected.calendar.selected)).toBe(true);
+      expect(
+        Option.isNone(primarySelection(deselected.calendar.selected))
+      ).toBe(true);
       expect(press(deselected, "x").calendar.selected).toEqual(
         selected.calendar.selected
       );
-      expect(press(selected, "Escape").calendar.selected).toEqual(
-        Option.none()
-      );
+      expect(press(selected, "Escape").calendar.selected).toEqual([]);
     })
 );

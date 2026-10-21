@@ -8,6 +8,7 @@ import {
 } from "../src/client/editing/delete-actor.js";
 import { DeleteNotice } from "../src/client/editing/deletion-session.js";
 import { EditingNotice } from "../src/client/editing/runtime.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { fixtureEvents, fixtureSelection } from "./fixture.js";
 
 export const undoFixture = () => {
@@ -47,7 +48,7 @@ export const undoFixture = () => {
       scope: "single",
       sendUpdates: "none",
     },
-    selection: base.calendar.selected,
+    selection: primarySelection(base.calendar.selected),
     title: event.title ?? "Event",
   });
 

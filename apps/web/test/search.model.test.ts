@@ -32,12 +32,12 @@ it.prop(
 
     const model = {
       ...base,
-      calendar: { ...base.calendar, selected: Option.some("previous") },
+      calendar: { ...base.calendar, selected: ["previous"] },
       search: { ...base.search, scroll: Option.some(420) },
     };
 
     const typed = update(model, Message.SearchInput({ text }));
-    expect(typed.model.calendar.selected).toEqual(Option.none());
+    expect(typed.model.calendar.selected).toEqual([]);
     expect(typed.model.calendar.navigation).toBe(model.calendar.navigation);
     expect(typed.model.search.revision).toBe(model.search.revision + 1);
     const cleared = update(typed.model, Message.SearchClear());
@@ -223,9 +223,7 @@ it("selection reveals a hidden calendar, warms its date and leaves grid navigati
   expect(next.model.calendar.hidden).not.toContain(
     calendarKey(row.calendar.accountId, row.calendar.calendarId)
   );
-  expect(next.model.calendar.selected).toEqual(
-    Option.some(eventKey(row.event))
-  );
+  expect(next.model.calendar.selected).toEqual([eventKey(row.event)]);
   expect(next.model.calendar.navigation).toBe(model.calendar.navigation);
   expect(next.model.route).toEqual(model.route);
   expect(
@@ -320,7 +318,7 @@ it("range data wins over a selected search duplicate, including edits", () => {
               }),
             };
       }),
-      selected: Option.some(eventKey(row.event)),
+      selected: [eventKey(row.event)],
     },
   };
 
@@ -491,7 +489,7 @@ it.prop(
 
     const model = {
       ...base,
-      calendar: { ...base.calendar, selected: Option.some("grid-selection") },
+      calendar: { ...base.calendar, selected: ["grid-selection"] },
       route: CalendarRoute.make({}),
       search:
         kind === "blur"

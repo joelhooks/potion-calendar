@@ -17,6 +17,7 @@ import { prepareEditor } from "../src/client/editing/prepare-editor.js";
 import { EditingNotice } from "../src/client/editing/runtime.js";
 import { eventDraft } from "../src/layout/editor-draft.js";
 import { visibleEvents } from "../src/layout/presentation.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { fixtureEvents, fixtureSelection } from "./fixture.js";
 
 const model = () => ({
@@ -40,7 +41,7 @@ const intent = DeleteIntent.make({
     scope: "single",
     sendUpdates: "none",
   },
-  selection: model().calendar.selected,
+  selection: primarySelection(model().calendar.selected),
   title: sourceEvent.title ?? "Event",
 });
 
@@ -105,7 +106,9 @@ it.effect(
       ).model;
 
       expect(restored.editing.deletes).toHaveLength(0);
-      expect(restored.calendar.selected).toEqual(intent.selection);
+      expect(restored.calendar.selected).toEqual(
+        Option.toArray(intent.selection)
+      );
       expect(restored.calendar.navigation).toEqual(intent.navigation);
     })
 );
@@ -180,7 +183,7 @@ it.effect(
         navigation: base.calendar.navigation,
         operation: "save",
         original: Option.some(sourceEvent),
-        selection: base.calendar.selected,
+        selection: primarySelection(base.calendar.selected),
       });
 
       const plan = yield* prepareEditor(session);

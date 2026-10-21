@@ -5,6 +5,7 @@ import { Option } from "effect";
 
 import { conferenceLink } from "../../layout/conferencing.js";
 import { visibleEvents } from "../../layout/presentation.js";
+import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { nextJoinMeeting } from "./candidates.js";
 import { JoinSelection } from "./model.js";
@@ -56,8 +57,10 @@ export const joinSelection = (
       : linkFor(item.source);
   }
 
-  if (Option.isSome(model.calendar.selected)) {
-    const item = visibleEvents(model).find((event) => event.selected);
+  if (Option.isSome(primarySelection(model.calendar.selected))) {
+    const item = visibleEvents(model).find((event) =>
+      Option.contains(primarySelection(model.calendar.selected), event.key)
+    );
 
     const source =
       item === undefined ? undefined : savedEvent(model, item.source);

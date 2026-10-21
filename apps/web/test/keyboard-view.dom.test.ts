@@ -218,7 +218,7 @@ it.effect(
 
       const unselected = {
         ...model,
-        calendar: { ...model.calendar, selected: Option.none() },
+        calendar: { ...model.calendar, selected: [] },
       };
 
       expect(Option.isNone(observeKeyboard(unselected, none, 10))).toBe(true);

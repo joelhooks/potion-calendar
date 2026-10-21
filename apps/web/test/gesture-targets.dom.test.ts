@@ -25,6 +25,7 @@ import { EditingCommand } from "../src/client/editing/runtime.js";
 import { completeGesture } from "../src/client/editing/update.js";
 import { TimeZoneAction } from "../src/client/time-zones/model.js";
 import { visibleDays } from "../src/layout/navigation.js";
+import { primarySelection } from "../src/layout/selection-set.js";
 import { displayZone } from "../src/layout/time-zones.js";
 import { fixtureEvents } from "./fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
@@ -120,7 +121,7 @@ const hostFor = Effect.fn("gestureTestHost")(function* hostFor(
 });
 
 const putChip = (host: HTMLElement, model: AppModel): HTMLElement => {
-  const selected = Option.getOrThrow(model.calendar.selected);
+  const selected = Option.getOrThrow(primarySelection(model.calendar.selected));
 
   const target = modelGestureInputs(model).targets.find(
     (entry) => entry.key === selected
@@ -248,7 +249,11 @@ it.effect(
       yield* takeArmed(messages);
       point(host, chip, "pointermove", 600);
       yield* takePreview(messages);
-      const selected = Option.getOrThrow(current.calendar.selected);
+
+      const selected = Option.getOrThrow(
+        primarySelection(current.calendar.selected)
+      );
+
       current = {
         ...current,
         calendar: {
@@ -461,7 +466,10 @@ it.effect(
             Effect.forkIn(subscribed)
           );
         yield* takePrepared(messages);
-        const selected = Option.getOrThrow(current.calendar.selected);
+
+        const selected = Option.getOrThrow(
+          primarySelection(current.calendar.selected)
+        );
 
         const target = yield* Effect.fromNullishOr(
           inputs.targets.find((entry) => entry.key === selected)

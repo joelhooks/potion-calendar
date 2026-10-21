@@ -149,7 +149,7 @@ it.effect(
           ...model,
           calendar: {
             ...model.calendar,
-            selected: Option.some(eventKey(event)),
+            selected: [eventKey(event)],
           },
           editing: { ...model.editing, gesture: Option.some(scenario.preview) },
         };
@@ -302,7 +302,7 @@ it.effect(
 
       const refreshing = reloadRange({
         ...model,
-        calendar: { ...model.calendar, selected: Option.none() },
+        calendar: { ...model.calendar, selected: [] },
       }).model;
 
       const recoveryBase = yield* renderToString(

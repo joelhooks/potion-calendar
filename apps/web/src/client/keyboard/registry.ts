@@ -3,6 +3,7 @@ import { Option, Predicate } from "effect";
 import { visibleEvents } from "../../layout/presentation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
 import { SettingsRoute } from "../../layout/route.js";
+import { primarySelection } from "../../layout/selection-set.js";
 import { persistentZoneLimit } from "../../layout/time-zones.js";
 import type { AppModel } from "../app.js";
 import { EditorAction } from "../editing/editor-action.js";
@@ -92,7 +93,7 @@ export const keyboardEvents = (model: AppModel): readonly DisplayEvent[] => {
 
 export const selectedEvent = (model: AppModel): DisplayEvent | undefined =>
   keyboardEvents(model).find((item) =>
-    Option.contains(model.calendar.selected, item.key)
+    Option.contains(primarySelection(model.calendar.selected), item.key)
   );
 
 const active = (model: AppModel): Availability =>
@@ -320,7 +321,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     {
       availability: (model) =>
         Option.isSome(model.timeZones.temporary) ||
-        Option.isSome(model.calendar.selected) ||
+        Option.isSome(primarySelection(model.calendar.selected)) ||
         Predicate.isTagged(model.route, "Shortcuts") ||
         Predicate.isTagged(model.route, "Settings") ||
         model.keyboard.screen !== "closed" ||
@@ -370,6 +371,20 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     scope: "app",
   }),
   row(
+    "select-all",
+    "Select visible events",
+    ["Mod+a"],
+    "Editing",
+    "Event",
+    special("select-all"),
+    {
+      availability: (model) =>
+        Predicate.isTagged(model.route, "Calendar")
+          ? active(model)
+          : "disabled",
+    }
+  ),
+  row(
     "toggle-selection",
     "Select/deselect highlighted event",
     ["x"],
@@ -378,7 +393,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     special("toggle-selection"),
     {
       availability: (model) =>
-        Option.isSome(model.calendar.selected) ||
+        Option.isSome(primarySelection(model.calendar.selected)) ||
         Option.isSome(model.keyboard.cursor)
           ? active(model)
           : "disabled",
@@ -391,7 +406,10 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     "General",
     "Event",
     editing(EditorAction.cases.DeleteSelected.make({})),
-    { availability: personal }
+    {
+      availability: (model) =>
+        model.calendar.selected.length > 1 ? active(model) : personal(model),
+    }
   ),
   row(
     "duplicate",

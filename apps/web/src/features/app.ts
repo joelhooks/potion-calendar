@@ -5,6 +5,8 @@ import type { Document, Html, HtmlBuilder } from "foldkit/html";
 
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
+import { BulkView } from "../client/bulk/model.js";
+import { bulkDeleteSelection } from "../client/bulk/selection.js";
 import { PrepareClipboardDialogs } from "../client/clipboard/dialog-mount.js";
 import { PrepareEditingDialogs } from "../client/editing/dialog-mount.js";
 import { EditorView } from "../client/editing/editor-model.js";
@@ -17,6 +19,7 @@ import { resolvedTheme } from "../client/settings/model.js";
 import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
+import { bulkNotice, selectionRectangle } from "./bulk-actions.js";
 import { detailPanel, sidebar, systemZonePrompt, toolbar } from "./calendar.js";
 import { clipboardPanel } from "./clipboard.js";
 import { commandMenu } from "./command-menu.js";
@@ -46,7 +49,8 @@ const editingLayers = (
     });
 
   const toast =
-    latest === undefined
+    latest === undefined ||
+    Option.isSome(bulkDeleteSelection(model, latest.intent.id))
       ? undefined
       : undoToast(h, { intent: latest.intent, send });
 
@@ -78,12 +82,16 @@ const notificationLayers = (
     Option.isSome(model.person) && Option.isSome(model.clipboard.sessionId);
 
   const undoReady =
-    EditorView.guards.Closed(model.editing.view) && latest !== undefined;
+    EditorView.guards.Closed(model.editing.view) &&
+    latest !== undefined &&
+    Option.isNone(bulkDeleteSelection(model, latest.intent.id));
 
   if (
     Option.isNone(model.editing.conferencingResult) &&
     !clipboardReady &&
-    !undoReady
+    !undoReady &&
+    BulkView.guards.Idle(model.editing.bulk) &&
+    Option.isNone(model.calendar.rectangle)
   ) {
     return [];
   }
@@ -113,6 +121,8 @@ const notificationLayers = (
         }),
       ],
       [
+        ...bulkNotice(model, h),
+        ...selectionRectangle(model, h),
         ...Option.match(model.editing.conferencingResult, {
           onNone: () => [],
           onSome: (notice) => [conferencingSaveNotice(h, notice, send)],

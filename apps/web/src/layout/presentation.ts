@@ -19,6 +19,7 @@ import { mergeEquivalentEvents } from "./equivalent-events.js";
 import { minuteInZone, nearFullDay } from "./geometry.js";
 import { dayInZone, partsFromDay, visibleDays } from "./navigation.js";
 import { selectedSearchResult } from "./search-results.js";
+import { primarySelection } from "./selection-set.js";
 import { clockLabel } from "./time-format.js";
 import type { ResolvedTimeFormat } from "./time-format.js";
 
@@ -185,7 +186,7 @@ export const displayEvent = (
 const selectedUpcomingCopies = (
   model: AppModel
 ): readonly CalendarEventValue[] => {
-  if (Option.isNone(model.calendar.selected)) {
+  if (Option.isNone(primarySelection(model.calendar.selected))) {
     return [];
   }
 
@@ -224,7 +225,7 @@ const selectedUpcomingCopies = (
     : displayed;
 
   const selected = candidates.find((item) =>
-    Option.contains(model.calendar.selected, item.key)
+    Option.contains(primarySelection(model.calendar.selected), item.key)
   );
 
   return selected?.copies.map((copy) => copy.source) ?? [];
@@ -278,7 +279,7 @@ const unmergedEvents = (model: AppModel): readonly DisplayEvent[] => {
       event,
       calendar,
       model.calendar.zone,
-      model.calendar.selected
+      primarySelection(model.calendar.selected)
     );
 
     const selectedSearchCopy =
@@ -299,7 +300,10 @@ export const visibleEvents = (model: AppModel): readonly DisplayEvent[] => {
   const events = unmergedEvents(model);
 
   if (!model.calendar.mergeDuplicates) {
-    return events;
+    return events.map((event) => ({
+      ...event,
+      selected: model.calendar.selected.includes(event.key),
+    }));
   }
 
   const snapshot = AsyncData.getData(model.session);
@@ -326,13 +330,16 @@ export const visibleEvents = (model: AppModel): readonly DisplayEvent[] => {
       );
 
     const key = selectedCopy
-      ? Option.getOrElse(model.calendar.selected, () => event.key)
+      ? Option.getOrElse(
+          primarySelection(model.calendar.selected),
+          () => event.key
+        )
       : event.key;
 
     return {
       ...event,
       key,
-      selected: Option.contains(model.calendar.selected, key),
+      selected: model.calendar.selected.includes(key),
     };
   });
 };

@@ -11,6 +11,7 @@ import { Url } from "foldkit/url";
 
 import { NavigationState, maximumDisplayedDays } from "../layout/navigation.js";
 import { Route } from "../layout/route.js";
+import { SelectionBox, SelectionSet } from "../layout/selection-set.js";
 import { ReadFailure } from "./calendar-state.js";
 import { ClipboardDelivery } from "./clipboard/delivery.js";
 import { ClipboardAction } from "./clipboard/runtime.js";
@@ -34,6 +35,10 @@ import { TimeZoneAction } from "./time-zones/model.js";
 export const Message = defineMessageUnion({
   BrowserUrlChanged: { url: Url },
   BrowserUrlRequested: { request: UrlRequest },
+  BulkControl: {
+    control: Schema.Literals(["undo", "dismiss"]),
+    personId: Schema.optional(Schema.String),
+  },
   CalendarChanged: {},
   ChangedConferencing: { change: ConferencingChange },
   ChangedSettings: { change: SettingsChange },
@@ -119,11 +124,19 @@ export const Message = defineMessageUnion({
     height: Schema.Finite,
     width: Schema.Finite,
   },
+  ModifiedEventSelection: {
+    hostKey: Schema.String,
+    key: Schema.String,
+    mod: Schema.Boolean,
+    personId: Schema.String,
+    shift: Schema.Boolean,
+  },
   Navigated: {},
   ObservedNotification: { event: NotificationEvent, now: Schema.Finite },
   PageHidden: {},
   PreparedGestureHost: { hostKey: Schema.String },
   PreparedGestureTargets: {},
+  PreparedSelection: {},
   PressedCalendarKey: {
     alt: Schema.Boolean,
     key: Schema.String,
@@ -136,6 +149,11 @@ export const Message = defineMessageUnion({
     personId: Schema.String,
     phase: Schema.optionalKey(Schema.Literals(["idle", "armed", "dragging"])),
     preview: Schema.Option(GestureResult),
+  },
+  PreviewedSelectionRectangle: {
+    box: Schema.Option(SelectionBox),
+    hostKey: Schema.String,
+    personId: Schema.String,
   },
   ReceivedCalendars: {
     personId: Schema.optionalKey(Schema.String),
@@ -190,6 +208,11 @@ export const Message = defineMessageUnion({
   },
   SearchScroll: { position: Schema.Finite },
   SearchSelect: { goTo: Schema.Boolean, key: Schema.String },
+  SelectedRectangle: {
+    hostKey: Schema.String,
+    keys: SelectionSet,
+    personId: Schema.String,
+  },
   Ticked: { now: Schema.Finite },
   TimeZoneAction: { action: TimeZoneAction },
 });

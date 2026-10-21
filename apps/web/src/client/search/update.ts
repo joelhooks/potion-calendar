@@ -8,6 +8,7 @@ import {
   searchResult,
   searchSelectionKey,
 } from "../../layout/search-results.js";
+import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { SavePreferences } from "../commands.js";
 import { closeKeyboard } from "../keyboard/update.js";
@@ -43,9 +44,9 @@ export const syncSearchRoute = (
   return {
     ...model,
     calendar:
-      blank || same || Option.isNone(model.calendar.selected)
+      blank || same || Option.isNone(primarySelection(model.calendar.selected))
         ? model.calendar
-        : { ...model.calendar, selected: Option.none() },
+        : { ...model.calendar, selected: [] },
     route,
     search: {
       ...model.search,
@@ -72,9 +73,9 @@ export const searchInput = (model: AppModel, text: string): SearchResult => {
     model: {
       ...model,
       calendar:
-        blank || Option.isNone(model.calendar.selected)
+        blank || Option.isNone(primarySelection(model.calendar.selected))
           ? model.calendar
-          : { ...model.calendar, selected: Option.none() },
+          : { ...model.calendar, selected: [] },
       search: {
         ...model.search,
         menu: Option.none(),
@@ -279,9 +280,7 @@ export const selectSearchResult = (
         navigation: goTo
           ? { ...model.calendar.navigation, anchor: day }
           : model.calendar.navigation,
-        selected: Option.some(
-          searchSelectionKey(result, model.calendar.mergeDuplicates)
-        ),
+        selected: [searchSelectionKey(result, model.calendar.mergeDuplicates)],
       },
       route,
       search: { ...model.search, menu: Option.none() },

@@ -7,6 +7,7 @@ import { Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
 import { NavigationState } from "../layout/navigation.js";
+import { SelectionSet, SelectionBox } from "../layout/selection-set.js";
 import {
   VisibilityChoices,
   VisibilityMigration,
@@ -67,8 +68,9 @@ export const CalendarUi = Schema.Struct({
   now: Schema.Finite,
   rangeRequest: Schema.Int,
   reads: Schema.Array(AccountEvents),
+  rectangle: Schema.Option(SelectionBox),
   scrollbarGutter: Schema.Finite,
-  selected: Schema.Option(Schema.String),
+  selected: SelectionSet,
   viewport: Schema.Finite,
   viewportWidth: Schema.Finite,
   visibility: VisibilityChoices,

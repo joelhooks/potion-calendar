@@ -82,7 +82,7 @@ export const searchResultsFixture = (): AppModel => {
 
   return {
     ...model,
-    calendar: { ...model.calendar, selected: Option.none() },
+    calendar: { ...model.calendar, selected: [] },
     route: SearchRoute.make({ q: "planning" }),
     search: {
       ...model.search,
