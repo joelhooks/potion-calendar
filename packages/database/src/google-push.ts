@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Effect, Schema } from "effect";
 
 import { GooglePushStoreError } from "./google-push-error.js";
+import { pushUnsupportedRepository } from "./push-unsupported.js";
 import { GooglePushChannels } from "./schema/google-push.js";
 
 export { GooglePushStoreError } from "./google-push-error.js";
@@ -355,6 +356,7 @@ export const googlePushRepository = (binding: D1Database) => {
   });
 
   return {
+    ...pushUnsupportedRepository(binding),
     activate,
     active,
     beginStop,

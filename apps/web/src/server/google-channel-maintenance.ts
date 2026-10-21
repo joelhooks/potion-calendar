@@ -13,6 +13,7 @@ import {
   renewGoogleChannel,
 } from "./google-channel-lifecycle.js";
 import { stopGoogleChannel } from "./google-channel-stop.js";
+import { unsupportedEventWatch } from "./google-watch-unsupported.js";
 import type { LiveMaintenanceState } from "./live-maintenance-state.js";
 import { unwatchableWindowMs } from "./live-maintenance-state.js";
 
@@ -77,6 +78,85 @@ const eventResourcesFor = (
   return { failures, resources };
 };
 
+const retainKnownUnsupported = Effect.fn("retainKnownUnsupported")(
+  function* retainKnownUnsupported(
+    repository: GooglePushRepository,
+    personId: string,
+    listing: typeof ListCalendarsOutput.Type,
+    connected: ReadonlySet<string>,
+    disconnecting: ReadonlySet<string>
+  ) {
+    for (const account of listing.accounts) {
+      if (
+        "calendars" in account &&
+        connected.has(account.accountId) &&
+        !disconnecting.has(account.accountId)
+      ) {
+        yield* repository
+          .retainUnsupported(
+            personId,
+            account.accountId,
+            account.calendars.map((calendar) => calendar.calendarId)
+          )
+          .pipe(Effect.mapError(storageFailure));
+      }
+    }
+  }
+);
+
+const recordWatchRefusal = Effect.fn("recordWatchRefusal")(
+  function* recordWatchRefusal(
+    repository: GooglePushRepository,
+    personId: string,
+    resource: PushResourceValue,
+    error: CalendarFailureValue,
+    now: number,
+    maintenance: Pick<LiveMaintenanceState, "suppress">
+  ): Effect.fn.Return<"unsupported" | "cooldown" | "failed", Provider> {
+    if (resource.kind === "events" && unsupportedEventWatch(error)) {
+      yield* repository
+        .markUnsupported({
+          accountId: resource.accountId,
+          calendarId: resource.calendarId,
+          observedAt: yield* Clock.currentTimeMillis,
+          personId,
+          reasonCodes: error.reasons,
+          status: error.status,
+        })
+        .pipe(Effect.mapError(storageFailure));
+      yield* Effect.logWarning(
+        "Google event watch refused; unsupported resource recorded"
+      ).pipe(
+        Effect.annotateLogs({
+          reasons: error.reasons,
+          resourceKind: resource.kind,
+          status: error.status,
+        })
+      );
+
+      return "unsupported";
+    }
+
+    if (unwatchable(resource, error)) {
+      yield* maintenance.suppress(resource, error, now);
+      yield* Effect.logWarning(
+        "Google event watch rejected; cooldown recorded"
+      ).pipe(
+        Effect.annotateLogs({
+          reason: error.reason ?? "unknown",
+          resourceKind: resource.kind,
+          status: error.status,
+          until: now + unwatchableWindowMs,
+        })
+      );
+
+      return "cooldown";
+    }
+
+    return "failed";
+  }
+);
+
 export const maintainGoogleChannels = Effect.fn("maintainGoogleChannels")(
   function* maintainGoogleChannels(
     repository: GooglePushRepository,
@@ -109,6 +189,14 @@ export const maintainGoogleChannels = Effect.fn("maintainGoogleChannels")(
       accounts
         .filter((account) => !account.disconnected)
         .map((account) => account.id)
+    );
+
+    yield* retainKnownUnsupported(
+      repository,
+      personId,
+      listing,
+      connected,
+      disconnecting
     );
 
     const known = new Set(
@@ -189,6 +277,14 @@ export const maintainGoogleChannels = Effect.fn("maintainGoogleChannels")(
     const now = yield* Clock.currentTimeMillis;
 
     for (const resource of resources) {
+      if (
+        yield* repository
+          .unsupported(personId, resource)
+          .pipe(Effect.mapError(storageFailure))
+      ) {
+        continue;
+      }
+
       if (yield* maintenance.blocked(resource, now)) {
         continue;
       }
@@ -213,22 +309,17 @@ export const maintainGoogleChannels = Effect.fn("maintainGoogleChannels")(
       ).pipe(Effect.result);
 
       if (Result.isFailure(outcome)) {
-        const error = outcome.failure;
+        const refusal = yield* recordWatchRefusal(
+          repository,
+          personId,
+          resource,
+          outcome.failure,
+          now,
+          maintenance
+        );
 
-        if (unwatchable(resource, error)) {
-          yield* maintenance.suppress(resource, error, now);
-          yield* Effect.logWarning(
-            "Google event watch rejected; cooldown recorded"
-          ).pipe(
-            Effect.annotateLogs({
-              reason: error.reason ?? "unknown",
-              resourceKind: resource.kind,
-              status: error.status,
-              until: now + unwatchableWindowMs,
-            })
-          );
-        } else {
-          failures.push(error);
+        if (refusal === "failed") {
+          failures.push(outcome.failure);
         }
       }
     }

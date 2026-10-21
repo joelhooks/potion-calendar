@@ -228,6 +228,7 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     "0004_settings_disconnect.sql",
     "0005_settings_disconnect_fences.sql",
     "0006_conferencing_default.sql",
+    "0007_push_unsupported.sql",
   ]) {
     const sql = yield* Effect.tryPromise({
       catch: (cause) =>

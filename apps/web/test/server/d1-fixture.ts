@@ -45,6 +45,14 @@ export const conferencingMigration = readFileSync(
   "utf-8"
 );
 
+export const unsupportedPushMigration = readFileSync(
+  new URL(
+    "../../../../packages/database/migrations/calendar/0007_push_unsupported.sql",
+    import.meta.url
+  ),
+  "utf-8"
+);
+
 export const settingsFenceMigration = readFileSync(
   new URL(
     "../../../../packages/database/migrations/calendar/0005_settings_disconnect_fences.sql",
@@ -102,6 +110,7 @@ export const d1Fixture = Effect.gen(function* d1Fixture() {
       pushMigration,
       settingsMigration,
       conferencingMigration,
+      unsupportedPushMigration,
     ]
       .join("\n")
       .split(";"),

@@ -22,6 +22,7 @@ import { calendarActorFailure } from "./calendar-actor-failure.js";
 import { Gone, NotFound, Provider, RateLimited, Revoked } from "./errors.js";
 import type { CalendarFailureValue } from "./errors.js";
 import { GoogleTokens, tokenFailure } from "./google-tokens.js";
+import { GoogleFailureReason } from "./provider.js";
 
 export const GoogleRequest = Schema.Struct({
   acceptConflict: Schema.optional(Schema.Boolean),
@@ -157,9 +158,7 @@ const GoogleErrorReason = Schema.fromJsonString(
     error: Schema.Struct({
       errors: Schema.Array(
         Schema.Struct({
-          reason: Schema.String.check(
-            Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.-]{0,95}$/u)
-          ),
+          reason: GoogleFailureReason,
         })
       ),
     }),
@@ -178,8 +177,8 @@ const classifyResponse = (
   const operation = eventWatch ? "events.watch" : request.method;
   const decoded = Schema.decodeOption(GoogleErrorReason)(response.body);
 
-  const reason = decoded.pipe(
-    Option.map((value) => value.error.errors[0]?.reason),
+  const reasons = decoded.pipe(
+    Option.map((value) => value.error.errors.map((entry) => entry.reason)),
     Option.getOrUndefined
   );
 
@@ -187,7 +186,8 @@ const classifyResponse = (
     new Provider({
       message: "Google rejected the operation; inspect permissions or retry",
       operation,
-      reason,
+      reason: reasons?.[0],
+      reasons,
       status: response.status,
     });
 

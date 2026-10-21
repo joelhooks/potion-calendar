@@ -66,14 +66,10 @@ layer(Layer.effect(WatchFixture, seededPushRepository))(
   "watch cooldown",
   (it) => {
     it.effect.prop(
-      "a non-auth events-watch rejection cools down only that calendar for 24 hours across maintenance instances while other calendars remain watched",
+      "other non-auth events-watch rejections retain the 24-hour cooldown across maintenance instances while other calendars remain watched",
       {
-        reason: Schema.Literals([
-          "pushNotSupportedForRequestedResource",
-          "invalidResource",
-          "unrecognizedReason",
-        ]),
-        status: Schema.Literals([400, 404, 410, 422]),
+        reason: Schema.Literals(["invalidResource", "unrecognizedReason"]),
+        status: Schema.Literals([404, 410, 422]),
       },
       ({ reason, status }) =>
         Effect.gen(function* rejectedWatch() {
@@ -235,9 +231,7 @@ layer(Layer.effect(WatchFixture, seededPushRepository))(
                 : Effect.succeed({
                     body: JSON.stringify({
                       error: {
-                        errors: [
-                          { reason: "pushNotSupportedForRequestedResource" },
-                        ],
+                        errors: [{ reason: "quotaExceeded" }],
                       },
                     }),
                     retryAfterMs: 0,
