@@ -3,6 +3,7 @@ import { DateTime, Option, Schema } from "effect";
 import { minuteInZone } from "../../layout/geometry.js";
 import { dayInZone, dayFromIso } from "../../layout/navigation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
+import { platformModifier } from "../keyboard/modifier.js";
 import { monthPointerPoint } from "../month/pointer.js";
 import { GesturePoint, GestureTarget } from "./gesture-model.js";
 
@@ -91,6 +92,7 @@ export const pointerPoint = (
                   scale
               )
             ),
+        mod: platformModifier(event),
         pointerId: event.pointerId,
         shift: event.shiftKey,
         x: event.clientX,

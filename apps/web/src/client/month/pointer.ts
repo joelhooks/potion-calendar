@@ -2,6 +2,7 @@ import { Option, Schema } from "effect";
 
 import { monthCellAt } from "../../layout/month-hit.js";
 import { GesturePoint } from "../editing/gesture-model.js";
+import { platformModifier } from "../keyboard/modifier.js";
 
 export const monthPointerPoint = (
   root: Element,
@@ -37,6 +38,7 @@ export const monthPointerPoint = (
         at: event.timeStamp,
         day,
         minute: 0,
+        mod: platformModifier(event),
         pointerId: event.pointerId,
         shift: event.shiftKey,
         x: event.clientX,

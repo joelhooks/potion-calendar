@@ -68,19 +68,51 @@ export const nextInstantNotice = Effect.fn("nextInstantNotice")(
   }
 );
 
+type InstantEventFlags = Readonly<{
+  eventType?: "default" | "outOfOffice";
+  modifiable?: boolean;
+  authoritativeModifiable?: boolean;
+}>;
+
+type FixtureEventFields = Readonly<{
+  eventType?: "default" | "outOfOffice";
+  guestsCanModify: boolean;
+}>;
+
+const fixtureEventFlags = (
+  input: InstantEventFlags,
+  authoritative: boolean
+): FixtureEventFields => {
+  const flags = {
+    guestsCanModify: authoritative
+      ? (input.authoritativeModifiable ?? input.modifiable ?? true)
+      : (input.modifiable ?? true),
+  };
+
+  if (authoritative && input.eventType === undefined) {
+    return flags;
+  }
+
+  return { eventType: input.eventType ?? "default", ...flags };
+};
+
 const EditingArgs = Schema.Struct({
   command: EditingCommand,
   personId: Schema.String,
 });
 
 export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
-  function* instantRuntimeFixture(input: {
-    readonly recurring: boolean;
-    readonly organizer: boolean;
-    readonly operation: "delete" | "save";
-    readonly undo: boolean;
-    readonly bulk?: boolean;
-  }) {
+  function* instantRuntimeFixture(
+    input: {
+      readonly recurring: boolean;
+      readonly organizer: boolean;
+      readonly operation: "delete" | "save";
+      readonly undo: boolean;
+      readonly bulk?: boolean;
+      readonly saveTimes?: Readonly<{ start: string; end: string }>;
+      readonly readOnly?: boolean;
+    } & InstantEventFlags
+  ) {
     const start = { dateTime: "2026-10-21T09:00:00-07:00" };
     const end = { dateTime: "2026-10-21T10:00:00-07:00" };
 
@@ -111,8 +143,7 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
       attendees,
       end,
       eventId: "instant-instance",
-      eventType: "default",
-      guestsCanModify: true,
+      ...fixtureEventFlags(input, false),
       organizer,
       start,
       status: "confirmed",
@@ -130,7 +161,7 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
     const providerBase = timedEvent(source.eventId, source.title ?? "Meeting", {
       attendees,
       end,
-      guestsCanModify: true,
+      ...fixtureEventFlags(input, true),
       organizer,
       start,
     });
@@ -178,12 +209,17 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
     }
 
     if (input.operation === "save") {
+      const times = input.saveTimes ?? {
+        end: "2026-10-21T12:00:00-07:00",
+        start: "2026-10-21T11:00:00-07:00",
+      };
+
       reads.push(
         response(200, provider),
         response(200, {
           ...provider,
-          end: { dateTime: "2026-10-21T12:00:00-07:00" },
-          start: { dateTime: "2026-10-21T11:00:00-07:00" },
+          end: { dateTime: times.end },
+          start: { dateTime: times.start },
         })
       );
     }
@@ -273,7 +309,8 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
           {
             ...calendar,
             ...ref,
-            accessRole: "owner",
+            accessRole: input.readOnly === true ? "reader" : "owner",
+            primary: input.readOnly !== true,
             title: "Work",
           },
         ],

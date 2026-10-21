@@ -33,7 +33,11 @@ import { EditorMutation, EditorRequest } from "./editor-session-model.js";
 import { needsCalendarReview } from "./failure.js";
 import { gestureTarget } from "./gesture-input.js";
 import type { GestureResult } from "./gesture-model.js";
-import { instantDeleteEligible, instantSaveEligible } from "./instant.js";
+import {
+  instantDeleteEligible,
+  instantSaveEligible,
+  instantSavedReceipt,
+} from "./instant.js";
 import { RsvpResult } from "./rsvp-machine.js";
 import { EditingCommand, EditingNotice } from "./runtime.js";
 import type { EditingRuntime } from "./runtime.js";
@@ -126,6 +130,9 @@ export const completeGesture = (
         request: EditorRequest.cases.Existing.make({
           ...common,
           event: target.event,
+          intent: gesture.duplicate
+            ? "ordinary"
+            : (gesture.intent ?? "ordinary"),
           mode: gesture.duplicate ? "duplicate" : "edit",
           range: gesture.range,
           selection: Option.some(target.key),
@@ -479,15 +486,7 @@ export const mutationReceived = (
           ...model.editing,
           conferencingResult: savedConferencingNotice(saved),
           handledMutation: Option.some(saved.id),
-          instantSaved:
-            saved.plan.session.intent === "noEmailOccurrence" &&
-            saved.plan.sendUpdates === "none"
-              ? Option.some({
-                  id: saved.id,
-                  sendUpdates: "none",
-                  title: saved.event.title ?? "Untitled event",
-                })
-              : Option.none(),
+          instantSaved: instantSavedReceipt(saved),
           write: Option.some({
             afterRead: Option.some(model.calendar.rangeRequest + 1),
             plan: saved.plan,

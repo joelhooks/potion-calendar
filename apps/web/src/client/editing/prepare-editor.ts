@@ -185,7 +185,10 @@ const applyInstantIntent = Effect.fn("applyInstantIntent")(
   function* applyInstantIntent(plan: typeof WritePlan.Type) {
     const { session } = plan;
 
-    if (session.intent !== "noEmailOccurrence") {
+    if (
+      session.intent !== "noEmailOccurrence" &&
+      session.intent !== "noEmailGesture"
+    ) {
       return plan;
     }
 
@@ -208,9 +211,18 @@ const applyInstantIntent = Effect.fn("applyInstantIntent")(
       });
     }
 
-    return plan.choices.includes("single") &&
+    const singleAllowed =
+      plan.choices.includes("single") &&
       !plan.removeRecurrence &&
-      !plan.calendarMoved
+      !plan.calendarMoved;
+
+    if (session.intent === "noEmailGesture" && !singleAllowed) {
+      return yield* new EditorInputFailure({
+        message: "This event cannot be changed as a single occurrence.",
+      });
+    }
+
+    return singleAllowed
       ? WritePlan.make({
           ...plan,
           emailNeeded: false,

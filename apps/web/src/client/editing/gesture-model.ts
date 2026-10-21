@@ -14,6 +14,7 @@ export const GesturePoint = Schema.Struct({
   at: Schema.Finite,
   day: Schema.Int,
   minute: Schema.Finite,
+  mod: Schema.optionalKey(Schema.Boolean),
   pointerId: Schema.Int,
   shift: Schema.Boolean,
   x: Schema.Finite,
@@ -40,6 +41,7 @@ export const GestureResult = Schema.Struct({
   allDayRow: Schema.Boolean,
   duplicate: Schema.Boolean,
   id: Schema.Int,
+  intent: Schema.optionalKey(Schema.Literals(["ordinary", "noEmailGesture"])),
   range: GestureRange,
   target: Schema.Option(GestureTarget),
 });

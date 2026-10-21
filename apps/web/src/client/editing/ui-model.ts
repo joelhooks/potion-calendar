@@ -27,6 +27,7 @@ export const RsvpMark = Schema.Struct({
 
 export const InstantSaveNotice = Schema.Struct({
   id: Schema.String,
+  movement: Schema.optionalKey(Schema.Literals(["event", "occurrence"])),
   sendUpdates: Schema.Literal("none"),
   title: Schema.String,
 });

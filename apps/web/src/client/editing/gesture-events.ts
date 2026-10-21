@@ -1,6 +1,7 @@
 import type { EffectActor } from "@xstate/effect";
 import { Option, Result } from "effect";
 
+import { platformModifier } from "../keyboard/modifier.js";
 import { monthGestureStart } from "../month/gesture.js";
 import type { MonthGestureRefused } from "../month/gesture.js";
 import { pointerPoint } from "./gesture-input.js";
@@ -45,7 +46,7 @@ const startsOnSurface = (
     : chip.classList.contains("selected");
 
 const selectionGesture = (root: HTMLElement, event: PointerEvent): boolean =>
-  event.shiftKey ||
+  (event.shiftKey && !platformModifier(event)) ||
   (!root.classList.contains("month-view") &&
     Number(root.dataset.selectionCount ?? 0) > 1);
 
@@ -194,6 +195,8 @@ export const bindGestureEvents = ({
     if (root.hasPointerCapture?.(event.pointerId)) {
       root.releasePointerCapture(event.pointerId);
     }
+
+    event.preventDefault();
   };
 
   const cancel = (): void => {
@@ -212,6 +215,10 @@ export const bindGestureEvents = ({
   };
 
   const click = (event: MouseEvent): void => {
+    if (!(event.target instanceof Node) || !root.contains(event.target)) {
+      return;
+    }
+
     if (actor.getSnapshot().context.blockClick) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -222,9 +229,12 @@ export const bindGestureEvents = ({
 
   root.addEventListener("pointerdown", down);
   root.addEventListener("lostpointercapture", cancel);
-  root.addEventListener("click", click, true);
-  window.addEventListener("pointermove", move, { passive: false });
-  window.addEventListener("pointerup", up);
+  window.addEventListener("click", click, true);
+  window.addEventListener("pointermove", move, {
+    capture: true,
+    passive: false,
+  });
+  window.addEventListener("pointerup", up, true);
   window.addEventListener("pointercancel", cancel);
   window.addEventListener("blur", cancel);
   window.addEventListener("keydown", key, true);
@@ -233,9 +243,9 @@ export const bindGestureEvents = ({
     cancel();
     root.removeEventListener("pointerdown", down);
     root.removeEventListener("lostpointercapture", cancel);
-    root.removeEventListener("click", click, true);
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
+    window.removeEventListener("click", click, true);
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("pointerup", up, true);
     window.removeEventListener("pointercancel", cancel);
     window.removeEventListener("blur", cancel);
     window.removeEventListener("keydown", key, true);

@@ -111,10 +111,16 @@ export const gestureRange = (
     to = range.end;
   }
 
-  return {
+  const result: typeof GestureResult.Type = {
     allDayRow: start.allDay,
     duplicate: point.alt && target !== undefined && start.edge === "body",
     id,
+    intent:
+      point.mod === true &&
+      target !== undefined &&
+      !(point.alt && start.edge === "body")
+        ? "noEmailGesture"
+        : "ordinary",
     range: {
       allDay,
       endDate: isoFromDay(Math.floor(to / 1440) - (allDay ? 1 : 0)),
@@ -124,4 +130,8 @@ export const gestureRange = (
     },
     target: start.target,
   };
+
+  const { intent, ...ordinary } = result;
+
+  return intent === "noEmailGesture" ? result : ordinary;
 };

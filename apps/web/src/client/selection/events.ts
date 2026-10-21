@@ -6,6 +6,7 @@ import type {
   SelectionBox,
   SelectionFragment,
 } from "../../layout/selection-set.js";
+import { platformModifier } from "../keyboard/modifier.js";
 import type { rectangleMachine } from "./machine.js";
 
 const boxOf = (rect: DOMRect): typeof SelectionBox.Type => ({
@@ -167,7 +168,9 @@ export const bindSelectionEvents = (input: {
         null ||
       event.target.closest(
         ".event-chip,.day-column,.all-day-cell,.month-cell[data-day]"
-      ) === null
+      ) === null ||
+      (platformModifier(event) &&
+        event.target.closest(".event-chip.selected") !== null)
     ) {
       return;
     }
@@ -181,12 +184,13 @@ export const bindSelectionEvents = (input: {
     event.preventDefault();
   };
 
+  const ownsRectanglePointer = (event: PointerEvent): boolean =>
+    actor.getSnapshot().matches("armed") ||
+    actor.getSnapshot().matches("dragging") ||
+    (event.shiftKey && !platformModifier(event) && !event.defaultPrevented);
+
   const move = (event: PointerEvent) => {
-    if (
-      !event.shiftKey &&
-      !actor.getSnapshot().matches("armed") &&
-      !actor.getSnapshot().matches("dragging")
-    ) {
+    if (!ownsRectanglePointer(event)) {
       return;
     }
 
@@ -200,11 +204,7 @@ export const bindSelectionEvents = (input: {
   };
 
   const up = (event: PointerEvent) => {
-    if (
-      !event.shiftKey &&
-      !actor.getSnapshot().matches("armed") &&
-      !actor.getSnapshot().matches("dragging")
-    ) {
+    if (!ownsRectanglePointer(event)) {
       return;
     }
 
