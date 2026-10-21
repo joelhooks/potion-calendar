@@ -59,6 +59,7 @@ import {
   validateStatusEventCreate,
   validateEventTypeUpdate,
 } from "./status-event-create.js";
+import { statusEventUpdateOptions } from "./status-event-update.js";
 import { statusEventType } from "./status-event.js";
 import { CalendarStore } from "./store.js";
 import { CalendarReadBudget } from "./sync.js";
@@ -884,6 +885,11 @@ export class CalendarService extends Context.Service<
               });
             }
 
+            const statusOptions = yield* statusEventUpdateOptions(
+              selected,
+              input
+            ).pipe(Effect.provideService(GoogleCalendarClient, google));
+
             if (input.removeRecurrence === true) {
               return yield* removeRecurrence(input, selected);
             }
@@ -892,7 +898,7 @@ export class CalendarService extends Context.Service<
               input.scope === "single" ||
               selected.recurringEventId === undefined
             ) {
-              return yield* patch(input, input.changes, input);
+              return yield* patch(input, input.changes, statusOptions);
             }
 
             const master = yield* google.get({
@@ -907,7 +913,12 @@ export class CalendarService extends Context.Service<
                 input.changes
               );
 
-              return yield* patch(master, changes, input);
+              const masterOptions = yield* statusEventUpdateOptions(master, {
+                ...input,
+                changes,
+              }).pipe(Effect.provideService(GoogleCalendarClient, google));
+
+              return yield* patch(master, changes, masterOptions);
             }
 
             if (selected.organizer?.self !== true) {

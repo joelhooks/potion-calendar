@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Crypto, Effect, FileSystem, Option, Ref, Schema } from "effect";
+import { Effect, FileSystem, Option, Ref, Schema } from "effect";
 
 import { EditorAction } from "../src/client/editing/editor-action.js";
 import { EditorView } from "../src/client/editing/editor-model.js";
@@ -17,14 +17,6 @@ import {
   typeTitle,
 } from "./create-type-runtime-fixture.js";
 
-interface ExportedFixture {
-  readonly path: string;
-  readonly sha256: string;
-  readonly scene: string;
-  readonly width: number;
-  readonly theme: string;
-}
-
 const combinations = [
   [1440, "light"],
   [1440, "dark"],
@@ -32,17 +24,12 @@ const combinations = [
   [900, "dark"],
 ] as const;
 
-const fixtureSets = new Map<string, readonly ExportedFixture[]>();
-
 it.effect.each(combinations)(
-  "exports five real-root create scenes at %s in %s with actual fake-Google receipts and exact embedded proofs",
+  "checks five current create scenes at %s in %s without overwriting historical approved artifacts",
   ([width, theme]) =>
-    Effect.gen(function* createTypeArtifacts() {
+    Effect.gen(function* checkCurrentCreateScenes() {
       const fs = yield* FileSystem.FileSystem;
-      const crypto = yield* Crypto.Crypto;
       const css = yield* fs.readFileString("src/client/style.css");
-
-      const fixtures: ExportedFixture[] = [];
 
       for (const scene of typeScenes) {
         const f = yield* createTypeRuntimeFixture(scene);
@@ -113,40 +100,6 @@ it.effect.each(combinations)(
         const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x900"><title>Create ${scene} ${theme}</title><style>${css}</style></head><body>${rendered.html}<script id="create-type-evidence" type="application/json">${JSON.stringify(evidence).replaceAll("<", "\\u003c")}</script><script id="create-type-proof">${createTypeProofScript}</script></body></html>`;
         const proof = executeCreateTypeProofWithStandInBoxes(html, width);
         expect(proof.documentElement.dataset.createTypeProof).toBe("pass");
-        const path = `.git/create-types-v2-${scene}-${theme}-${width}.html`;
-        yield* fs.writeFileString(`../../${path}`, html);
-        fixtures.push({
-          path,
-          scene,
-          sha256: Array.from(
-            yield* crypto.digest("SHA-256", new TextEncoder().encode(html)),
-            (byte) => byte.toString(16).padStart(2, "0")
-          ).join(""),
-          theme,
-          width,
-        });
       }
-
-      expect(fixtures).toHaveLength(5);
-      fixtureSets.set(JSON.stringify([width, theme]), fixtures);
-    }).pipe(Effect.provide(NodeServices.layer))
-);
-
-it.effect(
-  "collects this run's twenty exported create scenes into one ordered manifest",
-  () =>
-    Effect.gen(function* collectTypeFixtures() {
-      const fs = yield* FileSystem.FileSystem;
-      expect(fixtureSets.size).toBe(4);
-
-      const fixtures = combinations.flatMap(
-        (combination) => fixtureSets.get(JSON.stringify(combination)) ?? []
-      );
-
-      expect(fixtures).toHaveLength(20);
-      yield* fs.writeFileString(
-        "../../.git/create-types-fixtures-v2.json",
-        `${JSON.stringify({ base: "9bcacc4", fixtures, height: 900, proofAttribute: "data-create-type-proof", proofValue: "pass", review: "layton-create-types-2", source: "Real root, existing actors, RPC, CalendarService and fake-Google insert request-response receipts", workerQualification: "Exact embedded scripts executed under explicit DOM stand-in geometry; real geometry remains desk-qualified." }, null, 2)}\n`
-      );
     }).pipe(Effect.provide(NodeServices.layer))
 );

@@ -1,4 +1,7 @@
-import { googleCalendarCapabilities } from "@calendar/calendar/contracts";
+import {
+  googleCalendarCapabilities,
+  statusEventType,
+} from "@calendar/calendar/contracts";
 import { createEffectLogic } from "@xstate/effect";
 import { Effect, Match, Schema } from "effect";
 
@@ -26,6 +29,7 @@ import type { LoadedEditor } from "./editor-session-model.js";
 import { EditorInputFailure } from "./input-failure.js";
 import { permissionsForEditor } from "./prepare-editor.js";
 import { selectCreateEventType } from "./status-event-draft.js";
+import { statusPolicyUnavailable } from "./status-event-policy.js";
 
 const CalendarChoice = Schema.fromJsonString(
   Schema.Tuple([Schema.String, Schema.String])
@@ -281,8 +285,13 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
             },
           }))
         ),
-      StatusInvitationsChosen: ({ value }) =>
-        session.kind !== "edit" && permissions.editMeeting
+      StatusInvitationsChosen: ({ value }) => {
+        const reason = statusPolicyUnavailable(
+          session,
+          permissions.editMeeting
+        );
+
+        return reason === undefined
           ? Effect.succeed({
               ...session,
               draft: {
@@ -292,12 +301,20 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
                   : "declineNone",
               },
             })
-          : Effect.fail(fail()),
+          : Effect.fail(new EditorInputFailure({ message: reason }));
+      },
       SuggestReminder: ({ value }) =>
         permissions.calendarWritable
           ? newReminder(session, value)
           : Effect.fail(fail()),
       TextEdited: ({ field, value }) => {
+        if (
+          statusEventType(session.draft.eventType) &&
+          (field === "location" || field === "description")
+        ) {
+          return Effect.fail(fail());
+        }
+
         const permitted = Match.value(field).pipe(
           Match.when("reminderInput", () => permissions.calendarWritable),
           Match.when("participantEmail", () => permissions.inviteGuests),
@@ -318,7 +335,8 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
             )
           : Effect.fail(fail()),
       ToggleAllDay: () =>
-        permissions.editMeeting
+        permissions.editMeeting &&
+        !(session.kind === "edit" && statusEventType(session.draft.eventType))
           ? Effect.succeed({
               ...session,
               draft: { ...session.draft, allDay: !session.draft.allDay },

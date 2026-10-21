@@ -136,6 +136,8 @@ const editableFields: readonly ChangedEventField[] = [
   "colorId",
   "description",
   "end",
+  "focusTimeProperties",
+  "outOfOfficeProperties",
   "location",
   "recurrence",
   "reminders",
@@ -166,6 +168,21 @@ const scalarChanges = (
 
   if (draft.location !== baseline.location) {
     changes.location = fields.location;
+  }
+
+  if (
+    draft.statusInvitationChoice !== baseline.statusInvitationChoice &&
+    draft.statusInvitationChoice !== undefined
+  ) {
+    const properties = { autoDeclineMode: draft.statusInvitationChoice };
+
+    if (draft.eventType === "focusTime") {
+      changes.focusTimeProperties = properties;
+    }
+
+    if (draft.eventType === "outOfOffice") {
+      changes.outOfOfficeProperties = properties;
+    }
   }
 
   if (draft.colorId !== baseline.colorId) {

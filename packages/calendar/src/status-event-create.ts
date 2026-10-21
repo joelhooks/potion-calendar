@@ -4,23 +4,19 @@ import type { WriteOptions } from "./google.js";
 import { GoogleCalendarClient } from "./google.js";
 import type { CalendarRefValue, EventFieldsValue } from "./model.js";
 import { Provider } from "./provider.js";
-import {
-  hasCreateOnlyTypeFields,
-  statusEventAvailability,
-  statusEventType,
-} from "./status-event.js";
+import { statusEventAvailability, statusEventType } from "./status-event.js";
 
 export const validateEventTypeUpdate = (fields: EventFieldsValue) =>
-  hasCreateOnlyTypeFields(fields)
-    ? Effect.fail(
+  fields.eventType === undefined
+    ? Effect.void
+    : Effect.fail(
         new Provider({
           message:
-            "Event type and status creation properties cannot be changed after creation in this app.",
+            "Google doesn't allow changing an event's type after creation.",
           operation: "updateEvent",
           status: 0,
         })
-      )
-    : Effect.void;
+      );
 
 type StatusCreateFacts = CalendarRefValue &
   WriteOptions & { readonly event: EventFieldsValue };

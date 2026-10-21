@@ -1,3 +1,4 @@
+import { statusEventType } from "@calendar/calendar/contracts";
 import { Option, Predicate } from "effect";
 
 import { visibleEvents } from "../../layout/presentation.js";
@@ -150,7 +151,7 @@ const personal = (model: AppModel): Availability =>
   selectedAvailability(model, calendarWritable(model));
 
 const ordinaryField = (model: AppModel): Availability =>
-  selectedEvent(model)?.source.eventType === "outOfOffice"
+  statusEventType(selectedEvent(model)?.source.eventType)
     ? selectedAvailability(model, false)
     : edit(model);
 
@@ -160,6 +161,7 @@ const rsvp = (model: AppModel): Availability => {
   return selectedAvailability(
     model,
     calendarWritable(model) &&
+      !statusEventType(event?.eventType) &&
       event?.attendees?.some(
         (person) => person.self === true && person.organizer !== true
       ) === true
@@ -546,7 +548,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
       : selectedAvailability(model, false);
   }),
   field("c", "Edit calendar / color", "calendar", personal),
-  field("a", "Toggle all-day", "allDay"),
+  field("a", "Toggle all-day", "allDay", ordinaryField),
   field("r", "Edit repeat pattern", "repeat"),
   field("p", "Edit participants", "participantEmail", (model) =>
     selectedEvent(model)?.source.attendeesOmitted === true ||
@@ -557,7 +559,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
   field("l", "Edit location", "location", ordinaryField),
   field("w", "Edit description", "description", ordinaryField),
   field("k", "Open links and attachments", "links", (model) =>
-    selectedEvent(model)?.source.eventType === "outOfOffice"
+    statusEventType(selectedEvent(model)?.source.eventType)
       ? "disabled"
       : personal(model)
   ),

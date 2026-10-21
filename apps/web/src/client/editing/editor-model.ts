@@ -68,7 +68,11 @@ export const EventDraft = Schema.Struct({
   startDate: Schema.String,
   startTime: Schema.String,
   statusInvitationChoice: Schema.optional(
-    Schema.Literals(["declineNone", "declineOnlyNewConflictingInvitations"])
+    Schema.Literals([
+      "declineNone",
+      "declineOnlyNewConflictingInvitations",
+      "declineAllConflictingInvitations",
+    ])
   ),
   timeZone: Schema.String,
   title: Schema.String,

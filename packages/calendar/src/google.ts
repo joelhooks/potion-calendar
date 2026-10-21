@@ -184,11 +184,14 @@ const mapCalendar = (
   };
 };
 
-const eventBody = (
-  fields: EventFieldsValue,
-  copyAttachments = false,
-  creation = false
-) => {
+type EventBodyMode =
+  | { readonly kind: "create" }
+  | {
+      readonly kind: "patch";
+      readonly statusPropertyType?: "focusTime" | "outOfOffice" | undefined;
+    };
+
+const eventBody = (fields: EventFieldsValue, mode: EventBodyMode) => {
   const {
     title,
     attachments,
@@ -200,19 +203,28 @@ const eventBody = (
 
   const body = {
     ...rest,
-    attachments: copyAttachments
-      ? attachments?.map((attachment) => ({
-          fileUrl: attachment.url,
-          iconLink: attachment.iconUrl,
-          mimeType: attachment.mimeType,
-          title: attachment.title,
-        }))
-      : undefined,
+    attachments:
+      mode.kind === "create"
+        ? attachments?.map((attachment) => ({
+            fileUrl: attachment.url,
+            iconLink: attachment.iconUrl,
+            mimeType: attachment.mimeType,
+            title: attachment.title,
+          }))
+        : undefined,
     summary: title,
   };
 
-  if (creation) {
+  if (mode.kind === "create") {
     return { ...body, eventType, focusTimeProperties, outOfOfficeProperties };
+  }
+
+  if (mode.statusPropertyType === "focusTime") {
+    return { ...body, focusTimeProperties };
+  }
+
+  if (mode.statusPropertyType === "outOfOffice") {
+    return { ...body, outOfOfficeProperties };
   }
 
   return body;
@@ -237,6 +249,7 @@ export interface ListedEvents {
 }
 
 export interface WriteOptions {
+  readonly statusPropertyType?: "focusTime" | "outOfOffice" | undefined;
   readonly conferencingRequest?: ConferencingWriteRequestValue | undefined;
   readonly sendUpdates?: "none" | "all" | "externalOnly" | undefined;
 }
@@ -426,7 +439,7 @@ export class GoogleCalendarClient extends Context.Service<
                 acceptConflict: true,
                 accountId: ref.accountId,
                 body: JSON.stringify({
-                  ...eventBody(fields, true, true),
+                  ...eventBody(fields, { kind: "create" }),
                   conferenceData,
                   id,
                 }),
@@ -643,7 +656,13 @@ export class GoogleCalendarClient extends Context.Service<
               GoogleEvent,
               {
                 accountId: ref.accountId,
-                body: JSON.stringify({ ...eventBody(fields), conferenceData }),
+                body: JSON.stringify({
+                  ...eventBody(fields, {
+                    kind: "patch",
+                    statusPropertyType: options.statusPropertyType,
+                  }),
+                  conferenceData,
+                }),
                 method: "PATCH",
                 path: `${eventPath(ref)}?${query.toString()}`,
               },

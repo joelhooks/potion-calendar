@@ -132,7 +132,7 @@ const editorForm = <Message>(
           ]),
       eventTypeField(h, props),
       ...eventTextFields(h, props),
-      ...(props.model.draft.eventType === "outOfOffice"
+      ...(statusEventType(props.model.draft.eventType)
         ? []
         : [editorLinks(h, props.model.draft)]),
       ...(statusEventType(props.model.draft.eventType)

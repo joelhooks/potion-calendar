@@ -97,6 +97,8 @@ export const ListEventsOutput = Schema.Struct({
 export {
   statusEventAvailability,
   statusEventLabel,
+  statusEventProperties,
+  supportedStatusInvitationMode,
   statusEventType,
 } from "./status-event.js";
 

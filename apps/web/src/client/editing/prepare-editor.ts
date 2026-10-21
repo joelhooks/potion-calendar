@@ -29,6 +29,10 @@ import {
 import { EditorInputFailure } from "./input-failure.js";
 import { writableCalendar } from "./load-editor.js";
 import { creationTypeFields } from "./status-event-draft.js";
+import {
+  statusPolicyScopes,
+  validateStatusPolicyDraft,
+} from "./status-event-policy.js";
 
 export const permissionsForEditor = (
   session: typeof LoadedEditor.Type
@@ -181,9 +185,10 @@ const hasOtherGuests = (session: typeof LoadedEditor.Type): boolean => {
   const source = Option.getOrUndefined(session.original);
 
   return (
-    source?.organizer?.self === false ||
-    (source?.attendees ?? []).some((person) => person.self !== true) ||
-    session.draft.attendees.some((person) => person.self !== true)
+    !statusEventType(session.draft.eventType) &&
+    (source?.organizer?.self === false ||
+      (source?.attendees ?? []).some((person) => person.self !== true) ||
+      session.draft.attendees.some((person) => person.self !== true))
   );
 };
 
@@ -247,6 +252,8 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   input: typeof LoadedEditor.Type
 ) {
   const session = yield* finalizeInputs(input);
+  const permissions = permissionsForEditor(session);
+  yield* validateStatusPolicyDraft(session, permissions.editMeeting);
   const ordinaryFields = yield* draftEventFields(session.draft);
 
   const fields = yield* creationTypeFields(
@@ -257,7 +264,6 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   );
 
   const delta = draftChanges(session.draft, session.baseline, fields);
-  const permissions = permissionsForEditor(session);
 
   if (
     !permissions.calendarWritable ||
@@ -285,7 +291,7 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
     });
   }
 
-  const offer = scopeOffer(facts);
+  const offer = statusPolicyScopes(scopeOffer(facts), session);
 
   if (offer.prompt === "unavailable") {
     return yield* new EditorInputFailure({

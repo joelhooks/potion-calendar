@@ -1,3 +1,4 @@
+import { statusEventType } from "@calendar/calendar/contracts";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
@@ -17,7 +18,7 @@ export const eventRsvp = (
     (person) => person.self === true
   );
 
-  if (self === undefined) {
+  if (self === undefined || statusEventType(selected.source.eventType)) {
     return [];
   }
 

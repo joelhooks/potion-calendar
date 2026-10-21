@@ -152,10 +152,15 @@ it.effect.prop(
           action = EditorAction.cases.ToggleAllDay.make({});
           model.allDay = !model.allDay;
         } else if (command === "decline" || command === "keep") {
-          model.declineNew = command === "decline";
+          const declineNew = command === "decline";
+          allowed = model.type !== "default";
           action = EditorAction.cases.StatusInvitationsChosen.make({
-            value: model.declineNew,
+            value: declineNew,
           });
+
+          if (allowed) {
+            model.declineNew = declineNew;
+          }
         } else {
           model.primary = command === "primary";
           action = EditorAction.cases.CalendarSelected.make({

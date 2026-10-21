@@ -1,3 +1,4 @@
+import { statusEventProperties } from "@calendar/calendar/contracts";
 import type {
   CalendarEventValue,
   CalendarRefValue,
@@ -161,6 +162,7 @@ export const eventDraft = Effect.fn("eventDraft")(function* eventDraft(
     repeat,
     startDate: from.date,
     startTime: from.clock,
+    statusInvitationChoice: statusEventProperties(event)?.autoDeclineMode,
     timeZone,
     title: event.title ?? "",
   });

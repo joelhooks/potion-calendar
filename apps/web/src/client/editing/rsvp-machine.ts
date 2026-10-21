@@ -1,4 +1,8 @@
-import { CalendarEvent, RsvpInput } from "@calendar/calendar/contracts";
+import {
+  CalendarEvent,
+  RsvpInput,
+  statusEventType,
+} from "@calendar/calendar/contracts";
 import { createEffectLogic, setupEffect } from "@xstate/effect";
 import { Effect, Option, Schema } from "effect";
 import { types } from "xstate";
@@ -51,6 +55,7 @@ const respond = createEffectLogic({
 
 const canRespond = (context: Context): boolean =>
   Option.isSome(context.focused) &&
+  !statusEventType(context.focused.value.eventType) &&
   context.focused.value.attendees?.some((person) => person.self === true) ===
     true;
 

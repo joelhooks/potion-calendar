@@ -285,7 +285,7 @@ it.effect(
   "the mail action does not hide pre-existing attendee presentation on non-default sources",
   () =>
     Effect.gen(function* preservedParticipantPresentation() {
-      for (const eventType of ["focusTime", "fromGmail"] as const) {
+      for (const eventType of ["fromGmail"] as const) {
         const base = emailFixture("button");
 
         const model = {

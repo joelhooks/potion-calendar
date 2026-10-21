@@ -1,9 +1,8 @@
-import type { CalendarValue, EventFieldsValue } from "./model.js";
-
-export const hasCreateOnlyTypeFields = (fields: EventFieldsValue) =>
-  fields.eventType !== undefined ||
-  fields.focusTimeProperties !== undefined ||
-  fields.outOfOfficeProperties !== undefined;
+import type {
+  CalendarValue,
+  CalendarEventValue,
+  EventFieldsValue,
+} from "./model.js";
 
 export const statusEventType = (type: EventFieldsValue["eventType"]) =>
   type === "focusTime" || type === "outOfOffice";
@@ -31,6 +30,20 @@ export const statusEventAvailability = (
 
   return { kind: "unknown" };
 };
+
+export const statusEventProperties = (
+  event: Pick<
+    CalendarEventValue,
+    "eventType" | "focusTimeProperties" | "outOfOfficeProperties"
+  >
+) =>
+  [
+    { properties: event.focusTimeProperties, type: "focusTime" },
+    { properties: event.outOfOfficeProperties, type: "outOfOffice" },
+  ].find((entry) => entry.type === event.eventType)?.properties;
+
+export const supportedStatusInvitationMode = (mode: string | undefined) =>
+  mode === "declineNone" || mode === "declineOnlyNewConflictingInvitations";
 
 export const statusEventLabel = (type: EventFieldsValue["eventType"]) =>
   type === "focusTime" ? "Focus time" : "Out of office";

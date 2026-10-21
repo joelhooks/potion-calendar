@@ -1,3 +1,4 @@
+import { statusEventType } from "@calendar/calendar/contracts";
 import type { CalendarValue } from "@calendar/calendar/contracts";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -113,7 +114,11 @@ export const eventDateFields = <Message>(
             h.Id("event-allDay"),
             h.Type("checkbox"),
             h.Checked(draft.allDay),
-            h.Disabled(disabled),
+            h.Disabled(
+              disabled ||
+                (props.model.kind === "edit" &&
+                  statusEventType(draft.eventType))
+            ),
             h.OnClick(props.send(EditorAction.cases.ToggleAllDay.make({}))),
           ]),
           "All day",
@@ -187,7 +192,7 @@ export const eventTextFields = <Message>(
 ): readonly Html[] => [
   draftInput(h, props, "title", "Title"),
   eventDateFields(h, props),
-  ...(props.model.draft.eventType === "outOfOffice"
+  ...(statusEventType(props.model.draft.eventType)
     ? []
     : [
         draftInput(h, props, "location", "Location"),

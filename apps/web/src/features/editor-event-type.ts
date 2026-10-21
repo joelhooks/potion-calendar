@@ -6,6 +6,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { EditorAction } from "../client/editing/editor-action.js";
 import { EditorView } from "../client/editing/editor-model.js";
+import { statusPolicyUnavailable } from "../client/editing/status-event-policy.js";
 import type { EditorProps } from "./editor-fields.js";
 
 const labels = {
@@ -17,6 +18,62 @@ const labels = {
   workingLocation: "Working location",
 };
 
+const invitationFields = <Message>(
+  h: HtmlBuilder<Message>,
+  props: EditorProps<Message>
+): readonly Html[] => {
+  if (!statusEventType(props.model.draft.eventType)) {
+    return [];
+  }
+
+  const reason = statusPolicyUnavailable(
+    { ...props.model, calendars: props.calendars },
+    props.model.permissions.editMeeting
+  );
+
+  const checked =
+    props.model.draft.statusInvitationChoice !== undefined &&
+    props.model.draft.statusInvitationChoice !== "declineNone";
+
+  return [
+    h.label(
+      [h.Class("editor-check")],
+      [
+        h.input([
+          h.Id("event-status-invitations"),
+          h.Type("checkbox"),
+          h.Checked(checked),
+          h.Disabled(
+            EditorView.guards.Saving(props.model) || reason !== undefined
+          ),
+          h.OnClick(
+            props.send(
+              EditorAction.cases.StatusInvitationsChosen.make({
+                value: !checked,
+              })
+            )
+          ),
+        ]),
+        "Decline new invitations during this time",
+      ]
+    ),
+    ...(reason === undefined
+      ? []
+      : [
+          h.p(
+            [h.Class("editor-hint"), h.Id("event-status-policy-readonly")],
+            [reason]
+          ),
+        ]),
+    h.p(
+      [h.Class("editor-hint")],
+      [
+        "Focus time and Out of office have no guests. Saving sends no invitation emails.",
+      ]
+    ),
+  ];
+};
+
 export const eventTypeField = <Message>(
   h: HtmlBuilder<Message>,
   props: EditorProps<Message>
@@ -24,12 +81,18 @@ export const eventTypeField = <Message>(
   const { draft } = props.model;
 
   if (props.model.kind === "edit") {
-    return h.p(
+    return h.section(
+      [h.Class("editor-section"), h.AriaLabel("Event type")],
       [
-        h.Class("editor-hint"),
-        h.DataAttribute("saved-event-type", draft.eventType ?? "default"),
-      ],
-      [`Event type: ${labels[draft.eventType ?? "default"]}`]
+        h.p(
+          [
+            h.Class("editor-hint"),
+            h.DataAttribute("saved-event-type", draft.eventType ?? "default"),
+          ],
+          [`Event type: ${labels[draft.eventType ?? "default"]}`]
+        ),
+        ...invitationFields(h, props),
+      ]
     );
   }
 
@@ -92,40 +155,7 @@ export const eventTypeField = <Message>(
             ),
           ]
         : []),
-      ...(statusEventType(draft.eventType)
-        ? [
-            h.label(
-              [h.Class("editor-check")],
-              [
-                h.input([
-                  h.Id("event-status-invitations"),
-                  h.Type("checkbox"),
-                  h.Checked(
-                    draft.statusInvitationChoice ===
-                      "declineOnlyNewConflictingInvitations"
-                  ),
-                  h.Disabled(busy),
-                  h.OnClick(
-                    props.send(
-                      EditorAction.cases.StatusInvitationsChosen.make({
-                        value:
-                          draft.statusInvitationChoice !==
-                          "declineOnlyNewConflictingInvitations",
-                      })
-                    )
-                  ),
-                ]),
-                "Decline new invitations during this time",
-              ]
-            ),
-            h.p(
-              [h.Class("editor-hint")],
-              [
-                "Focus time and Out of office have no guests. Saving sends no invitation emails.",
-              ]
-            ),
-          ]
-        : []),
+      ...invitationFields(h, props),
     ]
   );
 };

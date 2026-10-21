@@ -1,3 +1,9 @@
+import type { CalendarEventValue } from "@calendar/calendar/contracts";
+import {
+  statusEventType,
+  statusEventLabel,
+  statusEventProperties,
+} from "@calendar/calendar/contracts";
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -585,6 +591,35 @@ const emailParticipantButton = (
   ];
 };
 
+const statusEventSummary = (
+  event: CalendarEventValue,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] => {
+  if (!statusEventType(event.eventType)) {
+    return [];
+  }
+
+  const mode = statusEventProperties(event)?.autoDeclineMode;
+
+  return [
+    h.p(
+      [
+        h.Class("detail-type"),
+        h.DataAttribute("saved-event-type", event.eventType ?? "default"),
+      ],
+      [statusEventLabel(event.eventType)]
+    ),
+    ...(mode !== undefined && mode !== "declineNone"
+      ? [
+          h.p(
+            [h.Class("detail-status-policy")],
+            ["Declines new invitations during this time."]
+          ),
+        ]
+      : []),
+  ];
+};
+
 export const detailPanel = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>
@@ -600,6 +635,7 @@ export const detailPanel = (
   }
 
   const event = selected.source;
+  const status = statusEventType(event.eventType);
 
   const writable = model.calendar.calendars.some(
     (calendar) =>
@@ -608,10 +644,9 @@ export const detailPanel = (
       writableCalendar(calendar)
   );
 
-  const join =
-    event.eventType === "outOfOffice"
-      ? undefined
-      : conferenceLink(event.conferenceUrl, event.location, event.description);
+  const join = status
+    ? undefined
+    : conferenceLink(event.conferenceUrl, event.location, event.description);
 
   const when = eventWhen(
     selected,
@@ -633,6 +668,7 @@ export const detailPanel = (
           ["×"]
         ),
         h.h2([], [selected.title]),
+        ...statusEventSummary(event, h),
         ...(writable
           ? []
           : [h.p([h.Class("muted")], ["This calendar is read-only."])]),
@@ -724,15 +760,15 @@ export const detailPanel = (
                 ["Join meeting ↗"]
               ),
             ]),
-        ...(event.eventType === "outOfOffice" || event.location === undefined
+        ...(status || event.location === undefined
           ? []
           : [
               h.h3([], ["Location"]),
               h.p([], [eventLinkedText(h, event.location)]),
               ...locationMap(h, event.location),
             ]),
-        ...eventAttachments(h, event),
-        ...(event.eventType === "outOfOffice" || event.description === undefined
+        ...(status ? [] : eventAttachments(h, event)),
+        ...(status || event.description === undefined
           ? []
           : [
               h.h3([], ["Description"]),
@@ -741,7 +777,7 @@ export const detailPanel = (
                 [eventLinkedText(h, event.description)]
               ),
             ]),
-        ...(event.eventType === "outOfOffice"
+        ...(status
           ? []
           : [
               ...emailParticipantButton(model, h),

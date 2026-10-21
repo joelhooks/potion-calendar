@@ -42,12 +42,12 @@ const statusDraftProblem = (session: typeof LoadedEditor.Type) =>
     },
     {
       invalid:
-        session.draft.eventType === "outOfOffice" &&
+        statusEventType(session.draft.eventType) &&
         (session.draft.location.trim() !== "" ||
           session.draft.description.trim() !== "" ||
           (session.draft.attachments?.length ?? 0) > 0),
       message:
-        "Clear location, description and attachments before choosing Out of office.",
+        "Start a new Focus time or Out of office event without location, description or attachments.",
     },
   ].find((problem) => problem.invalid)?.message;
 
