@@ -62,6 +62,7 @@ const editingLayers = (
       calendars: model.calendar.calendars,
       chooseTimeZone: Message.KeyboardAction({ id: "event-zone" }),
       initialFocus: model.keyboard.focus,
+      locationMaps: model.settings.locationMaps,
       model: model.editing.view,
       primaryZone: homeZone(model),
       reminderLimit: googleCalendarCapabilities.maxRemindersCount,

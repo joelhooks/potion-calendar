@@ -1,4 +1,5 @@
 import { conferenceLink } from "./conferencing.js";
+import type { LocationMaps } from "./location-maps.js";
 
 export const ordinaryLink = (value: string): string | undefined => {
   if (
@@ -125,7 +126,10 @@ export const eventTextLinks = (text: string): readonly EventTextPart[] =>
     ];
   });
 
-export const mapsLocation = (location: string): string | undefined => {
+export const mapsLocation = (
+  location: string,
+  choice: typeof LocationMaps.Type = "google"
+): string | undefined => {
   if (
     location.trim() === "" ||
     location.includes("://") ||
@@ -134,5 +138,11 @@ export const mapsLocation = (location: string): string | undefined => {
     return undefined;
   }
 
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.trim().replaceAll(/[\uD800-\uDFFF]/gu, "\uFFFD"))}`;
+  const query = encodeURIComponent(
+    location.trim().replaceAll(/[\uD800-\uDFFF]/gu, "\uFFFD")
+  );
+
+  return choice === "apple"
+    ? `https://maps.apple.com/search?query=${query}`
+    : `https://www.google.com/maps/search/?api=1&query=${query}`;
 };

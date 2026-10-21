@@ -1,6 +1,7 @@
 import { Option, Result } from "effect";
 import { AsyncData } from "foldkit";
 
+import { normalizeLocationMaps } from "../../layout/location-maps.js";
 import {
   WeekdayVisibilityAction,
   changeWeekdayVisibility,
@@ -39,6 +40,7 @@ export const preferenceSnapshot = (
     hideContextPanel: model.settings.hideContextPanel,
     hideDeclined: model.calendar.hideDeclined,
     hideWeekends: model.calendar.navigation.hideWeekends,
+    locationMaps: model.settings.locationMaps,
     mergeDuplicates: model.calendar.mergeDuplicates,
     showWeekNumbers: model.settings.showWeekNumbers,
     theme: model.settings.theme,
@@ -122,6 +124,7 @@ export const applyPreferences = (
       defaultCalendar: Option.fromNullishOr(preferences.defaultCalendar),
       eventInvites: preferences.eventInvites,
       hideContextPanel: preferences.hideContextPanel ?? false,
+      locationMaps: normalizeLocationMaps(preferences.locationMaps),
       showWeekNumbers: preferences.showWeekNumbers,
       theme: preferences.theme,
       timeFormat: preferences.timeFormat,
@@ -210,6 +213,10 @@ export const changeSettings = (
     EventInvites: ({ enabled }) => ({
       ...model,
       settings: { ...model.settings, eventInvites: enabled },
+    }),
+    LocationMaps: ({ value }) => ({
+      ...model,
+      settings: { ...model.settings, locationMaps: value },
     }),
     Theme: ({ value }) => ({
       ...model,

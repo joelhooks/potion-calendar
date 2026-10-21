@@ -134,7 +134,7 @@ const editorForm = <Message>(
       ...eventTextFields(h, props),
       ...(statusEventType(props.model.draft.eventType)
         ? []
-        : [editorLinks(h, props.model.draft)]),
+        : [editorLinks(h, props.model.draft, props.locationMaps)]),
       ...(statusEventType(props.model.draft.eventType)
         ? []
         : [conferencingField(h, props)]),

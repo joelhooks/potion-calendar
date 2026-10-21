@@ -1,6 +1,7 @@
 import type { CalendarEventValue } from "@calendar/calendar/contracts";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import { browserMapsPlatform } from "../client/settings/maps-platform.js";
 import {
   attachmentKind,
   eventLinkLabel,
@@ -8,6 +9,8 @@ import {
   mapsLocation,
   ordinaryLink,
 } from "../layout/event-links.js";
+import type { LocationMaps } from "../layout/location-maps.js";
+import { effectiveLocationMaps } from "../layout/location-maps.js";
 
 export const externalEventLink = <Message>(
   h: HtmlBuilder<Message>,
@@ -43,13 +46,16 @@ export const eventLinkedText = <Message>(
 
 export const locationMap = <Message>(
   h: HtmlBuilder<Message>,
-  location: string
+  location: string,
+  choice: typeof LocationMaps.Type = "google"
 ): readonly Html[] => {
-  const href = mapsLocation(location);
+  const effective = effectiveLocationMaps(choice, browserMapsPlatform());
+  const href = mapsLocation(location, effective);
 
-  return href === undefined
-    ? []
-    : [externalEventLink(h, href, "Open in Google Maps ↗")];
+  const label =
+    effective === "apple" ? "Open in Apple Maps ↗" : "Open in Google Maps ↗";
+
+  return href === undefined ? [] : [externalEventLink(h, href, label)];
 };
 
 export const eventAttachments = <Message>(
@@ -125,7 +131,8 @@ export const editorLinks = <Message>(
   event: Pick<
     CalendarEventValue,
     "attachments" | "eventType" | "location" | "description"
-  >
+  >,
+  choice: typeof LocationMaps.Type = "google"
 ): Html => {
   const omitted = event.eventType === "outOfOffice";
 
@@ -165,7 +172,7 @@ export const editorLinks = <Message>(
                 ]
               )
             ),
-            ...locationMap(h, event.location ?? ""),
+            ...locationMap(h, event.location ?? "", choice),
             ...eventAttachments(h, event),
             ...(parts.length === 0 && (event.attachments?.length ?? 0) === 0
               ? [

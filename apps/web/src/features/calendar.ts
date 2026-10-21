@@ -765,7 +765,7 @@ export const detailPanel = (
           : [
               h.h3([], ["Location"]),
               h.p([], [eventLinkedText(h, event.location)]),
-              ...locationMap(h, event.location),
+              ...locationMap(h, event.location, model.settings.locationMaps),
             ]),
         ...(status ? [] : eventAttachments(h, event)),
         ...(status || event.description === undefined

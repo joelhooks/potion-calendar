@@ -10,6 +10,7 @@ import { EditorView } from "../client/editing/editor-model.js";
 import type { EditorViewValue } from "../client/editing/editor-model.js";
 import { eventPalette } from "../layout/colors.js";
 import { eventZoneLabel } from "../layout/event-zone-preview.js";
+import type { LocationMaps } from "../layout/location-maps.js";
 import { chipColors } from "../layout/settings-colors.js";
 import {
   canonicalClockInput,
@@ -25,6 +26,7 @@ export type OpenEditorView = Exclude<
 
 export interface EditorProps<Message> {
   readonly initialFocus?: string;
+  readonly locationMaps?: typeof LocationMaps.Type;
   readonly primaryZone?: string;
   readonly chooseTimeZone?: Message;
   readonly calendars: readonly CalendarValue[];

@@ -1,6 +1,10 @@
 import { CalendarRef } from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
+import {
+  LocationMaps,
+  normalizeLocationMaps,
+} from "../../layout/location-maps.js";
 import { HiddenWeekdays } from "../../layout/navigation-refinements.js";
 import {
   ZonePreferences,
@@ -27,6 +31,7 @@ export const SettingsChange = Schema.TaggedUnion({
   Declined: { shown: Schema.Boolean },
   DefaultCalendar: { value: Schema.Option(CalendarRef) },
   EventInvites: { enabled: Schema.Boolean },
+  LocationMaps: { value: LocationMaps },
   Theme: { value: Theme },
   TimeFormat: { value: TimeFormat },
   TodayAction: { value: TodayAction },
@@ -41,6 +46,7 @@ export const SettingsUi = Schema.Struct({
   defaultCalendar: Schema.Option(CalendarRef),
   eventInvites: Schema.Boolean,
   hideContextPanel: Schema.Boolean,
+  locationMaps: LocationMaps,
   showWeekNumbers: Schema.Boolean,
   system24Hour: Schema.Boolean,
   systemDark: Schema.Boolean,
@@ -54,6 +60,7 @@ export const initialSettings = (): typeof SettingsUi.Type => ({
   defaultCalendar: Option.none(),
   eventInvites: true,
   hideContextPanel: false,
+  locationMaps: "google",
   showWeekNumbers: false,
   system24Hour: false,
   systemDark: false,
@@ -70,6 +77,7 @@ export const SavedPreferences = Schema.Struct({
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.Boolean,
   hideWeekends: Schema.Boolean,
+  locationMaps: Schema.optionalKey(LocationMaps),
   mergeDuplicates: Schema.Boolean,
   showWeekNumbers: Schema.Boolean,
   theme: Theme,
@@ -90,6 +98,7 @@ const StoredCommon = {
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.optionalKey(Schema.Boolean),
   hideWeekends: Schema.optionalKey(Schema.Boolean),
+  locationMaps: Schema.optionalKey(LocationMaps),
   mergeDuplicates: Schema.optionalKey(Schema.Boolean),
   showWeekNumbers: Schema.optionalKey(Schema.Boolean),
   theme: Schema.optionalKey(Theme),
@@ -124,6 +133,7 @@ export const normalizePreferences = (
     hideContextPanel: stored.hideContextPanel ?? false,
     hideDeclined: stored.hideDeclined ?? false,
     hideWeekends: stored.hideWeekends ?? false,
+    locationMaps: normalizeLocationMaps(stored.locationMaps),
     mergeDuplicates: stored.mergeDuplicates ?? true,
     showWeekNumbers: stored.showWeekNumbers ?? false,
     theme: stored.theme ?? "auto",

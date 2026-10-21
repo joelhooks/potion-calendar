@@ -3,6 +3,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
 import { Message } from "../client/app.js";
+import { browserMapsPlatform } from "../client/settings/maps-platform.js";
 import {
   SettingsChange,
   Theme,
@@ -13,6 +14,7 @@ import {
 } from "../client/settings/model.js";
 import { orderedWeekdays } from "../client/settings/weekday-choices.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
+import { LocationMaps } from "../layout/location-maps.js";
 import { hiddenTimeWeekdays, viewLabel } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
 import { desktopSettingsView } from "./desktop-settings-actions.js";
@@ -296,51 +298,76 @@ export const settingsGeneral = (
             ),
           ]
         ),
-      ]
-    ),
-    h.label(
-      [h.Class("settings-row"), h.For("settings-ask-zone")],
-      [
-        h.span([], ["Ask to change time zone to new locations"]),
-        h.select(
+        h.label(
+          [h.Class("settings-row"), h.For("settings-ask-zone")],
           [
-            h.Id("settings-ask-zone"),
-            h.Value(model.timeZones.preferences.askToChange ? "on" : "off"),
-            h.OnChange((raw) =>
-              Schema.decodeUnknownOption(Schema.Literals(["on", "off"]))(
-                raw
-              ).pipe(
-                Option.match({
-                  onNone: () => Message.SavedPreferences(),
-                  onSome: (value) =>
-                    Message.TimeZoneAction({
-                      action: TimeZoneAction.cases.AskToChange.make({
-                        enabled: value === "on",
-                      }),
-                    }),
-                })
-              )
-            ),
-          ],
-          [
-            h.option(
+            h.span([], ["Ask to change time zone to new locations"]),
+            h.select(
               [
-                h.Value("off"),
-                h.Selected(!model.timeZones.preferences.askToChange),
+                h.Id("settings-ask-zone"),
+                h.Value(model.timeZones.preferences.askToChange ? "on" : "off"),
+                h.OnChange((raw) =>
+                  Schema.decodeUnknownOption(Schema.Literals(["on", "off"]))(
+                    raw
+                  ).pipe(
+                    Option.match({
+                      onNone: () => Message.SavedPreferences(),
+                      onSome: (value) =>
+                        Message.TimeZoneAction({
+                          action: TimeZoneAction.cases.AskToChange.make({
+                            enabled: value === "on",
+                          }),
+                        }),
+                    })
+                  )
+                ),
               ],
-              ["Off"]
-            ),
-            h.option(
               [
-                h.Value("on"),
-                h.Selected(model.timeZones.preferences.askToChange),
-              ],
-              ["On"]
+                h.option(
+                  [
+                    h.Value("off"),
+                    h.Selected(!model.timeZones.preferences.askToChange),
+                  ],
+                  ["Off"]
+                ),
+                h.option(
+                  [
+                    h.Value("on"),
+                    h.Selected(model.timeZones.preferences.askToChange),
+                  ],
+                  ["On"]
+                ),
+              ]
             ),
           ]
         ),
       ]
     ),
+    ...(browserMapsPlatform().apple
+      ? [
+          h.section(
+            [h.Class("settings-section"), h.Id("settings-location")],
+            [
+              h.h2([], ["Location"]),
+              choice(
+                h,
+                "settings-location-maps",
+                "Open location links in",
+                model.settings.locationMaps,
+                [
+                  ["google", "Google Maps"],
+                  ["apple", "Apple Maps"],
+                ],
+                (raw) =>
+                  Option.map(
+                    Schema.decodeUnknownOption(LocationMaps)(raw),
+                    (value) => SettingsChange.cases.LocationMaps.make({ value })
+                  )
+              ),
+            ]
+          ),
+        ]
+      : []),
     h.p(
       [h.Class("settings-device-note")],
       [
