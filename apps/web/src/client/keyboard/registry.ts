@@ -144,6 +144,11 @@ const edit = (model: AppModel): Availability =>
 const personal = (model: AppModel): Availability =>
   selectedAvailability(model, calendarWritable(model));
 
+const ordinaryField = (model: AppModel): Availability =>
+  selectedEvent(model)?.source.eventType === "outOfOffice"
+    ? selectedAvailability(model, false)
+    : edit(model);
+
 const rsvp = (model: AppModel): Availability => {
   const event = selectedEvent(model)?.source;
 
@@ -478,16 +483,31 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
   field("q", "Edit end time", "endTime", (model) =>
     selectedEvent(model)?.allDay === true ? "disabled" : edit(model)
   ),
+  field("j", "Edit conferencing", "add-meet", (model) => {
+    const event = selectedEvent(model)?.source;
+
+    const calendar = model.calendar.calendars.find(
+      (value) =>
+        value.accountId === event?.accountId &&
+        value.calendarId === event.calendarId
+    );
+
+    return (event?.eventType === undefined || event.eventType === "default") &&
+      calendar?.allowedConferenceSolutionTypes?.includes("hangoutsMeet") ===
+        true
+      ? edit(model)
+      : selectedAvailability(model, false);
+  }),
   field("c", "Edit calendar / color", "calendar", personal),
   field("a", "Toggle all-day", "allDay"),
   field("r", "Edit repeat pattern", "repeat"),
   field("p", "Edit participants", "participantEmail", (model) =>
     selectedEvent(model)?.source.attendeesOmitted === true
       ? "disabled"
-      : edit(model)
+      : ordinaryField(model)
   ),
-  field("l", "Edit location", "location"),
-  field("w", "Edit description", "description"),
+  field("l", "Edit location", "location", ordinaryField),
+  field("w", "Edit description", "description", ordinaryField),
   field("k", "Open links and attachments", "links", (model) =>
     selectedEvent(model)?.source.eventType === "outOfOffice"
       ? "disabled"

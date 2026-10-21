@@ -45,6 +45,7 @@ const bindings: readonly (readonly [string, string])[] = [
   ["e z", "edit-timeZone"],
   ["e s", "edit-startTime"],
   ["e q", "edit-endTime"],
+  ["e j", "edit-add-meet"],
   ["e c", "edit-calendar"],
   ["e a", "edit-allDay"],
   ["e r", "edit-repeat"],
@@ -115,6 +116,10 @@ it.effect(
         ...base,
         calendar: {
           ...base.calendar,
+          calendars: base.calendar.calendars.map((calendar) => ({
+            ...calendar,
+            allowedConferenceSolutionTypes: ["hangoutsMeet"],
+          })),
           navigation: { ...base.calendar.navigation, mode: "month" as const },
         },
       };

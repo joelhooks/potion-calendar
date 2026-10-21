@@ -44,7 +44,7 @@ export const resolveBinding = (
     keyboardRegistry.some(
       (candidate) =>
         candidate.keys.some((key) => key.startsWith(`${token} `)) &&
-        candidate.availability(model) === "enabled"
+        candidate.availability(model) !== "hidden"
     );
 
   return { action, prefix, sequence };

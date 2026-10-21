@@ -27,7 +27,18 @@ it.effect.prop(
         action.keys.filter((key) => key.includes(" "))
       )) {
         const [prefix = "", key = ""] = binding.split(" ");
-        const model = keyboardFixture();
+        const base = keyboardFixture();
+
+        const model = {
+          ...base,
+          calendar: {
+            ...base.calendar,
+            calendars: base.calendar.calendars.map((calendar) => ({
+              ...calendar,
+              allowedConferenceSolutionTypes: ["hangoutsMeet"],
+            })),
+          },
+        };
 
         const first = update(
           model,
