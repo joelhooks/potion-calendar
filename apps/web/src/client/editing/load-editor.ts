@@ -146,7 +146,9 @@ const loadExisting = Effect.fn("loadExistingEditor")(function* loadExisting(
         responseStatus: "needsAction",
       })),
       calendarId: target.calendarId,
+      eventType: "default",
       repeat,
+      statusInvitationChoice: undefined,
     };
   }
 

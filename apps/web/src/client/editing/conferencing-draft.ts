@@ -93,7 +93,8 @@ export const editorMeetUnavailable = (
     return "Google does not permit changing this event's conferencing.";
   }
 
-  const eventType = sourceConference(editor)?.eventType;
+  const eventType =
+    sourceConference(editor)?.eventType ?? editor.draft.eventType;
 
   if (eventType !== undefined && eventType !== "default") {
     return "Google Meet is not available for this event type.";

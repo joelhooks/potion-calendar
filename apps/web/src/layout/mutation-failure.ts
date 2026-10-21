@@ -66,6 +66,11 @@ export const mutationFailureMessage = (
         Match.exhaustive
       )
     ),
+    Match.tag(
+      "StatusEventWriteUncertain",
+      () =>
+        "Google's result could not be confirmed. Check this calendar before creating another event. Nothing will be retried as a different type."
+    ),
     Match.tag("MutationFeatureUnavailable", (value) => value.message),
     Match.tag("MutationTransportFailure", (value) => value.message),
     Match.tag("CalendarReadFailure", (value) => readFailure(value).message),

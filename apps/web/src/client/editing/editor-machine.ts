@@ -24,6 +24,7 @@ import { needsCalendarReview, MutationFailure } from "./failure.js";
 import { EditorInputFailure } from "./input-failure.js";
 import { loadEditorLogic } from "./load-editor.js";
 import { permissionsForEditor, prepareEditorLogic } from "./prepare-editor.js";
+import { statusInsertRefusal } from "./status-event-draft.js";
 import { writeEditorLogic } from "./write-editor.js";
 
 type EditorState =
@@ -78,6 +79,24 @@ const routeAction = (
 ): Transition => {
   if (EditorAction.guards.Cancel(action)) {
     return { target: "closed" };
+  }
+
+  if (EditorAction.guards.SaveAsEvent(action)) {
+    const session = sessionFor(context);
+
+    return statusInsertRefusal(session, context.failure) === undefined
+      ? {}
+      : {
+          context: {
+            action: EditorAction.cases.EventTypeSelected.make({
+              value: "default",
+            }),
+            error: undefined,
+            failure: undefined,
+            queue: [EditorAction.cases.Save.make({})],
+          },
+          target: "changing",
+        };
   }
 
   if (EditorAction.guards.ConfirmConferencing(action)) {

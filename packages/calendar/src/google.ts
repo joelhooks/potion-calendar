@@ -148,6 +148,23 @@ const mapEvent = (
   };
 };
 
+const confirmCreatedType = (
+  event: CalendarEventValue,
+  requestedType: EventFieldsValue["eventType"],
+  status: number
+) =>
+  (requestedType === "focusTime" || requestedType === "outOfOffice") &&
+  event.eventType !== requestedType
+    ? Effect.fail(
+        new Provider({
+          message:
+            "Google did not confirm the requested event type. Check the calendar before creating another event.",
+          operation: "events.insert",
+          status,
+        })
+      )
+    : Effect.succeed(event);
+
 const mapCalendar = (
   accountId: string,
   calendar: typeof GoogleCalendar.Type
@@ -167,10 +184,21 @@ const mapCalendar = (
   };
 };
 
-const eventBody = (fields: EventFieldsValue, copyAttachments = false) => {
-  const { title, attachments, ...rest } = fields;
+const eventBody = (
+  fields: EventFieldsValue,
+  copyAttachments = false,
+  creation = false
+) => {
+  const {
+    title,
+    attachments,
+    eventType,
+    focusTimeProperties,
+    outOfOfficeProperties,
+    ...rest
+  } = fields;
 
-  return {
+  const body = {
     ...rest,
     attachments: copyAttachments
       ? attachments?.map((attachment) => ({
@@ -182,6 +210,12 @@ const eventBody = (fields: EventFieldsValue, copyAttachments = false) => {
       : undefined,
     summary: title,
   };
+
+  if (creation) {
+    return { ...body, eventType, focusTimeProperties, outOfOfficeProperties };
+  }
+
+  return body;
 };
 
 export interface ListPageInput {
@@ -284,8 +318,20 @@ export class GoogleCalendarClient extends Context.Service<
         GoogleTokens | GoogleHttp | Crypto.Crypto
       >();
 
-      const request = (input: GoogleRequestValue) =>
-        googleRequest(input).pipe(Effect.provide(context));
+      const request = (input: GoogleRequestValue, singleAttempt = false) => {
+        const operation = googleRequest(input);
+
+        return (
+          singleAttempt
+            ? operation.pipe(
+                Effect.provideService(GoogleRetryPolicy, {
+                  baseDelayMs: 0,
+                  retries: 0,
+                })
+              )
+            : operation
+        ).pipe(Effect.provide(context));
+      };
 
       const decode = <A>(
         schema: Schema.Codec<A>,
@@ -375,20 +421,28 @@ export class GoogleCalendarClient extends Context.Service<
               query.set("conferenceDataVersion", "1");
             }
 
-            const response = yield* request({
-              acceptConflict: true,
-              accountId: ref.accountId,
-              body: JSON.stringify({
-                ...eventBody(fields, true),
-                conferenceData,
-                id,
-              }),
-              method: "POST",
-              path: `${pathFor(ref)}?${query.toString()}`,
-            });
+            const response = yield* request(
+              {
+                acceptConflict: true,
+                accountId: ref.accountId,
+                body: JSON.stringify({
+                  ...eventBody(fields, true, true),
+                  conferenceData,
+                  id,
+                }),
+                method: "POST",
+                path: `${pathFor(ref)}?${query.toString()}`,
+              },
+              fields.eventType === "focusTime" ||
+                fields.eventType === "outOfOffice"
+            );
 
             if (response.status === 409) {
-              const existing = yield* get({ ...ref, eventId: id });
+              const existing = yield* get({ ...ref, eventId: id }).pipe(
+                Effect.flatMap((event) =>
+                  confirmCreatedType(event, fields.eventType, 409)
+                )
+              );
 
               return options.conferencingRequest === undefined
                 ? existing
@@ -408,15 +462,21 @@ export class GoogleCalendarClient extends Context.Service<
               )
             );
 
+            const inserted = yield* confirmCreatedType(
+              mapEvent(ref, event),
+              fields.eventType,
+              response.status
+            );
+
             if (options.conferencingRequest !== undefined) {
               return yield* readConferencingBack(
                 { ...ref, eventId: event.id },
-                mapEvent(ref, event),
+                inserted,
                 options.conferencingRequest
               );
             }
 
-            return mapEvent(ref, event);
+            return inserted;
           }
         ),
         get,

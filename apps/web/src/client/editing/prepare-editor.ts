@@ -1,4 +1,7 @@
-import { googleCalendarCapabilities } from "@calendar/calendar/contracts";
+import {
+  googleCalendarCapabilities,
+  statusEventType,
+} from "@calendar/calendar/contracts";
 import { createEffectLogic } from "@xstate/effect";
 import { DateTime, Effect, Option } from "effect";
 
@@ -25,6 +28,7 @@ import {
 } from "./editor-session-model.js";
 import { EditorInputFailure } from "./input-failure.js";
 import { writableCalendar } from "./load-editor.js";
+import { creationTypeFields } from "./status-event-draft.js";
 
 export const permissionsForEditor = (
   session: typeof LoadedEditor.Type
@@ -48,11 +52,13 @@ export const permissionsForEditor = (
 
   return {
     calendarWritable: writable,
-    editGuests: editable && completeGuests,
+    editGuests:
+      editable && completeGuests && !statusEventType(session.draft.eventType),
     editMeeting: editable,
     inviteGuests:
       writable &&
       completeGuests &&
+      !statusEventType(session.draft.eventType) &&
       (editable || source?.guestsCanInviteOthers === true),
   };
 };
@@ -243,10 +249,12 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   const session = yield* finalizeInputs(input);
   const ordinaryFields = yield* draftEventFields(session.draft);
 
-  const fields =
+  const fields = yield* creationTypeFields(
+    session,
     session.clipboard === undefined
       ? ordinaryFields
-      : composeClipboardCreationFields(ordinaryFields, session.clipboard);
+      : composeClipboardCreationFields(ordinaryFields, session.clipboard)
+  );
 
   const delta = draftChanges(session.draft, session.baseline, fields);
   const permissions = permissionsForEditor(session);
@@ -302,6 +310,7 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
     choices: offer.choices,
     dayChanged: delta.dayChanged,
     emailNeeded:
+      !(session.kind !== "edit" && statusEventType(session.draft.eventType)) &&
       otherGuests &&
       (session.operation === "delete" ||
         session.kind !== "edit" ||

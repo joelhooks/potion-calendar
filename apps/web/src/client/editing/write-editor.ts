@@ -1,3 +1,4 @@
+import { statusEventType } from "@calendar/calendar/contracts";
 import { createEffectLogic } from "@xstate/effect";
 import { Effect, Schema } from "effect";
 
@@ -9,8 +10,12 @@ import {
   EditorWriteResult,
   WritePlan,
 } from "./editor-session-model.js";
-import { MutationFollowupPartial } from "./failure.js";
+import {
+  MutationFollowupPartial,
+  StatusEventWriteUncertain,
+} from "./failure.js";
 import { EditorInputFailure } from "./input-failure.js";
+import { statusInsertRefusal } from "./status-event-draft.js";
 
 const sourceEvent = (plan: typeof WritePlan.Type) =>
   Effect.fromOption(plan.session.original).pipe(
@@ -67,19 +72,38 @@ const saveCreated = Effect.fn("saveCreatedEvent")(function* saveCreated(
 
   const client = yield* CalendarEditingClient;
 
-  const event = yield* client.createEvent({
-    accountId: plan.session.draft.accountId,
-    calendarId: plan.session.draft.calendarId,
-    conferencingRequest: plan.session.draft.conferencing?.request,
-    event: {
-      ...plan.fields,
-      guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
-      guestsCanModify: plan.fields.guestsCanModify ?? true,
-      guestsCanSeeOtherGuests: plan.fields.guestsCanSeeOtherGuests ?? true,
-    },
-    id,
-    sendUpdates: plan.sendUpdates,
-  });
+  const event = yield* client
+    .createEvent({
+      accountId: plan.session.draft.accountId,
+      calendarId: plan.session.draft.calendarId,
+      conferencingRequest: statusEventType(plan.fields.eventType)
+        ? undefined
+        : plan.session.draft.conferencing?.request,
+      event: {
+        ...plan.fields,
+        guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
+        guestsCanModify: plan.fields.guestsCanModify ?? true,
+        guestsCanSeeOtherGuests: plan.fields.guestsCanSeeOtherGuests ?? true,
+      },
+      id,
+      sendUpdates: statusEventType(plan.fields.eventType)
+        ? "none"
+        : plan.sendUpdates,
+    })
+    .pipe(
+      Effect.mapError((cause) =>
+        !statusEventType(plan.fields.eventType) ||
+        statusInsertRefusal(plan.session, cause) !== undefined ||
+        Schema.is(StatusEventWriteUncertain)(cause)
+          ? cause
+          : new StatusEventWriteUncertain({
+              accountId: plan.session.draft.accountId,
+              calendarId: plan.session.draft.calendarId,
+              cause,
+              eventId: id,
+            })
+      )
+    );
 
   return EditorMutation.cases.Saved.make({ event, id: plan.session.id, plan });
 });
@@ -163,7 +187,9 @@ const saveExisting = Effect.fn("saveExistingEvent")(function* saveExisting(
       )
       .pipe(
         Effect.mapError((cause) =>
-          !plan.calendarMoved || Schema.is(MutationFollowupPartial)(cause)
+          !plan.calendarMoved ||
+          Schema.is(MutationFollowupPartial)(cause) ||
+          Schema.is(StatusEventWriteUncertain)(cause)
             ? cause
             : new MutationFollowupPartial({ cause, movedEvent: event })
         )

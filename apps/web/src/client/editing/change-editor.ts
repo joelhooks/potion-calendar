@@ -25,6 +25,7 @@ import {
 import type { LoadedEditor } from "./editor-session-model.js";
 import { EditorInputFailure } from "./input-failure.js";
 import { permissionsForEditor } from "./prepare-editor.js";
+import { selectCreateEventType } from "./status-event-draft.js";
 
 const CalendarChoice = Schema.fromJsonString(
   Schema.Tuple([Schema.String, Schema.String])
@@ -182,6 +183,10 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
             })
           : Effect.fail(new EditorInputFailure({ message: reason }));
       },
+      EventTypeSelected: ({ value }) =>
+        permissions.editMeeting
+          ? selectCreateEventType(session, value)
+          : Effect.fail(fail()),
       ParticipantOptional: ({ email }) =>
         permissions.editGuests
           ? Effect.succeed({
@@ -276,6 +281,18 @@ export const changeEditor = Effect.fn("changeEditor")(function* changeEditor(
             },
           }))
         ),
+      StatusInvitationsChosen: ({ value }) =>
+        session.kind !== "edit" && permissions.editMeeting
+          ? Effect.succeed({
+              ...session,
+              draft: {
+                ...session.draft,
+                statusInvitationChoice: value
+                  ? "declineOnlyNewConflictingInvitations"
+                  : "declineNone",
+              },
+            })
+          : Effect.fail(fail()),
       SuggestReminder: ({ value }) =>
         permissions.calendarWritable
           ? newReminder(session, value)

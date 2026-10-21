@@ -55,6 +55,11 @@ import {
 import type { SeriesMoveRetimeFailureValue } from "./series-move-result.js";
 import { seriesMoveTimes } from "./series-move-time.js";
 import { splitSuccessorId } from "./split-id.js";
+import {
+  validateStatusEventCreate,
+  validateEventTypeUpdate,
+} from "./status-event-create.js";
+import { statusEventType } from "./status-event.js";
 import { CalendarStore } from "./store.js";
 import { CalendarReadBudget } from "./sync.js";
 
@@ -254,6 +259,12 @@ export class CalendarService extends Context.Service<
         options: WriteOptions,
         automatic?: boolean
       ) {
+        yield* validateStatusEventCreate({
+          ...ref,
+          ...options,
+          event: fields,
+        }).pipe(Effect.provideService(GoogleCalendarClient, google));
+
         const preparedOptions = yield* prepareConferencing(
           ref,
           fields,
@@ -347,6 +358,10 @@ export class CalendarService extends Context.Service<
                 "createEvent",
                 "New events require start and end times"
               );
+            }
+
+            if (statusEventType(valid.event.eventType)) {
+              return yield* create(valid, valid.id, valid.event, valid);
             }
 
             if (
@@ -821,6 +836,8 @@ export class CalendarService extends Context.Service<
           ),
         updateEvent: Effect.fn("CalendarService.updateEvent")(
           function* updateEvent(input) {
+            yield* validateEventTypeUpdate(input.changes);
+
             if (
               input.removeRecurrence !== true &&
               input.changes.recurrence?.length === 0

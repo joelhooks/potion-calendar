@@ -533,7 +533,8 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
   field("a", "Toggle all-day", "allDay"),
   field("r", "Edit repeat pattern", "repeat"),
   field("p", "Edit participants", "participantEmail", (model) =>
-    selectedEvent(model)?.source.attendeesOmitted === true
+    selectedEvent(model)?.source.attendeesOmitted === true ||
+    selectedEvent(model)?.source.eventType === "focusTime"
       ? "disabled"
       : ordinaryField(model)
   ),

@@ -70,6 +70,22 @@ export const EventAttachment = Schema.Struct({
   url: Schema.String,
 });
 
+export const StatusEventProperties = Schema.Struct({
+  autoDeclineMode: Schema.optional(
+    Schema.Literals([
+      "declineNone",
+      "declineAllConflictingInvitations",
+      "declineOnlyNewConflictingInvitations",
+    ])
+  ),
+  declineMessage: Schema.optional(Schema.String),
+});
+
+export const FocusTimeProperties = Schema.Struct({
+  ...StatusEventProperties.fields,
+  chatStatus: Schema.optional(Schema.Literals(["available", "doNotDisturb"])),
+});
+
 export const EventFields = Schema.Struct({
   attachments: Schema.optional(Schema.Array(EventAttachment)),
   attendees: Schema.optional(Schema.Array(Attendee)),
@@ -87,10 +103,12 @@ export const EventFields = Schema.Struct({
       "fromGmail",
     ])
   ),
+  focusTimeProperties: Schema.optional(FocusTimeProperties),
   guestsCanInviteOthers: Schema.optional(Schema.Boolean),
   guestsCanModify: Schema.optional(Schema.Boolean),
   guestsCanSeeOtherGuests: Schema.optional(Schema.Boolean),
   location: Schema.optional(Schema.String),
+  outOfOfficeProperties: Schema.optional(StatusEventProperties),
   recurrence: Schema.optional(Schema.Array(Schema.String)),
   reminders: Schema.optional(EventReminders),
   start: Schema.optional(EventTime),

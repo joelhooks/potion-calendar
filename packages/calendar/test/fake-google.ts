@@ -36,6 +36,14 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
   const pending = yield* Ref.make(initial);
   const crashAt = yield* Ref.make(Option.none<number>());
   const requests = yield* Ref.make<readonly GoogleRequestValue[]>([]);
+
+  const receipts = yield* Ref.make<
+    readonly {
+      readonly request: GoogleRequestValue;
+      readonly response: GoogleResponse;
+    }[]
+  >([]);
+
   const refreshes = yield* Ref.make<readonly boolean[]>([]);
 
   const http = Layer.succeed(GoogleHttp, {
@@ -69,6 +77,11 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
         );
       }
 
+      yield* Ref.update(receipts, (previous) => [
+        ...previous,
+        { request, response: next },
+      ]);
+
       return next;
     }),
   });
@@ -93,6 +106,7 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
       })
     ),
     pending,
+    receipts,
     refreshes,
     requests,
   };

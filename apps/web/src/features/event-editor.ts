@@ -1,3 +1,4 @@
+import { statusEventType } from "@calendar/calendar/contracts";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
@@ -5,9 +6,11 @@ import { EditorAction } from "../client/editing/editor-action.js";
 import { EditorView } from "../client/editing/editor-model.js";
 import type { EditorViewValue } from "../client/editing/editor-model.js";
 import { needsCalendarReview } from "../client/editing/failure.js";
+import { statusInsertRefusal } from "../client/editing/status-event-draft.js";
 import { mutationFailureMessage } from "../layout/mutation-failure.js";
 import { conferencingField } from "./editor-conferencing.js";
 import { editorDialog } from "./editor-dialog.js";
+import { eventTypeField } from "./editor-event-type.js";
 import {
   calendarField,
   colourField,
@@ -38,6 +41,36 @@ const initialEditorFocus = <Message>(props: EditorProps<Message>): string => {
   }
 
   return props.initialFocus ?? "event-title";
+};
+
+const editorFailureFields = <Message>(
+  h: HtmlBuilder<Message>,
+  props: EditorProps<Message>
+): readonly Html[] => {
+  if (!EditorView.guards.Failure(props.model)) {
+    return [];
+  }
+
+  const refusal = statusInsertRefusal(props.model, props.model.failure);
+
+  return [
+    h.p(
+      [h.Role("alert"), h.Class("editor-error")],
+      [refusal ?? mutationFailureMessage(props.model.failure)]
+    ),
+    ...(refusal === undefined
+      ? []
+      : [
+          h.button(
+            [
+              h.Id("event-save-as-event"),
+              h.Type("button"),
+              h.OnClick(props.send(EditorAction.cases.SaveAsEvent.make({}))),
+            ],
+            ["Save as event"]
+          ),
+        ]),
+  ];
 };
 
 const editorForm = <Message>(
@@ -97,17 +130,18 @@ const editorForm = <Message>(
               ]
             ),
           ]),
+      eventTypeField(h, props),
       ...eventTextFields(h, props),
       ...(props.model.draft.eventType === "outOfOffice"
         ? []
         : [editorLinks(h, props.model.draft)]),
-      ...(props.model.draft.eventType === "outOfOffice"
+      ...(statusEventType(props.model.draft.eventType)
         ? []
         : [conferencingField(h, props)]),
       repeatField(h, props),
       calendarField(h, props),
       colourField(h, props),
-      ...(props.model.draft.eventType === "outOfOffice"
+      ...(statusEventType(props.model.draft.eventType)
         ? []
         : [participantFields(h, props)]),
       reminderFields(h, props),
@@ -119,14 +153,7 @@ const editorForm = <Message>(
             ),
           ]
         : []),
-      ...(EditorView.guards.Failure(props.model)
-        ? [
-            h.p(
-              [h.Role("alert"), h.Class("editor-error")],
-              [mutationFailureMessage(props.model.failure)]
-            ),
-          ]
-        : []),
+      ...editorFailureFields(h, props),
     ],
     cancelDisabled: busy,
     confirm: EditorView.guards.Failure(props.model)

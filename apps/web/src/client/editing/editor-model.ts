@@ -67,6 +67,9 @@ export const EventDraft = Schema.Struct({
   repeat: RepeatForm,
   startDate: Schema.String,
   startTime: Schema.String,
+  statusInvitationChoice: Schema.optional(
+    Schema.Literals(["declineNone", "declineOnlyNewConflictingInvitations"])
+  ),
   timeZone: Schema.String,
   title: Schema.String,
 });

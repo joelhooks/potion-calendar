@@ -94,6 +94,12 @@ export const ListEventsOutput = Schema.Struct({
   ),
 });
 
+export {
+  statusEventAvailability,
+  statusEventLabel,
+  statusEventType,
+} from "./status-event.js";
+
 export const CreateEventInput = Schema.Struct({
   ...CalendarRef.fields,
   conferencingRequest: Schema.optional(ConferencingRequest),
