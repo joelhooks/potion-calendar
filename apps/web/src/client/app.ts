@@ -275,6 +275,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     handledMutation: Option.none(),
     handledRecovery: Option.none(),
     handledResponse: 0,
+    instantSaved: Option.none(),
     owner: Option.none(),
     response: Option.none(),
     rsvp: {

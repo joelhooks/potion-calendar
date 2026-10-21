@@ -30,6 +30,7 @@ const stageDelete = Effect.fn("stageEditorDelete")(function* stageDelete(
   const intent = DeleteIntent.make({
     event,
     id: plan.session.id,
+    intent: plan.session.intent ?? "ordinary",
     navigation: plan.session.navigation,
     request: {
       accountId: event.accountId,

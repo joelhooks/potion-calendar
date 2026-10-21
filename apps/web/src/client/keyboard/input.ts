@@ -114,7 +114,10 @@ export const keyboardMessage = (
   const scope = targetScope(event.target);
   const token = keyToken(input);
 
-  if (scope === "text" && !["Mod+k", "Mod+f"].includes(token)) {
+  if (
+    scope === "text" &&
+    !["Mod+k", "Mod+f", "Shift+Mod+Enter"].includes(token)
+  ) {
     return Option.none();
   }
 

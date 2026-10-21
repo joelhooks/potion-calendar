@@ -189,6 +189,7 @@ it.effect(
             calendars: selected.calendar.calendars,
             conferencingContext: editorConferencingContext(selected),
             event: event.source,
+            intent: "ordinary",
             mode: "edit",
             navigation: selected.calendar.navigation,
             primaryZone: homeZone(selected),

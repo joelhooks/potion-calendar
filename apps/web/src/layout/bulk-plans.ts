@@ -49,6 +49,7 @@ export type BulkOpening = Pick<
   typeof EditorRequest.cases.Existing.Type,
   | "calendars"
   | "conferencingContext"
+  | "intent"
   | "navigation"
   | "primaryZone"
   | "selection"

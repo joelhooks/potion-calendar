@@ -7,6 +7,7 @@ import {
   planBulk,
   summarizeBulk,
 } from "../../layout/bulk-plans.js";
+import { instantEventEligible } from "../../layout/instant-editing.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
@@ -21,7 +22,8 @@ import { BulkView } from "./model.js";
 
 export const bulkPlanFor = (
   model: AppModel,
-  operation: "delete" | "duplicate"
+  operation: "delete" | "duplicate",
+  intent: "ordinary" | "noEmailOccurrence" = "ordinary"
 ) =>
   planBulk(
     operation,
@@ -29,19 +31,24 @@ export const bulkPlanFor = (
     visibleEvents(model).map((item) => ({
       event: item.source,
       key: item.key,
-      permission: (
-        operation === "delete"
+      permission:
+        (intent !== "noEmailOccurrence" ||
+          instantEventEligible(item.source, item.calendar)) &&
+        (operation === "delete"
           ? writableCalendar(item.calendar)
-          : model.calendar.calendars.some(writableCalendar)
-      )
-        ? BulkPermission.cases.Allowed.make({})
-        : BulkPermission.cases.Blocked.make({
-            reason: "Google does not permit writing to this calendar.",
-          }),
+          : model.calendar.calendars.some(writableCalendar))
+          ? BulkPermission.cases.Allowed.make({})
+          : BulkPermission.cases.Blocked.make({
+              reason:
+                intent === "noEmailOccurrence"
+                  ? "This event does not permit an instant change."
+                  : "Google does not permit writing to this calendar.",
+            }),
     })),
     {
       calendars: model.calendar.calendars,
       conferencingContext: editorConferencingContext(model),
+      intent,
       navigation: model.calendar.navigation,
       primaryZone: homeZone(model),
       selection: primarySelection(model.calendar.selected),

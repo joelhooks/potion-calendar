@@ -25,6 +25,12 @@ export const RsvpMark = Schema.Struct({
   intent: RsvpIntent,
 });
 
+export const InstantSaveNotice = Schema.Struct({
+  id: Schema.String,
+  sendUpdates: Schema.Literal("none"),
+  title: Schema.String,
+});
+
 export const EditingUi = Schema.Struct({
   bulk: BulkView,
   bulkOutcomes: Schema.Record(Schema.String, DeleteOutcome),
@@ -36,6 +42,7 @@ export const EditingUi = Schema.Struct({
   handledMutation: Schema.Option(Schema.String),
   handledRecovery: Schema.Option(Schema.String),
   handledResponse: Schema.Int,
+  instantSaved: Schema.Option(InstantSaveNotice),
   owner: Schema.Option(Schema.String),
   response: Schema.Option(RsvpMark),
   rsvp: RsvpView,

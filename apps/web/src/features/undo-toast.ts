@@ -3,6 +3,19 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import type { DeleteIntentValue } from "../client/editing/delete-actor.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 
+const deleteNoticeText = (intent: DeleteIntentValue): string => {
+  if (intent.intent !== "noEmailOccurrence") {
+    return `${intent.title} removed from this calendar.`;
+  }
+
+  const occurrence =
+    intent.event.recurringEventId === undefined ? "" : "this occurrence of ";
+
+  return intent.event.organizer?.self === true
+    ? `Cancelled ${occurrence}"${intent.title}". No email sent.`
+    : `Removed ${occurrence}"${intent.title}" from your calendar. No email sent.`;
+};
+
 export const undoToast = <Message>(
   h: HtmlBuilder<Message>,
   props: {
@@ -23,7 +36,7 @@ export const undoToast = <Message>(
       h.DataAttribute("undo-intent", props.intent.id),
     ],
     [
-      h.span([], [`${props.intent.title} removed from this calendar.`]),
+      h.span([], [deleteNoticeText(props.intent)]),
       h.button(
         [
           h.Type("button"),

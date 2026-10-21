@@ -12,6 +12,9 @@ export const undoWindowMilliseconds = 8000;
 export const DeleteIntent = Schema.Struct({
   event: CalendarEvent,
   id: Schema.String,
+  intent: Schema.optionalKey(
+    Schema.Literals(["ordinary", "noEmailOccurrence"])
+  ),
   navigation: NavigationState,
   request: DeleteEventInput,
   selection: Schema.Option(Schema.String),

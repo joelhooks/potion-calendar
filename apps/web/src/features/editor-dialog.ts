@@ -40,7 +40,11 @@ export const editorDialog = <Message>(
           return Option.some(props.send(EditorAction.cases.Cancel.make({})));
         }
 
-        if (key === "Enter" && (modifiers.ctrlKey || modifiers.metaKey)) {
+        if (
+          key === "Enter" &&
+          !modifiers.shiftKey &&
+          (modifiers.ctrlKey || modifiers.metaKey)
+        ) {
           return Option.some(props.send(props.confirm));
         }
 

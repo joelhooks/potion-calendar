@@ -98,9 +98,26 @@ const routeAction = (
     }
   }
 
-  if (EditorAction.guards.Save(action) || EditorAction.guards.Retry(action)) {
+  if (
+    EditorAction.guards.Save(action) ||
+    EditorAction.guards.SaveNoEmail(action) ||
+    EditorAction.guards.Retry(action)
+  ) {
+    const session = sessionFor(context);
+    let { intent } = session;
+
+    if (!EditorAction.guards.Retry(action)) {
+      intent = EditorAction.guards.SaveNoEmail(action)
+        ? "noEmailOccurrence"
+        : "ordinary";
+    }
+
     return {
-      context: { error: undefined, failure: undefined },
+      context: {
+        error: undefined,
+        failure: undefined,
+        session: { ...session, intent: intent ?? "ordinary" },
+      },
       target: "validating",
     };
   }
@@ -312,6 +329,10 @@ export const eventEditorMachine = setupEffect({
     email: {
       on: {
         ACTION: ({ context, event }) => {
+          if (EditorAction.guards.SaveNoEmail(event.action)) {
+            return routeAction(context, event.action);
+          }
+
           if (EditorAction.guards.Cancel(event.action)) {
             return back(context);
           }
@@ -410,6 +431,10 @@ export const eventEditorMachine = setupEffect({
       on: {
         ACTION: ({ context, event }) => {
           const plan = planFor(context);
+
+          if (EditorAction.guards.SaveNoEmail(event.action)) {
+            return routeAction(context, event.action);
+          }
 
           if (EditorAction.guards.Cancel(event.action)) {
             return back(context);

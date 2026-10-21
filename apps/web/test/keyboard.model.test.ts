@@ -33,6 +33,9 @@ const bindings: readonly (readonly [string, string])[] = [
   ["x", "toggle-selection"],
   ["Delete", "delete"],
   ["Backspace", "delete"],
+  ["Shift+Mod+Delete", "delete-no-email"],
+  ["Shift+Mod+Backspace", "delete-no-email"],
+  ["Shift+Mod+Del", "delete-no-email"],
   ["Mod+d", "duplicate"],
   ["Mod+a", "select-all"],
   ["c", "create"],
@@ -173,10 +176,10 @@ it.effect(
         },
       };
 
-      for (const token of ["Enter", "Mod+Enter"]) {
+      for (const token of ["Enter", "Mod+Enter", "Shift+Mod+Enter"]) {
         expect(
           resolveBinding(open, inputFor(token), 0, "dialog").action?.id
-        ).toBe("confirm");
+        ).toBe(token === "Shift+Mod+Enter" ? "save-no-email" : "confirm");
       }
 
       const { pending } = undoFixture();
@@ -198,6 +201,7 @@ it.effect(
         "Mod+z",
         "Enter",
         "Mod+Enter",
+        "Shift+Mod+Enter",
       ].toSorted();
 
       expect(

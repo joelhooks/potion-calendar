@@ -14,6 +14,7 @@ import {
   addReminder,
   parseReminderInput,
 } from "../../layout/editor-reminders.js";
+import { instantEventEligible } from "../../layout/instant-editing.js";
 import { composeClipboardCreationFields } from "../clipboard/template.js";
 import { applyEditorConferencingDefault } from "./conferencing-draft.js";
 import type { EditorPermissions } from "./editor-model.js";
@@ -180,6 +181,50 @@ const hasOtherGuests = (session: typeof LoadedEditor.Type): boolean => {
   );
 };
 
+const applyInstantIntent = Effect.fn("applyInstantIntent")(
+  function* applyInstantIntent(plan: typeof WritePlan.Type) {
+    const { session } = plan;
+
+    if (session.intent !== "noEmailOccurrence") {
+      return plan;
+    }
+
+    const original = Option.getOrUndefined(session.original);
+
+    const calendar = session.calendars.find(
+      (item) =>
+        item.accountId === original?.accountId &&
+        item.calendarId === original.calendarId
+    );
+
+    if (
+      original === undefined ||
+      !instantEventEligible(original, calendar) ||
+      (session.operation !== "delete" &&
+        !permissionsForEditor(session).editMeeting)
+    ) {
+      return yield* new EditorInputFailure({
+        message: "This event does not permit an instant change.",
+      });
+    }
+
+    return plan.choices.includes("single") &&
+      !plan.removeRecurrence &&
+      !plan.calendarMoved
+      ? WritePlan.make({
+          ...plan,
+          emailNeeded: false,
+          prompt: "none",
+          scope: "single",
+          sendUpdates: "none",
+        })
+      : WritePlan.make({
+          ...plan,
+          session: { ...session, intent: "ordinary" },
+        });
+  }
+);
+
 export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   input: typeof LoadedEditor.Type
 ) {
@@ -239,7 +284,7 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
 
   const otherGuests = hasOtherGuests(session);
 
-  return WritePlan.make({
+  const plan = WritePlan.make({
     calendarMoved: delta.calendarMoved,
     changes: delta.changes,
     choices: offer.choices,
@@ -257,6 +302,8 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
     sendUpdates: "none",
     session,
   });
+
+  return yield* applyInstantIntent(plan);
 });
 
 export const prepareEditorLogic = createEffectLogic({

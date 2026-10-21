@@ -33,6 +33,7 @@ import { EditorMutation, EditorRequest } from "./editor-session-model.js";
 import { needsCalendarReview } from "./failure.js";
 import { gestureTarget } from "./gesture-input.js";
 import type { GestureResult } from "./gesture-model.js";
+import { instantDeleteEligible, instantSaveEligible } from "./instant.js";
 import { RsvpResult } from "./rsvp-machine.js";
 import { EditingCommand, EditingNotice } from "./runtime.js";
 import type { EditingRuntime } from "./runtime.js";
@@ -193,7 +194,8 @@ const openCreate = (model: AppModel): Result => {
 
 const openSelected = (
   model: AppModel,
-  mode: "edit" | "duplicate" | "delete"
+  mode: "edit" | "duplicate" | "delete",
+  intent: "ordinary" | "noEmailOccurrence" = "ordinary"
 ): Result => {
   const selected = visibleEvents(model).find((item) =>
     Option.contains(primarySelection(model.calendar.selected), item.key)
@@ -210,6 +212,7 @@ const openSelected = (
         calendars: model.calendar.calendars,
         conferencingContext: editorConferencingContext(model),
         event: selected.source,
+        intent,
         mode,
         navigation: model.calendar.navigation,
         primaryZone: homeZone(model),
@@ -258,13 +261,25 @@ export const editAction = (
   }
 
   if (
+    (EditorAction.guards.DeleteNoEmail(action) &&
+      !instantDeleteEligible(model)) ||
+    (EditorAction.guards.SaveNoEmail(action) && !instantSaveEligible(model))
+  ) {
+    return { model };
+  }
+
+  if (
     model.calendar.selected.length > 1 &&
-    (EditorAction.guards.DeleteSelected(action) ||
+    (EditorAction.guards.DeleteNoEmail(action) ||
+      EditorAction.guards.DeleteSelected(action) ||
       EditorAction.guards.DuplicateSelected(action))
   ) {
     const plan = bulkPlanFor(
       model,
-      EditorAction.guards.DeleteSelected(action) ? "delete" : "duplicate"
+      EditorAction.guards.DuplicateSelected(action) ? "duplicate" : "delete",
+      EditorAction.guards.DeleteNoEmail(action)
+        ? "noEmailOccurrence"
+        : "ordinary"
     );
 
     return dispatch(
@@ -279,6 +294,7 @@ export const editAction = (
   return EditorAction.matchOrElse(
     action,
     {
+      DeleteNoEmail: () => openSelected(model, "delete", "noEmailOccurrence"),
       DeleteSelected: () => openSelected(model, "delete"),
       DismissConferencingNotice: ({ id }) => ({
         model: {
@@ -286,6 +302,17 @@ export const editAction = (
           editing: {
             ...model.editing,
             conferencingResult: model.editing.conferencingResult.pipe(
+              Option.filter((notice) => notice.id !== id)
+            ),
+          },
+        },
+      }),
+      DismissInstantSave: ({ id }) => ({
+        model: {
+          ...model,
+          editing: {
+            ...model.editing,
+            instantSaved: model.editing.instantSaved.pipe(
               Option.filter((notice) => notice.id !== id)
             ),
           },
@@ -452,6 +479,15 @@ export const mutationReceived = (
           ...model.editing,
           conferencingResult: savedConferencingNotice(saved),
           handledMutation: Option.some(saved.id),
+          instantSaved:
+            saved.plan.session.intent === "noEmailOccurrence" &&
+            saved.plan.sendUpdates === "none"
+              ? Option.some({
+                  id: saved.id,
+                  sendUpdates: "none",
+                  title: saved.event.title ?? "Untitled event",
+                })
+              : Option.none(),
           write: Option.some({
             afterRead: Option.some(model.calendar.rangeRequest + 1),
             plan: saved.plan,

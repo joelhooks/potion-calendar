@@ -8,6 +8,10 @@ import { persistentZoneLimit } from "../../layout/time-zones.js";
 import type { AppModel } from "../app.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
+import {
+  instantDeleteEligible,
+  instantSaveEligible,
+} from "../editing/instant.js";
 import { writableCalendar } from "../editing/load-editor.js";
 import { JoinSelection } from "../meetings/model.js";
 import { joinSelection } from "../meetings/selection.js";
@@ -402,6 +406,33 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
         Option.isSome(model.keyboard.cursor)
           ? active(model)
           : "disabled",
+    }
+  ),
+  row(
+    "delete-no-email",
+    "Delete occurrence without email",
+    ["Shift+Mod+Delete", "Shift+Mod+Backspace", "Shift+Mod+Del"],
+    "Editing",
+    "Event",
+    editing(EditorAction.cases.DeleteNoEmail.make({})),
+    {
+      availability: (model) =>
+        selectedAvailability(model, instantDeleteEligible(model)),
+    }
+  ),
+  row(
+    "save-no-email",
+    "Save occurrence without email",
+    ["Shift+Mod+Enter"],
+    "Editing",
+    "Event",
+    editing(EditorAction.cases.SaveNoEmail.make({})),
+    {
+      availability: (model) =>
+        Option.isSome(model.person) && instantSaveEligible(model)
+          ? "enabled"
+          : "disabled",
+      scope: "app",
     }
   ),
   row(

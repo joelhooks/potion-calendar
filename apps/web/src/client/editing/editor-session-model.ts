@@ -24,6 +24,9 @@ import { MoveSupport } from "./move-support.js";
 const openingFields = {
   calendars: Schema.Array(Calendar),
   conferencingContext: Schema.optional(EditorConferencingContext),
+  intent: Schema.optionalKey(
+    Schema.Literals(["ordinary", "noEmailOccurrence"])
+  ),
   navigation: NavigationState,
   primaryZone: Schema.String,
   rangeZone: Schema.optionalKey(Schema.String),
@@ -58,6 +61,9 @@ export const LoadedEditor = Schema.Struct({
   direct: Schema.optionalKey(Schema.Boolean),
   draft: EventDraft,
   id: Schema.String,
+  intent: Schema.optionalKey(
+    Schema.Literals(["ordinary", "noEmailOccurrence"])
+  ),
   kind: Schema.Literals(["create", "edit", "duplicate"]),
   master: Schema.Option(CalendarEvent),
   moveSupport: MoveSupport,

@@ -27,6 +27,7 @@ import { commandMenu } from "./command-menu.js";
 import { conferencingSaveNotice } from "./conferencing-save-notice.js";
 import { editorDialogs } from "./event-editor.js";
 import { gestureRefusalNotice } from "./gesture-refusal.js";
+import { instantSaveNotice } from "./instant-save-notice.js";
 import { searchPanel } from "./search.js";
 import { settingsPage } from "./settings.js";
 import { shortcutsPage } from "./shortcuts-page.js";
@@ -92,6 +93,7 @@ const notificationLayers = (
 
   if (
     Option.isNone(model.editing.conferencingResult) &&
+    Option.isNone(model.editing.instantSaved) &&
     Option.isNone(model.editing.gestureRefusal) &&
     !clipboardReady &&
     !undoReady &&
@@ -128,6 +130,7 @@ const notificationLayers = (
       ],
       [
         ...refreshNotices,
+        ...instantSaveNotice(model, h),
         ...bulkNotice(model, h),
         ...selectionRectangle(model, h),
         ...Option.match(model.editing.conferencingResult, {
