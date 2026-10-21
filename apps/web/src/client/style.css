@@ -1301,6 +1301,26 @@ h3 {
   overflow: auto;
   padding: 32px max(24px, calc((100% - 1000px) / 2));
 }
+.settings-weekday-control {
+  max-width: 65%;
+  padding: 10px 0;
+}
+.settings-weekday-control p {
+  margin: 8px 0 0;
+}
+.settings-weekdays input {
+  accent-color: var(--primary);
+}
+.settings-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-weekdays label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
 .settings-content h1 {
   font-size: 22px;
   margin-bottom: 24px;

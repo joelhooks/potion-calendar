@@ -46,6 +46,7 @@ export const Message = defineMessageUnion({
   ChangedSettings: { change: SettingsChange },
   ChangedSettingsManagement: { change: ManagementChange },
   ClickedAddGoogle: {},
+  ClickedAlignToday: {},
   ClickedAllDay: {},
   ClickedCalendar: { accountId: Schema.String, calendarId: Schema.String },
   ClickedDate: { day: Schema.Int },

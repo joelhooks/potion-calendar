@@ -6,6 +6,7 @@ import {
 import { Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
+import { TimePeriod } from "../layout/navigation-refinements.js";
 import { NavigationState } from "../layout/navigation.js";
 import { SelectionSet, SelectionBox } from "../layout/selection-set.js";
 import {
@@ -66,6 +67,7 @@ export const CalendarUi = Schema.Struct({
   mergeDuplicates: Schema.Boolean,
   navigation: NavigationState,
   now: Schema.Finite,
+  previousTimePeriod: Schema.Option(TimePeriod),
   rangeRequest: Schema.Int,
   reads: Schema.Array(AccountEvents),
   rectangle: Schema.Option(SelectionBox),

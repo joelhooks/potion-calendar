@@ -11,8 +11,9 @@ import {
   UpcomingMeetingMinutes,
   WeekStart,
 } from "../client/settings/model.js";
+import { orderedWeekdays } from "../client/settings/weekday-choices.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
-import { viewLabel } from "../layout/navigation.js";
+import { hiddenTimeWeekdays, viewLabel } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
 import { desktopSettingsView } from "./desktop-settings-actions.js";
 import { desktopGeneralRows } from "./desktop-settings.js";
@@ -58,6 +59,57 @@ const upcomingHorizonLabel = (
     )
   );
 
+const visibleWeekdaySetting = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): Html =>
+  h.div(
+    [h.Class("settings-row")],
+    [
+      h.span([], ["Visible weekdays"]),
+      h.div(
+        [h.Class("settings-weekday-control")],
+        [
+          h.div(
+            [h.Class("settings-weekdays")],
+            orderedWeekdays(model.calendar.navigation.weekStartsOn ?? 0).map(
+              ({ name, value }) =>
+                h.label(
+                  [],
+                  [
+                    h.input([
+                      h.Type("checkbox"),
+                      h.AriaLabel(`Show ${name}`),
+                      h.Checked(
+                        !hiddenTimeWeekdays(model.calendar.navigation).includes(
+                          value
+                        )
+                      ),
+                      h.OnClick(
+                        Message.ChangedSettings({
+                          change: SettingsChange.cases.Weekday.make({
+                            shown: hiddenTimeWeekdays(
+                              model.calendar.navigation
+                            ).includes(value),
+                            value,
+                          }),
+                        })
+                      ),
+                    ]),
+                    name.slice(0, 3),
+                  ]
+                )
+            )
+          ),
+          h.p(
+            [h.Class("muted")],
+            ["Custom hidden weekdays affect time views, not Month."]
+          ),
+        ]
+      ),
+    ]
+  );
+
 export const settingsGeneral = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>
@@ -99,6 +151,7 @@ export const settingsGeneral = (
           !model.calendar.navigation.hideWeekends,
           (shown) => SettingsChange.cases.Weekends.make({ shown })
         ),
+        visibleWeekdaySetting(model, h),
         booleanChoice(
           "settings-declined",
           "Declined events",

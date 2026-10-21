@@ -1,7 +1,6 @@
 import { Option, Match, Predicate, Schema } from "effect";
 import type { Update } from "foldkit";
 
-import { dayInZone, visibleDays } from "../../layout/navigation.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { CalendarRoute, ShortcutsRoute } from "../../layout/route.js";
 import {
@@ -123,7 +122,7 @@ const nextPeriod = (
 
 const openScreen = (
   model: AppModel,
-  screen: "commands" | "days" | "date" | "event-zone"
+  screen: "commands" | "days" | "date" | "event-zone" | "weekdays"
 ): KeyboardResult => ({
   model: {
     ...model,
@@ -145,6 +144,7 @@ const openingScreen = Schema.Literals([
   "days",
   "date",
   "event-zone",
+  "weekdays",
 ]);
 
 const openEvent = (model: AppModel, apply: Apply): KeyboardResult => {
@@ -332,15 +332,7 @@ export const keyboardAction = (
     }
 
     case "align-today": {
-      const today = dayInZone(model.calendar.now, model.calendar.zone);
-      const count = visibleDays(model.calendar.navigation).length;
-
-      const days = apply(
-        model,
-        Message.ClickedView({ days: Math.max(1, count), mode: "days" })
-      );
-
-      return apply(days.model, Message.KeyboardDate({ day: today }));
+      return apply(model, Message.ClickedAlignToday());
     }
 
     default: {

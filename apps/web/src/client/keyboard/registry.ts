@@ -550,6 +550,14 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     special("days")
   ),
   row(
+    "weekdays",
+    "Hide/unhide weekdays",
+    [],
+    "Calendar view",
+    "View",
+    special("weekdays")
+  ),
+  row(
     "weekends",
     "Show/hide weekends",
     ["Shift+Mod+e"],

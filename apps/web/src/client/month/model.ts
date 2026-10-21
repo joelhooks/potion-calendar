@@ -25,6 +25,7 @@ export const MonthReadBinding = Schema.Struct({
 
 export const MonthUi = Schema.Struct({
   epoch: Schema.Int,
+  firstWeek: Schema.Option(Schema.Int),
   frame: Schema.Option(
     Schema.Struct({ frame: MonthWindowFrame, session: MonthSession })
   ),
@@ -43,6 +44,7 @@ export const MonthUi = Schema.Struct({
 export const initialMonthUi = () =>
   MonthUi.make({
     epoch: 0,
+    firstWeek: Option.none(),
     frame: Option.none(),
     pending: Option.none(),
     range: Option.none(),

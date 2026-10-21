@@ -17,6 +17,7 @@ export const KeyboardUi = Schema.Struct({
     "date",
     "zones",
     "event-zone",
+    "weekdays",
   ]),
   sidebar: Schema.Boolean,
 });

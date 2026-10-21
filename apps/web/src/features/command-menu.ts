@@ -19,7 +19,7 @@ export const commandMenu = (
   h: HtmlBuilder<AppMessage>
 ): readonly Html[] => {
   if (
-    !["commands", "days", "date", "zones", "event-zone"].includes(
+    !["commands", "days", "date", "zones", "event-zone", "weekdays"].includes(
       model.keyboard.screen
     )
   ) {
@@ -34,6 +34,7 @@ export const commandMenu = (
       ? zoneChooserHeading(model)
       : (new Map([
           ["event-zone", "Event time zone"],
+          ["weekdays", "Hide/unhide weekdays"],
           ["date", "Go to date"],
           ["days", "Number of displayed days"],
         ]).get(model.keyboard.screen) ?? "Command menu");
@@ -127,6 +128,7 @@ export const commandMenu = (
           h.Placeholder(
             new Map([
               ["event-zone", "Search city, region or time zone…"],
+              ["weekdays", "Find a weekday…"],
               ["date", "e.g. nov 5, in 10 weeks"],
               [
                 "zones",

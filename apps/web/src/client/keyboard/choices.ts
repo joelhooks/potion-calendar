@@ -6,6 +6,7 @@ import type { AppModel } from "../app.js";
 import { eventZoneChoices } from "../editing/zone-choices.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
+import { weekdayChoices } from "../settings/weekday-choices.js";
 import { timeZoneChoices } from "../time-zones/choices.js";
 import { displayedKeyTokens } from "./hints.js";
 import { actionCatalog } from "./registry.js";
@@ -143,6 +144,10 @@ const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
 
   if (model.keyboard.screen === "zones") {
     return timeZoneChoices(model);
+  }
+
+  if (model.keyboard.screen === "weekdays") {
+    return weekdayChoices(model);
   }
 
   if (model.keyboard.screen === "days") {

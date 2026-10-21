@@ -1,39 +1,38 @@
-import { DateTime, Schema } from "effect";
+import { DateTime, Result, Schema } from "effect";
 
-const dayMillis = 86_400_000;
+import {
+  clampDisplayDay,
+  dayFromIso,
+  displayDayBounds,
+  isoFromDay,
+  maximumDisplayedDays,
+  partsFromDay,
+  weekStart,
+} from "./calendar-day.js";
+import {
+  changeWeekdayVisibility,
+  displayedTimeDays,
+  HiddenWeekdays,
+  pageTimePeriod,
+  WeekdayVisibilityAction,
+} from "./navigation-refinements.js";
 
-export const dayFromIso = (iso: string): number =>
-  Math.floor(DateTime.toEpochMillis(DateTime.makeUnsafe(iso)) / dayMillis);
-
-export const isoFromDay = (day: number): string =>
-  DateTime.formatIsoDateUtc(DateTime.makeUnsafe(day * dayMillis));
-
-export const partsFromDay = (
-  day: number
-): ReturnType<typeof DateTime.toPartsUtc> =>
-  DateTime.toPartsUtc(DateTime.makeUnsafe(day * dayMillis));
-
-export const dayInZone = (instant: number, zone: string): number => {
-  const { year, month, day } = DateTime.toParts(
-    DateTime.makeZonedUnsafe(instant, { timeZone: zone })
-  );
-
-  return dayFromIso(
-    DateTime.formatIsoDateUtc(DateTime.makeUnsafe({ day, month, year }))
-  );
-};
-
-export const midnightInZone = (day: number, zone: string): string =>
-  DateTime.formatIso(
-    DateTime.makeZonedUnsafe(`${isoFromDay(day)}T00:00:00.000Z`, {
-      adjustForTimeZone: true,
-      timeZone: zone,
-    })
-  );
+export {
+  dayFromIso,
+  dayInZone,
+  displayDayBounds,
+  isDisplayDay,
+  isoFromDay,
+  maximumDisplayedDays,
+  midnightInZone,
+  partsFromDay,
+  weekStart,
+} from "./calendar-day.js";
 
 export const NavigationState = Schema.Struct({
   anchor: Schema.Int,
   days: Schema.Int,
+  hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideWeekends: Schema.Boolean,
   mode: Schema.Literals(["day", "week", "days", "month"]),
   weekStartsOn: Schema.optionalKey(
@@ -49,6 +48,7 @@ export const viewLabel = (mode: Navigation["mode"]): string =>
 export type NavigationAction =
   | { readonly type: "page"; readonly direction: -1 | 1 }
   | { readonly type: "today" }
+  | { readonly type: "align" }
   | { readonly type: "date"; readonly day: number }
   | { readonly type: "weekends" }
   | {
@@ -57,34 +57,24 @@ export type NavigationAction =
       readonly days?: number;
     };
 
-export const maximumDisplayedDays = 31;
-
-const minimum = dayFromIso("2015-01-01");
-
-const maximum = dayFromIso("2040-12-31");
-
-export const displayDayBounds = Object.freeze({
-  end: maximum + 1,
-  start: minimum,
-});
-
-export const isDisplayDay = (day: number): boolean =>
-  day >= minimum && day <= maximum;
-
-const clampDay = (day: number): number =>
-  Math.max(minimum, Math.min(maximum, day));
-
-export const weekStart = (day: number, startsOn = 0): number =>
-  day - ((partsFromDay(day).weekDay - startsOn + 7) % 7);
-
 const monthStart = (day: number): number => day - partsFromDay(day).day + 1;
 
 export const initialNavigation = (today: number): Navigation => ({
-  anchor: clampDay(today),
+  anchor: clampDisplayDay(today),
   days: 7,
   hideWeekends: false,
   mode: "week",
 });
+
+export const hiddenTimeWeekdays = (
+  nav: Navigation
+): typeof HiddenWeekdays.Type =>
+  [
+    ...new Set([
+      ...(nav.hiddenWeekdays ?? []),
+      ...(nav.hideWeekends ? [0, 6] : []),
+    ]),
+  ].toSorted((a, b) => a - b);
 
 export const periodStart = (nav: Navigation): number => {
   if (nav.mode === "month") {
@@ -97,40 +87,23 @@ export const periodStart = (nav: Navigation): number => {
 };
 
 export const visibleDays = (nav: Navigation): readonly number[] => {
-  const start = periodStart(nav);
-  const fixedPeriod = nav.mode === "week" || nav.mode === "month";
-  const target = nav.mode === "day" ? 1 : nav.days;
-  const length = nav.mode === "month" ? 42 : 7;
-  const result: number[] = [];
-
-  for (let day = start; day <= maximum; day += 1) {
-    if (fixedPeriod ? day >= start + length : result.length >= target) {
-      break;
-    }
-
-    const weekday = partsFromDay(day).weekDay;
-
-    if (
-      day >= minimum &&
-      (!nav.hideWeekends || (weekday !== 0 && weekday !== 6))
-    ) {
-      result.push(day);
-    }
+  if (nav.mode !== "month") {
+    return displayedTimeDays(
+      { anchor: nav.anchor, days: nav.days, mode: nav.mode },
+      hiddenTimeWeekdays(nav),
+      nav.weekStartsOn
+    );
   }
 
-  return result;
-};
-
-const weekendDayCount = (days: number, hidden: boolean): number => {
-  if (hidden && days === 7) {
-    return 5;
-  }
-
-  if (!hidden && days === 5) {
-    return 7;
-  }
-
-  return days;
+  return Array.from(
+    { length: 42 },
+    (_, index) => periodStart(nav) + index
+  ).filter(
+    (day) =>
+      day >= displayDayBounds.start &&
+      day < displayDayBounds.end &&
+      (!nav.hideWeekends || ![0, 6].includes(partsFromDay(day).weekDay))
+  );
 };
 
 export const navigate = (
@@ -140,22 +113,57 @@ export const navigate = (
 ): Navigation => {
   switch (action.type) {
     case "date": {
-      return { ...nav, anchor: clampDay(action.day) };
+      return { ...nav, anchor: clampDisplayDay(action.day) };
     }
 
     case "today": {
-      return { ...nav, anchor: clampDay(today) };
+      return {
+        ...nav,
+        anchor: clampDisplayDay(
+          nav.mode === "month" ? monthStart(today) : today
+        ),
+      };
+    }
+
+    case "align": {
+      return nav.mode === "month"
+        ? { ...nav, anchor: clampDisplayDay(today) }
+        : {
+            ...nav,
+            anchor: clampDisplayDay(today),
+            days: Math.max(1, visibleDays(nav).length),
+            mode: visibleDays(nav).length <= 1 ? "day" : "days",
+          };
     }
 
     case "weekends": {
-      return {
+      const changed = changeWeekdayVisibility(
+        {
+          hidden: hiddenTimeWeekdays(nav),
+          period: {
+            anchor: nav.anchor,
+            days: nav.days,
+            mode: nav.mode === "month" ? "week" : nav.mode,
+          },
+        },
+        WeekdayVisibilityAction.cases.Weekends.make({
+          hidden: !nav.hideWeekends,
+        })
+      );
+
+      if (Result.isFailure(changed)) {
+        return nav;
+      }
+
+      const navigation = {
         ...nav,
-        days:
-          nav.mode === "days"
-            ? weekendDayCount(nav.days, !nav.hideWeekends)
-            : nav.days,
+        days: changed.success.period.days,
         hideWeekends: !nav.hideWeekends,
       };
+
+      return nav.hiddenWeekdays === undefined
+        ? navigation
+        : { ...navigation, hiddenWeekdays: changed.success.hidden };
     }
 
     case "view": {
@@ -179,36 +187,23 @@ export const navigate = (
           DateTime.makeUnsafe(
             `${isoFromDay(monthStart(nav.anchor))}T00:00:00Z`
           ),
-          {
-            months: action.direction,
-          }
+          { months: action.direction }
         );
 
         return {
           ...nav,
-          anchor: clampDay(dayFromIso(DateTime.formatIsoDateUtc(next))),
+          anchor: clampDisplayDay(dayFromIso(DateTime.formatIsoDateUtc(next))),
         };
       }
 
-      if (nav.mode === "week") {
-        return { ...nav, anchor: clampDay(nav.anchor + action.direction * 7) };
-      }
+      const period = pageTimePeriod(
+        { anchor: nav.anchor, days: nav.days, mode: nav.mode },
+        hiddenTimeWeekdays(nav),
+        action.direction,
+        nav.weekStartsOn
+      );
 
-      let anchor = visibleDays(nav)[0] ?? nav.anchor;
-      const count = nav.mode === "day" ? 1 : nav.days;
-
-      for (let moved = 0; moved < count; moved += 1) {
-        anchor += action.direction;
-
-        while (
-          nav.hideWeekends &&
-          [0, 6].includes(partsFromDay(anchor).weekDay)
-        ) {
-          anchor += action.direction;
-        }
-      }
-
-      return { ...nav, anchor: clampDay(anchor) };
+      return { ...nav, anchor: period.anchor };
     }
 
     default: {

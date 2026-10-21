@@ -1,6 +1,7 @@
 import { CalendarRef } from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
+import { HiddenWeekdays } from "../../layout/navigation-refinements.js";
 import {
   ZonePreferences,
   normalizeZonePreferences,
@@ -32,6 +33,7 @@ export const SettingsChange = Schema.TaggedUnion({
   UpcomingMeeting: { minutes: UpcomingMeetingMinutes },
   WeekNumbers: { shown: Schema.Boolean },
   WeekStart: { value: WeekStart },
+  Weekday: { shown: Schema.Boolean, value: WeekStart },
   Weekends: { shown: Schema.Boolean },
 });
 
@@ -64,6 +66,7 @@ export const initialSettings = (): typeof SettingsUi.Type => ({
 export const SavedPreferences = Schema.Struct({
   defaultCalendar: Schema.optionalKey(CalendarRef),
   eventInvites: Schema.Boolean,
+  hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.Boolean,
   hideWeekends: Schema.Boolean,
@@ -83,6 +86,7 @@ export const SavedPreferences = Schema.Struct({
 const StoredCommon = {
   defaultCalendar: Schema.optionalKey(CalendarRef),
   eventInvites: Schema.optionalKey(Schema.Boolean),
+  hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.optionalKey(Schema.Boolean),
   hideWeekends: Schema.optionalKey(Schema.Boolean),
@@ -115,6 +119,8 @@ export const normalizePreferences = (
 ): typeof SavedPreferences.Type => {
   const preferences: typeof SavedPreferences.Type = {
     eventInvites: stored.eventInvites ?? true,
+    hiddenWeekdays:
+      stored.hiddenWeekdays ?? ((stored.hideWeekends ?? false) ? [0, 6] : []),
     hideContextPanel: stored.hideContextPanel ?? false,
     hideDeclined: stored.hideDeclined ?? false,
     hideWeekends: stored.hideWeekends ?? false,

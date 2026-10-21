@@ -1,12 +1,12 @@
 import { Option, Result, Schema } from "effect";
 
 import {
-  initialNavigation,
+  clampDisplayDay,
   isDisplayDay,
   maximumDisplayedDays,
   partsFromDay,
   weekStart,
-} from "./navigation.js";
+} from "./calendar-day.js";
 import type { Navigation } from "./navigation.js";
 
 export const Weekday = Schema.Int.check(
@@ -155,7 +155,7 @@ export const pageTimePeriod = (
   if (period.mode === "week") {
     return TimePeriod.make({
       ...period,
-      anchor: initialNavigation(period.anchor + direction * 7).anchor,
+      anchor: clampDisplayDay(period.anchor + direction * 7),
     });
   }
 
@@ -171,7 +171,7 @@ export const pageTimePeriod = (
 
   return TimePeriod.make({
     ...period,
-    anchor: initialNavigation(anchor).anchor,
+    anchor: clampDisplayDay(anchor),
   });
 };
 
@@ -209,7 +209,7 @@ export const monthTodayTarget = (
   startsOn: typeof Weekday.Type,
   intent: typeof MonthTodayIntent.Type
 ): typeof MonthTodayTarget.Type => {
-  const day = initialNavigation(today).anchor;
+  const day = clampDisplayDay(today);
   const anchor = intent === "GoToToday" ? day - partsFromDay(day).day + 1 : day;
 
   return MonthTodayTarget.make({

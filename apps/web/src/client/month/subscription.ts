@@ -14,7 +14,7 @@ import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import { bindMonthScroll } from "./events.js";
 import { applyMonthRebase, retainMonthFocus } from "./frame.js";
-import { monthHostKey } from "./host.js";
+import { monthHostKey, monthInitialPosition } from "./host.js";
 import { MonthNotice } from "./model.js";
 import { MonthRuntime } from "./runtime.js";
 import { monthScrollMachine } from "./scroll-machine.js";
@@ -87,8 +87,8 @@ const liveMonthScrollStream = (
 
       const position =
         saved !== undefined && saved.session.hostKey === hostKey
-          ? saved.position
-          : undefined;
+          ? (saved.position ?? monthInitialPosition(initial))
+          : monthInitialPosition(initial);
 
       const actor = yield* createEffectActor(monthScrollMachine, {
         input: {

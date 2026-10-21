@@ -154,7 +154,7 @@ it.effect(
       );
       expect(model.calendar.navigation.anchor).toBe(dayFromIso("2026-11-01"));
       model = applyMessage(model, Message.ClickedToday());
-      expect(model.calendar.navigation.anchor).toBe(dayFromIso("2026-10-21"));
+      expect(model.calendar.navigation.anchor).toBe(dayFromIso("2026-10-01"));
     })
 );
 

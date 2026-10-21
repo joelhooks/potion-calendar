@@ -14,7 +14,6 @@ import {
   dayInZone,
   initialNavigation,
   midnightInZone,
-  navigate,
   visibleDays,
 } from "../layout/navigation.js";
 import type { NavigationAction } from "../layout/navigation.js";
@@ -113,7 +112,7 @@ import { JoinMeeting } from "./meetings/commands.js";
 import { joinSelection } from "./meetings/selection.js";
 import { Message } from "./message.js";
 import type { AppMessage } from "./message.js";
-import { monthFrame, monthHostKey, monthNavigation } from "./month/host.js";
+import { monthFrame, monthHostKey } from "./month/host.js";
 import { MonthUi, initialMonthUi } from "./month/model.js";
 import type { MonthRuntime } from "./month/runtime.js";
 import {
@@ -121,6 +120,7 @@ import {
   retainedMonthSources,
   settleMonthRead,
 } from "./month/update.js";
+import { navigationTransition, preserveMonthDisplay } from "./navigation.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
@@ -248,6 +248,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     mergeDuplicates: true,
     navigation: initialNavigation(dayInZone(now, zone)),
     now,
+    previousTimePeriod: Option.none(),
     rangeRequest: 0,
     reads: [],
     rectangle: Option.none(),
@@ -475,33 +476,15 @@ const changeNavigation = (
   action: NavigationAction,
   previous: AppModel = model
 ): Result => {
-  const navigation = navigate(
-    action.type === "page" ? monthNavigation(model) : model.calendar.navigation,
-    action,
-    dayInZone(model.calendar.now, model.calendar.zone)
-  );
-
   const result = reloadRange(
-    {
-      ...model,
-      calendar: {
-        ...model.calendar,
-        navigation,
-        rectangle: Option.none(),
-        selected: [],
-      },
-      month: {
-        ...model.month,
-        epoch: model.month.epoch + 1,
-        pending: Option.none(),
-      },
-    },
+    navigationTransition(model, action),
     false,
     [],
     previous
   );
 
-  return action.type === "today"
+  return (action.type === "today" || action.type === "align") &&
+    result.model.calendar.navigation.mode !== "month"
     ? {
         ...result,
         commands: [
@@ -585,11 +568,14 @@ const updateCore = (
     CalendarChanged: () => reloadRange(model),
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
     ChangedSettings: ({ change }) => {
-      const next = changeSettings(model, change);
+      const next = preserveMonthDisplay(model, changeSettings(model, change));
+
+      const datesChanged =
+        JSON.stringify(visibleDays(next.calendar.navigation)) !==
+        JSON.stringify(visibleDays(model.calendar.navigation));
 
       return persistPreferences(
-        SettingsChange.guards.WeekStart(change) ||
-          SettingsChange.guards.Weekends(change)
+        datesChanged || SettingsChange.guards.WeekStart(change)
           ? reloadRange(next, false, [], model)
           : { model: receivedEventRows(next) }
       );
@@ -611,6 +597,7 @@ const updateCore = (
       commands: [BeginGoogle({ linking: true })],
       model: { ...model, action: "pending", error: Option.none() },
     }),
+    ClickedAlignToday: () => changeNavigation(model, { type: "align" }),
     ClickedAllDay: () => toggleAllDay(model),
     ClickedCalendar: ({ accountId, calendarId }) => {
       if (
@@ -714,7 +701,14 @@ const updateCore = (
     ClickedView: ({ mode, days }) =>
       changeNavigation(model, { days, mode, type: "view" }),
     ClickedWeekends: () =>
-      persistPreferences(changeNavigation(model, { type: "weekends" })),
+      dispatch(
+        model,
+        Message.ChangedSettings({
+          change: SettingsChange.cases.Weekends.make({
+            shown: model.calendar.navigation.hideWeekends,
+          }),
+        })
+      ),
     ClickedZoom: ({ step }) => ({
       model: {
         ...model,

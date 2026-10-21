@@ -1,7 +1,11 @@
-import { Option } from "effect";
+import { Option, Result } from "effect";
 import { AsyncData } from "foldkit";
 
-import { navigate } from "../../layout/navigation.js";
+import {
+  WeekdayVisibilityAction,
+  changeWeekdayVisibility,
+} from "../../layout/navigation-refinements.js";
+import { hiddenTimeWeekdays } from "../../layout/navigation.js";
 import type { AppModel } from "../app.js";
 import { writableCalendar } from "../editing/load-editor.js";
 import { activeZone } from "../time-zones/model.js";
@@ -31,6 +35,7 @@ export const preferenceSnapshot = (
 ): typeof SavedPreferences.Type => {
   const base: typeof SavedPreferences.Type = {
     eventInvites: model.settings.eventInvites,
+    hiddenWeekdays: hiddenTimeWeekdays(model.calendar.navigation),
     hideContextPanel: model.settings.hideContextPanel,
     hideDeclined: model.calendar.hideDeclined,
     hideWeekends: model.calendar.navigation.hideWeekends,
@@ -98,7 +103,14 @@ export const applyPreferences = (
       mergeDuplicates: preferences.mergeDuplicates,
       navigation: {
         ...model.calendar.navigation,
-        hideWeekends: preferences.hideWeekends,
+        hiddenWeekdays:
+          preferences.hiddenWeekdays ??
+          (preferences.hideWeekends ? [0, 6] : []),
+        hideWeekends:
+          preferences.hiddenWeekdays === undefined
+            ? preferences.hideWeekends
+            : preferences.hiddenWeekdays.includes(0) &&
+              preferences.hiddenWeekdays.includes(6),
         weekStartsOn: preferences.weekStartsOn,
       },
       visibility: visibility.visibility,
@@ -117,6 +129,47 @@ export const applyPreferences = (
       upcomingMeetingMinutes: preferences.upcomingMeetingMinutes ?? 240,
     },
     timeZones,
+  };
+};
+
+const changeVisibleWeekday = (
+  model: AppModel,
+  action: typeof WeekdayVisibilityAction.Type
+): AppModel => {
+  const { navigation } = model.calendar;
+
+  const changed = changeWeekdayVisibility(
+    {
+      hidden: hiddenTimeWeekdays(navigation),
+      period: {
+        anchor: navigation.anchor,
+        days: navigation.days,
+        mode: navigation.mode === "month" ? "week" : navigation.mode,
+      },
+    },
+    action
+  );
+
+  if (Result.isFailure(changed)) {
+    return {
+      ...model,
+      error: Option.some("Keep at least one weekday visible."),
+    };
+  }
+
+  return {
+    ...model,
+    calendar: {
+      ...model.calendar,
+      navigation: {
+        ...navigation,
+        days: changed.success.period.days,
+        hiddenWeekdays: changed.success.hidden,
+        hideWeekends:
+          changed.success.hidden.includes(0) &&
+          changed.success.hidden.includes(6),
+      },
+    },
   };
 };
 
@@ -185,18 +238,16 @@ export const changeSettings = (
         navigation: { ...model.calendar.navigation, weekStartsOn: value },
       },
     }),
+    Weekday: ({ shown, value }) =>
+      changeVisibleWeekday(
+        model,
+        shown
+          ? WeekdayVisibilityAction.cases.Show.make({ weekday: value })
+          : WeekdayVisibilityAction.cases.Hide.make({ weekday: value })
+      ),
     Weekends: ({ shown }) =>
-      shown === !model.calendar.navigation.hideWeekends
-        ? model
-        : {
-            ...model,
-            calendar: {
-              ...model.calendar,
-              navigation: navigate(
-                model.calendar.navigation,
-                { type: "weekends" },
-                model.calendar.navigation.anchor
-              ),
-            },
-          },
+      changeVisibleWeekday(
+        model,
+        WeekdayVisibilityAction.cases.Weekends.make({ hidden: !shown })
+      ),
   });

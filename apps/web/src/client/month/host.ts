@@ -22,7 +22,13 @@ export const monthHostKey = (model: AppModel): Option.Option<string> => {
           session.user.id,
           model.clipboard.epoch,
           model.month.epoch,
-          model.calendar.navigation,
+          {
+            anchor: model.calendar.navigation.anchor,
+            days: model.calendar.navigation.days,
+            hideWeekends: model.calendar.navigation.hideWeekends,
+            mode: model.calendar.navigation.mode,
+            weekStartsOn: model.calendar.navigation.weekStartsOn,
+          },
           model.calendar.zone,
           model.calendar.viewport,
           model.calendar.viewportWidth,
@@ -45,7 +51,10 @@ export const monthInitialPosition = (model: AppModel) => {
   const [first] = monthWeeks(model.calendar.navigation);
 
   return initialMonthPosition(
-    first?.start ?? model.calendar.navigation.anchor,
+    Option.getOrElse(
+      model.month.firstWeek,
+      () => first?.start ?? model.calendar.navigation.anchor
+    ),
     monthGeometry(model.calendar.viewport, model.settings.showWeekNumbers)
       .rowHeight
   );
