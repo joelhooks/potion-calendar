@@ -10,6 +10,7 @@ import { writableCalendar } from "../client/editing/load-editor.js";
 import { monthNavigation } from "../client/month/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
+import { calendarReadFailures } from "../layout/calendar-read-state.js";
 import { conferenceLink } from "../layout/conferencing.js";
 import {
   dayInZone,
@@ -333,6 +334,7 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
       : [];
 
   const indexError = AsyncData.getError(model.calendar.index);
+  const failures = calendarReadFailures(model);
 
   return h.aside(
     [h.Class("sidebar"), h.AriaLabel("Calendars")],
@@ -366,7 +368,9 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
             ...(read !== undefined && AsyncData.isPending(read.events)
               ? [h.p([h.Class("muted"), h.Role("status")], ["Loading events…"])]
               : []),
-            ...(failure === undefined
+            ...(failure === undefined ||
+            (failure.kind === "retry" &&
+              failures.some((item) => item.calendar.accountId === account.id))
               ? []
               : [
                   h.p([h.Role("alert")], [failure.message]),
@@ -382,35 +386,59 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                   ),
                 ]),
             ...calendars.map((calendar) =>
-              h.button(
+              h.div(
+                [h.Class("calendar-row")],
                 [
-                  h.Class("calendar-toggle"),
-                  h.Role("checkbox"),
-                  h.AriaChecked(
-                    !model.calendar.hidden.includes(
-                      calendarKey(calendar.accountId, calendar.calendarId)
-                    )
+                  h.button(
+                    [
+                      h.Class("calendar-toggle"),
+                      h.Role("checkbox"),
+                      h.AriaChecked(
+                        !model.calendar.hidden.includes(
+                          calendarKey(calendar.accountId, calendar.calendarId)
+                        )
+                      ),
+                      h.OnClick(
+                        Message.ClickedCalendar({
+                          accountId: calendar.accountId,
+                          calendarId: calendar.calendarId,
+                        })
+                      ),
+                    ],
+                    [
+                      h.span([
+                        h.Class(
+                          `swatch${model.calendar.hidden.includes(calendarKey(calendar.accountId, calendar.calendarId)) ? " hidden" : ""}`
+                        ),
+                        h.Style({
+                          "--event-color": chipColors(
+                            calendar.backgroundColor ?? "#4986E8",
+                            resolvedTheme(model)
+                          ).accent,
+                        }),
+                      ]),
+                      h.span([], [calendar.title]),
+                    ]
                   ),
-                  h.OnClick(
-                    Message.ClickedCalendar({
-                      accountId: calendar.accountId,
-                      calendarId: calendar.calendarId,
-                    })
+                  ...failures.flatMap((item) =>
+                    item.key ===
+                      calendarKey(calendar.accountId, calendar.calendarId) &&
+                    !item.cached
+                      ? [
+                          h.p(
+                            [h.Class("calendar-load-failure"), h.Role("alert")],
+                            [`Couldn't load ${calendar.title}`]
+                          ),
+                          h.button(
+                            [
+                              h.Class("calendar-load-retry"),
+                              h.OnClick(Message.ClickedRefresh()),
+                            ],
+                            ["Retry"]
+                          ),
+                        ]
+                      : []
                   ),
-                ],
-                [
-                  h.span([
-                    h.Class(
-                      `swatch${model.calendar.hidden.includes(calendarKey(calendar.accountId, calendar.calendarId)) ? " hidden" : ""}`
-                    ),
-                    h.Style({
-                      "--event-color": chipColors(
-                        calendar.backgroundColor ?? "#4986E8",
-                        resolvedTheme(model)
-                      ).accent,
-                    }),
-                  ]),
-                  h.span([], [calendar.title]),
                 ]
               )
             ),

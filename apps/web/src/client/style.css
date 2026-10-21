@@ -235,6 +235,32 @@ h3 {
   padding: 6px 2px;
   font-size: 12px;
 }
+.calendar-load-failure {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.calendar-load-retry {
+  font-size: 12px;
+}
+.calendar-read-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.calendar-read-notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.calendar-read-notice button {
+  flex-shrink: 0;
+}
 .calendar-toggle > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -20,6 +20,7 @@ import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { bulkNotice, selectionRectangle } from "./bulk-actions.js";
+import { calendarRefreshNotices } from "./calendar-read-failures.js";
 import { detailPanel, sidebar, systemZonePrompt, toolbar } from "./calendar.js";
 import { clipboardPanel } from "./clipboard.js";
 import { commandMenu } from "./command-menu.js";
@@ -79,6 +80,8 @@ const notificationLayers = (
     (mark) => mark.phase === "pending"
   );
 
+  const refreshNotices = calendarRefreshNotices(model, h);
+
   const clipboardReady =
     Option.isSome(model.person) && Option.isSome(model.clipboard.sessionId);
 
@@ -93,7 +96,8 @@ const notificationLayers = (
     !clipboardReady &&
     !undoReady &&
     BulkView.guards.Idle(model.editing.bulk) &&
-    Option.isNone(model.calendar.rectangle)
+    Option.isNone(model.calendar.rectangle) &&
+    refreshNotices.length === 0
   ) {
     return [];
   }
@@ -123,6 +127,7 @@ const notificationLayers = (
         }),
       ],
       [
+        ...refreshNotices,
         ...bulkNotice(model, h),
         ...selectionRectangle(model, h),
         ...Option.match(model.editing.conferencingResult, {

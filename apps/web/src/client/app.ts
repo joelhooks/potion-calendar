@@ -454,7 +454,9 @@ export const reloadRange = (
             events: Option.match(data, {
               onNone: () => RemoteEvents.Loading(),
               onSome: (savedData) =>
-                RemoteEvents.Refreshing({ data: savedData }),
+                saved !== undefined && AsyncData.isStale(saved.events)
+                  ? saved.events
+                  : RemoteEvents.Refreshing({ data: savedData }),
             }),
           };
         }),
@@ -814,15 +816,11 @@ const updateCore = (
                 item.accountId === accountId
                   ? {
                       ...item,
-                      events:
-                        model.calendar.navigation.mode === "month"
-                          ? Option.match(AsyncData.getData(item.events), {
-                              onNone: () =>
-                                RemoteEvents.Failure({ error: failure }),
-                              onSome: (data) =>
-                                RemoteEvents.Stale({ data, error: failure }),
-                            })
-                          : RemoteEvents.Failure({ error: failure }),
+                      events: Option.match(AsyncData.getData(item.events), {
+                        onNone: () => RemoteEvents.Failure({ error: failure }),
+                        onSome: (data) =>
+                          RemoteEvents.Stale({ data, error: failure }),
+                      }),
                     }
                   : item
               ),

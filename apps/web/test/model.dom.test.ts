@@ -76,28 +76,30 @@ it.effect.prop(
     })
 );
 
-it.effect("a failed account leaves another account's events visible", () =>
-  Effect.sync(() => {
-    const { model } = update(
-      fixtureModel(),
-      Message.FailedEvents({
-        accountId: "work",
-        failure: { kind: "retry", message: "Provider unavailable" },
-        request: 1,
-      })
-    );
+it.effect(
+  "a failed account preserves its cached chips and another account's events",
+  () =>
+    Effect.sync(() => {
+      const { model } = update(
+        fixtureModel(),
+        Message.FailedEvents({
+          accountId: "work",
+          failure: { kind: "retry", message: "Provider unavailable" },
+          request: 1,
+        })
+      );
 
-    expect(
-      visibleEvents(model).some((event) => event.title === "Lunch with Sam")
-    ).toBe(true);
-    expect(
-      visibleEvents(model).some((event) => event.title === "Product review")
-    ).toBe(false);
-    expect(
-      model.calendar.reads.find((read) => read.accountId === "work")?.events
-        ._tag
-    ).toBe("Failure");
-  })
+      expect(
+        visibleEvents(model).some((event) => event.title === "Lunch with Sam")
+      ).toBe(true);
+      expect(
+        visibleEvents(model).some((event) => event.title === "Product review")
+      ).toBe(true);
+      expect(
+        model.calendar.reads.find((read) => read.accountId === "work")?.events
+          ._tag
+      ).toBe("Stale");
+    })
 );
 
 it.effect(
