@@ -1,6 +1,8 @@
 import type { EffectActor } from "@xstate/effect";
-import { Option } from "effect";
+import { Option, Result } from "effect";
 
+import { monthGestureStart } from "../month/gesture.js";
+import type { MonthGestureRefused } from "../month/gesture.js";
 import { pointerPoint } from "./gesture-input.js";
 import type { gestureMachine } from "./gesture-machine.js";
 import type { GestureTarget } from "./gesture-model.js";
@@ -10,6 +12,7 @@ interface Input {
   readonly root: HTMLElement;
   readonly scale: number;
   readonly getTargets: () => readonly (typeof GestureTarget.Type)[] | undefined;
+  readonly refused?: (reason: MonthGestureRefused["reason"]) => void;
 }
 
 const scrollEdge = (root: HTMLElement, event: PointerEvent): void => {
@@ -42,21 +45,40 @@ const startsOnSurface = (
     : chip.classList.contains("selected");
 
 const selectionGesture = (root: HTMLElement, event: PointerEvent): boolean =>
-  event.shiftKey || Number(root.dataset.selectionCount ?? 0) > 1;
+  event.shiftKey ||
+  (!root.classList.contains("month-view") &&
+    Number(root.dataset.selectionCount ?? 0) > 1);
+
+const gestureElement = (
+  root: HTMLElement,
+  event: PointerEvent
+): Element | undefined =>
+  event.button === 0 &&
+  !selectionGesture(root, event) &&
+  event.isPrimary &&
+  event.target instanceof Element &&
+  event.target.closest("[data-month-parked]") === null
+    ? event.target
+    : undefined;
+
+const canDragTarget = (
+  target: typeof GestureTarget.Type | undefined,
+  event: PointerEvent,
+  edge: "body" | "start" | "end"
+) =>
+  target === undefined || target.editable || (event.altKey && edge === "body");
 
 export const bindGestureEvents = ({
   actor,
   root,
   scale,
   getTargets,
+  refused,
 }: Input): (() => void) => {
   const down = (event: PointerEvent): void => {
-    if (
-      event.button !== 0 ||
-      selectionGesture(root, event) ||
-      !event.isPrimary ||
-      !(event.target instanceof Element)
-    ) {
+    const element = gestureElement(root, event);
+
+    if (element === undefined) {
       return;
     }
 
@@ -66,15 +88,15 @@ export const bindGestureEvents = ({
       return;
     }
 
-    const chip = event.target.closest<HTMLElement>(".event-chip");
+    const chip = element.closest<HTMLElement>(".event-chip");
 
-    if (!startsOnSurface(event.target, chip)) {
+    if (!startsOnSurface(element, chip)) {
       return;
     }
 
     const allDay =
       root.classList.contains("month-view") ||
-      event.target.closest(".all-day") !== null;
+      element.closest(".all-day") !== null;
 
     const point = pointerPoint(root, event, scale, allDay);
 
@@ -89,16 +111,32 @@ export const bindGestureEvents = ({
     }
 
     const handle =
-      event.target.closest<HTMLElement>("[data-resize-edge]")?.dataset
-        .resizeEdge;
+      element.closest<HTMLElement>("[data-resize-edge]")?.dataset.resizeEdge;
 
     const edge = handle === "start" || handle === "end" ? handle : "body";
 
-    if (
-      target !== undefined &&
-      !target.editable &&
-      !(event.altKey && edge === "body")
-    ) {
+    if (root.classList.contains("month-view")) {
+      const start = monthGestureStart({
+        edge,
+        point: point.value,
+        selected: chip?.classList.contains("selected") ?? false,
+        target: Option.fromUndefinedOr(target),
+      });
+
+      if (Result.isFailure(start)) {
+        refused?.(start.failure.reason);
+
+        return;
+      }
+
+      actor.send({ start: start.success, type: "DOWN" });
+      root.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+
+      return;
+    }
+
+    if (!canDragTarget(target, event, edge)) {
       return;
     }
 

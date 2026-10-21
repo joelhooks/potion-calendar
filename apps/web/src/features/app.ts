@@ -25,6 +25,7 @@ import { clipboardPanel } from "./clipboard.js";
 import { commandMenu } from "./command-menu.js";
 import { conferencingSaveNotice } from "./conferencing-save-notice.js";
 import { editorDialogs } from "./event-editor.js";
+import { gestureRefusalNotice } from "./gesture-refusal.js";
 import { searchPanel } from "./search.js";
 import { settingsPage } from "./settings.js";
 import { shortcutsPage } from "./shortcuts-page.js";
@@ -88,6 +89,7 @@ const notificationLayers = (
 
   if (
     Option.isNone(model.editing.conferencingResult) &&
+    Option.isNone(model.editing.gestureRefusal) &&
     !clipboardReady &&
     !undoReady &&
     BulkView.guards.Idle(model.editing.bulk) &&
@@ -127,6 +129,7 @@ const notificationLayers = (
           onNone: () => [],
           onSome: (notice) => [conferencingSaveNotice(h, notice, send)],
         }),
+        ...gestureRefusalNotice(model, h),
         ...(Option.isSome(model.person) &&
         Option.isSome(model.clipboard.sessionId)
           ? [
@@ -209,7 +212,8 @@ const workspaceContent = (
         model,
         h,
         Option.isSome(monthHostKey(model)) ? monthFrame(model) : undefined,
-        prepareMonth
+        prepareMonth,
+        prepare
       )
     : timeGrid(model, h, prepare);
 };

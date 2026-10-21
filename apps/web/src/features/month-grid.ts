@@ -1,7 +1,11 @@
+import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
+import { EditorView } from "../client/editing/editor-model.js";
+import { PrepareGestures } from "../client/editing/gesture-mount.js";
+import { monthSurfaceMountFor } from "../client/month/gesture-mount.js";
 import { monthHostKey } from "../client/month/host.js";
 import { PrepareMonthViewport } from "../client/month/viewport.js";
 import { resolvedTheme } from "../client/settings/model.js";
@@ -13,13 +17,15 @@ import { dayInZone } from "../layout/navigation.js";
 import { dayLabel, visibleEvents } from "../layout/presentation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { chip } from "./calendar.js";
+import { monthPreviewLayer } from "./month-gesture-preview.js";
 import { selectionSurface } from "./selection-surface.js";
 
 export const monthGrid = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
   frame?: typeof MonthWindowFrame.Type,
-  prepare: typeof PrepareMonthViewport = PrepareMonthViewport
+  prepare: typeof PrepareMonthViewport = PrepareMonthViewport,
+  prepareGesture: typeof PrepareGestures = PrepareGestures
 ): Html => {
   const weeks = monthWeeks(model.calendar.navigation, frame);
   const events = visibleEvents(model);
@@ -34,6 +40,7 @@ export const monthGrid = (
   const today = dayInZone(model.calendar.now, model.calendar.zone);
 
   const appearance = {
+    resize: "horizontal-only" as const,
     theme: resolvedTheme(model),
     timeFormat: resolvedTimeFormat(model),
   };
@@ -51,15 +58,37 @@ export const monthGrid = (
           [content]
         );
 
-  return h.section(
+  const host = monthHostKey(model);
+
+  return h.keyed("section")(
+    Option.getOrElse(host, () => "month-static"),
     [
       h.Class("calendar-view month-view"),
+      h.Id("gesture-host"),
+      ...host.pipe(
+        Option.map((hostKey) => h.DataAttribute("gesture-host-key", hostKey)),
+        Option.toArray
+      ),
+
       h.DataAttribute(
         "selection-count",
         String(model.calendar.selected.length)
       ),
       h.AriaLabel("Month grid"),
-      h.OnMount(prepare()),
+      h.OnMount(
+        Option.isSome(host) &&
+          Option.isSome(model.person) &&
+          EditorView.guards.Closed(model.editing.view)
+          ? monthSurfaceMountFor(
+              prepare,
+              prepareGesture
+            )({
+              hostKey: host.value,
+              personId: model.person.value,
+              scale: geometry.rowHeight,
+            })
+          : prepare()
+      ),
     ],
     [
       selectionSurface(model, h, monthHostKey(model), [
@@ -239,6 +268,15 @@ export const monthGrid = (
                       )
                     )
                   ),
+                  ...(week.parked
+                    ? []
+                    : [
+                        monthPreviewLayer(
+                          model,
+                          h,
+                          week.days.map(({ day }) => day)
+                        ),
+                      ]),
                 ]
               );
             })

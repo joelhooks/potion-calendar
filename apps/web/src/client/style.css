@@ -1078,6 +1078,45 @@ h3 {
   flex-direction: column;
   font-size: 11px;
 }
+.month-gesture-layer {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  bottom: 8px;
+  display: grid;
+  grid-auto-rows: 21px;
+  pointer-events: none;
+  z-index: 100;
+}
+.month-gesture-preview {
+  position: relative;
+  left: auto;
+  right: auto;
+  margin: 0 3px;
+  min-width: 0;
+  overflow: hidden;
+  flex-direction: row;
+  gap: 4px;
+  padding: 1px 3px;
+  white-space: nowrap;
+}
+.month-preview-time {
+  flex: none;
+}
+.month-gesture-preview strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gesture-refusal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px #182b2033;
+  margin: 0;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 16px;
+}
 .gesture-preview-all-day {
   inset: 2px;
   min-height: 19px;

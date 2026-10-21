@@ -258,6 +258,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     conferencingResult: Option.none(),
     deletes: [],
     gesture: Option.none(),
+    gestureRefusal: Option.none(),
     handledBulk: Option.none(),
     handledMutation: Option.none(),
     handledRecovery: Option.none(),
@@ -751,6 +752,14 @@ const updateCore = (
         },
       });
     },
+    DismissedGestureRefusal: ({ personId }) => ({
+      model: Option.contains(model.person, personId)
+        ? {
+            ...model,
+            editing: { ...model.editing, gestureRefusal: Option.none() },
+          }
+        : model,
+    }),
     DispatchedClipboard: () => ({ model }),
     DispatchedEditing: () => ({ model }),
     EditingAction: ({ action, personId }) =>
@@ -1261,6 +1270,14 @@ const updateCore = (
       },
     }),
     ReceivedUpcoming: (result) => ({ model: receiveUpcoming(model, result) }),
+    RefusedGesture: ({ personId, hostKey, reason }) => ({
+      model: acceptsGesture(model, personId, hostKey)
+        ? {
+            ...model,
+            editing: { ...model.editing, gestureRefusal: Option.some(reason) },
+          }
+        : model,
+    }),
     ReminderDeliveryCompleted: (result) =>
       completeReminderDelivery(model, result),
     ReminderEffectCompleted: () => ({ model }),

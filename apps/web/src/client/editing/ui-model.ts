@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { BulkView } from "../bulk/model.js";
 import { ConferencingSaveNotice } from "../conferencing/model.js";
+import { MonthGestureRefused } from "../month/gesture.js";
 import { DeleteIntent, DeleteOutcome } from "./delete-actor.js";
 import { EditorView } from "./editor-model.js";
 import { WritePlan } from "./editor-session-model.js";
@@ -30,6 +31,7 @@ export const EditingUi = Schema.Struct({
   conferencingResult: Schema.Option(ConferencingSaveNotice),
   deletes: Schema.Array(DeleteMark),
   gesture: Schema.Option(GestureResult),
+  gestureRefusal: Schema.Option(MonthGestureRefused.fields.reason),
   handledBulk: Schema.Option(Schema.String),
   handledMutation: Schema.Option(Schema.String),
   handledRecovery: Schema.Option(Schema.String),

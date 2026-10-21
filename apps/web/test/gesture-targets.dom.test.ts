@@ -9,6 +9,7 @@ import {
   Scope,
   Stream,
 } from "effect";
+import { Mount } from "foldkit";
 import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
@@ -219,7 +220,7 @@ it.effect(
         scale: 48,
       });
 
-      yield* mount.f(host, Stream.empty).pipe(
+      yield* mount.f(host, Mount.liveViewStateChanges).pipe(
         Stream.runForEach((message) => Queue.offer(messages, message)),
         Effect.forkIn(mounted)
       );
@@ -332,7 +333,7 @@ it.effect(
         personId: Option.getOrThrow(model.person),
         scale: 48,
       })
-        .f(host, Stream.empty)
+        .f(host, Mount.liveViewStateChanges)
         .pipe(
           Stream.runForEach((message) => Queue.offer(messages, message)),
           Effect.forkIn(mounted)
@@ -453,7 +454,7 @@ it.effect(
           scale: 48,
         });
 
-        yield* mount.f(host, Stream.empty).pipe(
+        yield* mount.f(host, Mount.liveViewStateChanges).pipe(
           Stream.runForEach((message) => Queue.offer(messages, message)),
           Effect.forkIn(mounted)
         );

@@ -44,6 +44,7 @@ export const chip = (
     readonly theme: "light" | "dark";
     readonly timeFormat: ResolvedTimeFormat;
     readonly timeDisplay?: "start" | "range";
+    readonly resize?: "horizontal-only";
   } = defaultChipAppearance
 ): Html => {
   const colors = chipColors(item.color, appearance.theme);
@@ -94,6 +95,7 @@ export const chip = (
         )
       ),
       ...(item.selected &&
+      (appearance.resize !== "horizontal-only" || item.allDay) &&
       (item.calendar.accessRole === "owner" ||
         item.calendar.accessRole === "writer") &&
       (item.source.organizer?.self === true ||

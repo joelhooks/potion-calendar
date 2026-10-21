@@ -21,6 +21,7 @@ import { EditorAction } from "./editing/editor-action.js";
 import { GestureResult } from "./editing/gesture-model.js";
 import { EditingNotice } from "./editing/runtime.js";
 import { LiveNotice } from "./live/protocol.js";
+import { MonthGestureRefused } from "./month/gesture.js";
 import { MonthNotice } from "./month/model.js";
 import {
   NotificationEvent,
@@ -79,6 +80,7 @@ export const Message = defineMessageUnion({
   CompletedGridScroll: {},
   CompletedMonthRead: {},
   CycledTheme: {},
+  DismissedGestureRefusal: { personId: Schema.String },
   DispatchedClipboard: {},
   DispatchedEditing: {},
   EditingAction: {
@@ -177,6 +179,11 @@ export const Message = defineMessageUnion({
     personId: Schema.String,
     request: Schema.Int,
     result: ListEventsOutput,
+  },
+  RefusedGesture: {
+    hostKey: Schema.String,
+    personId: Schema.String,
+    reason: MonthGestureRefused.fields.reason,
   },
   ReminderDeliveryCompleted: {
     failure: Schema.Option(NotificationFailure),
