@@ -10,6 +10,7 @@ import { NavigationState } from "../../layout/navigation.js";
 import { EditorConferencingContext } from "../editing/conferencing-draft.js";
 
 export const ClipboardCreationFields = Schema.Struct({
+  attachments: EventFields.fields.attachments,
   guestsCanInviteOthers: EventFields.fields.guestsCanInviteOthers,
   guestsCanModify: EventFields.fields.guestsCanModify,
   guestsCanSeeOtherGuests: EventFields.fields.guestsCanSeeOtherGuests,
@@ -208,6 +209,7 @@ export const NativeClipboardNotice = Schema.TaggedUnion({
     ...nativeFields,
     envelope: ClipboardEnvelope,
     mode: Schema.Literals(["copy", "cut"]),
+    selfEmails: Schema.optional(Schema.Array(Schema.String)),
   },
   Invalidated: { ...nativeFields, copyId: Schema.NonEmptyString },
   Paste: {

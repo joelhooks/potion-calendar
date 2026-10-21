@@ -20,6 +20,7 @@ import type {
   ClipboardGroupPreparation,
   ClipboardGroupResult,
 } from "./group-model.js";
+import { HydratedCopy, hydrateCopyLogic } from "./hydrate-copy.js";
 import type { ClipboardEnvelope, ClipboardToast } from "./model.js";
 import {
   ClipboardGuestChoice,
@@ -72,6 +73,9 @@ export interface ClipboardContext {
   readonly lastNativeSequence: number;
   readonly nativeSessionId: string | undefined;
   readonly pending: typeof PendingClipboardPaste.Type | undefined;
+  readonly pendingCopy?:
+    | typeof NativeClipboardNotice.cases.Copied.Type
+    | undefined;
   readonly personId: string;
   readonly receipt: typeof ClipboardReceipt.Type | undefined;
   readonly receiptRevision: number;
@@ -81,7 +85,7 @@ export interface ClipboardContext {
 
 interface NativeDecision {
   readonly context?: Partial<ClipboardContext>;
-  readonly target?: "empty" | "ready" | "preparing";
+  readonly target?: "empty" | "ready" | "preparing" | "hydrating";
 }
 
 const idleState = (envelope: ClipboardContext["envelope"]) =>
@@ -323,12 +327,60 @@ const nativeTransition = ({
 }: {
   readonly context: ClipboardContext;
   readonly event: { readonly notice: typeof NativeClipboardNotice.Type };
-}) => nativeDecision(context, event.notice);
+}): NativeDecision => {
+  const { notice } = event;
+
+  if (
+    notice.personId !== context.personId ||
+    notice.sessionId !== context.nativeSessionId ||
+    notice.sequence <=
+      Math.max(context.lastNativeSequence, context.pendingCopy?.sequence ?? 0)
+  ) {
+    return {};
+  }
+
+  if (
+    NativeClipboardNotice.guards.Copied(notice) &&
+    (notice.envelope.personId !== context.personId ||
+      (notice.envelope.items.length > 1 &&
+        (Option.isNone(groupFor(notice.envelope)) ||
+          new Set(notice.envelope.selectionKeys).size !==
+            notice.envelope.items.length)))
+  ) {
+    return nativeDecision(context, notice);
+  }
+
+  if (
+    NativeClipboardNotice.guards.Copied(notice) &&
+    notice.envelope.items.some(
+      (item) => item.creationFields.attachments === undefined
+    )
+  ) {
+    return {
+      context: {
+        pendingCopy: notice,
+        toast: {
+          id: notice.envelope.id,
+          message: "Reading event attachments from Google…",
+        },
+      },
+      target: "hydrating",
+    };
+  }
+
+  const decision = nativeDecision(context, notice);
+
+  return {
+    ...decision,
+    context: { ...decision.context, pendingCopy: undefined },
+  };
+};
 
 const clipboard = setupEffect({
   actors: {
     creator: clipboardCreatorMachine,
     group: clipboardGroupMachine,
+    hydrate: hydrateCopyLogic,
     prepare: prepareClipboardLogic,
   },
   schemas: {
@@ -370,19 +422,36 @@ export const clipboardMachine = clipboard.createMachine({
   }),
   initial: "empty",
   on: {
-    ATTACH_NATIVE: ({ context, event }) =>
-      context.nativeSessionId === event.sessionId
-        ? {}
-        : {
-            context: {
-              lastNativeSequence: 0,
-              nativeSessionId: event.sessionId,
-            },
-          },
-    DETACH_NATIVE: ({ context, event }) =>
-      context.nativeSessionId === event.sessionId
-        ? { context: { nativeSessionId: undefined } }
-        : {},
+    ATTACH_NATIVE: ({ context, event }) => {
+      if (context.nativeSessionId === event.sessionId) {
+        return {};
+      }
+
+      const changed = {
+        context: {
+          lastNativeSequence: 0,
+          nativeSessionId: event.sessionId,
+          pendingCopy: undefined,
+        },
+      };
+
+      return context.pendingCopy === undefined
+        ? changed
+        : { ...changed, target: `.${idleState(context.envelope)}` };
+    },
+    DETACH_NATIVE: ({ context, event }) => {
+      if (context.nativeSessionId !== event.sessionId) {
+        return {};
+      }
+
+      const changed = {
+        context: { nativeSessionId: undefined, pendingCopy: undefined },
+      };
+
+      return context.pendingCopy === undefined
+        ? changed
+        : { ...changed, target: `.${idleState(context.envelope)}` };
+    },
     DISMISS_TOAST: ({ context, event }) => ({
       context: {
         groupResult:
@@ -400,6 +469,7 @@ export const clipboardMachine = clipboard.createMachine({
         groupResult: undefined,
         nativeSessionId: undefined,
         pending: undefined,
+        pendingCopy: undefined,
         receipt: undefined,
         request: undefined,
         toast: undefined,
@@ -550,6 +620,80 @@ export const clipboardMachine = clipboard.createMachine({
             : {},
       },
     },
+    hydrating: {
+      invoke: clipboard.createInvoke({
+        input: ({ context }) => {
+          if (context.pendingCopy === undefined) {
+            throw new Error("Missing clipboard source read");
+          }
+
+          return context.pendingCopy;
+        },
+        onDone: ({ context, event }) => {
+          const pending = context.pendingCopy;
+
+          if (
+            pending === undefined ||
+            pending.personId !== context.personId ||
+            pending.sessionId !== context.nativeSessionId ||
+            pending.sequence <= context.lastNativeSequence
+          ) {
+            return {
+              context: { pendingCopy: undefined },
+              target: idleState(context.envelope),
+            };
+          }
+
+          if (HydratedCopy.guards.Ready(event.output)) {
+            const decision = nativeDecision(context, event.output.notice);
+
+            return {
+              ...decision,
+              context: { ...decision.context, pendingCopy: undefined },
+              target: decision.target ?? idleState(context.envelope),
+            };
+          }
+
+          return {
+            context: {
+              lastNativeSequence: pending.sequence,
+              pendingCopy: undefined,
+              toast: {
+                id: pending.envelope.id,
+                message: event.output.failure.message,
+              },
+            },
+            target: idleState(context.envelope),
+          };
+        },
+        onError: ({ context }) => ({
+          context: {
+            pendingCopy: undefined,
+            toast: {
+              id: context.pendingCopy?.envelope.id ?? "copy-read",
+              message:
+                "The Google event read failed. Nothing was copied or cut.",
+            },
+          },
+          target: idleState(context.envelope),
+        }),
+        src: hydrateCopyLogic,
+      }),
+      on: {
+        NATIVE: (args) => {
+          if (NativeClipboardNotice.guards.Paste(args.event.notice)) {
+            return {};
+          }
+
+          const decision = nativeTransition(args);
+
+          return decision.target === "hydrating"
+            ? { ...decision, target: "hydratingAgain" }
+            : decision;
+        },
+      },
+    },
+    hydratingAgain: { always: () => ({ target: "hydrating" }) },
     preparing: {
       invoke: clipboard.createInvoke({
         input: ({ context }) => ({

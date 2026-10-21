@@ -32,6 +32,11 @@ import { chipColors } from "../layout/settings-colors.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import type { ResolvedTimeFormat } from "../layout/time-format.js";
 import { bulkDetail } from "./bulk-actions.js";
+import {
+  eventAttachments,
+  eventLinkedText,
+  locationMap,
+} from "./event-links.js";
 import { eventRsvp } from "./event-rsvp.js";
 
 const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
@@ -531,11 +536,10 @@ export const detailPanel = (
       writableCalendar(calendar)
   );
 
-  const join = conferenceLink(
-    event.conferenceUrl,
-    event.location,
-    event.description
-  );
+  const join =
+    event.eventType === "outOfOffice"
+      ? undefined
+      : conferenceLink(event.conferenceUrl, event.location, event.description);
 
   const when = eventWhen(
     selected,
@@ -648,16 +652,24 @@ export const detailPanel = (
                 ["Join meeting ↗"]
               ),
             ]),
-        ...(event.location === undefined
+        ...(event.eventType === "outOfOffice" || event.location === undefined
           ? []
-          : [h.h3([], ["Location"]), h.p([], [event.location])]),
-        ...(event.description === undefined
+          : [
+              h.h3([], ["Location"]),
+              h.p([], [eventLinkedText(h, event.location)]),
+              ...locationMap(h, event.location),
+            ]),
+        ...eventAttachments(h, event),
+        ...(event.eventType === "outOfOffice" || event.description === undefined
           ? []
           : [
               h.h3([], ["Description"]),
-              h.p([h.Class("description")], [event.description]),
+              h.p(
+                [h.Class("description")],
+                [eventLinkedText(h, event.description)]
+              ),
             ]),
-        ...(event.attendees === undefined
+        ...(event.eventType === "outOfOffice" || event.attendees === undefined
           ? []
           : [
               h.h3([], ["Attendees"]),

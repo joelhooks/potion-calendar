@@ -19,6 +19,7 @@ import {
   reminderFields,
 } from "./editor-guests-reminders.js";
 import { customRepeatDialog, repeatField } from "./editor-repeat.js";
+import { editorLinks } from "./event-links.js";
 
 const initialEditorFocus = <Message>(props: EditorProps<Message>): string => {
   if (
@@ -97,11 +98,18 @@ const editorForm = <Message>(
             ),
           ]),
       ...eventTextFields(h, props),
-      conferencingField(h, props),
+      ...(props.model.draft.eventType === "outOfOffice"
+        ? []
+        : [editorLinks(h, props.model.draft)]),
+      ...(props.model.draft.eventType === "outOfOffice"
+        ? []
+        : [conferencingField(h, props)]),
       repeatField(h, props),
       calendarField(h, props),
       colourField(h, props),
-      participantFields(h, props),
+      ...(props.model.draft.eventType === "outOfOffice"
+        ? []
+        : [participantFields(h, props)]),
       reminderFields(h, props),
       ...(Option.isSome(props.model.error)
         ? [

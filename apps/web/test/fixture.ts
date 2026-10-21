@@ -26,6 +26,7 @@ const timed = (
 ): CalendarEventValue =>
   Schema.decodeSync(CalendarEvent)({
     accountId: "work",
+    attachments: [],
     calendarId: "primary",
     end: { dateTime: `${day}T${end}:00-07:00` },
     eventId: id,
@@ -93,6 +94,7 @@ export const fixtureEvents = [
   }),
   Schema.decodeSync(CalendarEvent)({
     accountId: "work",
+    attachments: [],
     calendarId: "primary",
     end: { date: "2026-10-24" },
     eventId: "week-project",
@@ -102,6 +104,7 @@ export const fixtureEvents = [
   }),
   Schema.decodeSync(CalendarEvent)({
     accountId: "personal",
+    attachments: [],
     calendarId: "personal",
     end: { date: "2026-10-22" },
     eventId: "home",

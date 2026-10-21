@@ -48,6 +48,7 @@ export const RepeatForm = Schema.Struct({
 export const EventDraft = Schema.Struct({
   accountId: Schema.String,
   allDay: Schema.Boolean,
+  attachments: CalendarEvent.fields.attachments,
   attendees: Schema.Array(Attendee),
   calendarId: Schema.String,
   colorId: Schema.NullOr(Schema.String),
@@ -55,6 +56,7 @@ export const EventDraft = Schema.Struct({
   description: Schema.String,
   endDate: Schema.String,
   endTime: Schema.String,
+  eventType: CalendarEvent.fields.eventType,
   location: Schema.String,
   participantEmail: Schema.String,
   reminderInput: Schema.String,

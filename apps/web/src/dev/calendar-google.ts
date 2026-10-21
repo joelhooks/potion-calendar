@@ -54,6 +54,16 @@ const FakeConferenceData = Schema.Struct({
 
 const FakeEvent = Schema.Struct({
   ...EventFields.fields,
+  attachments: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        fileUrl: Schema.String,
+        iconLink: Schema.optional(Schema.String),
+        mimeType: Schema.optional(Schema.String),
+        title: Schema.optional(Schema.String),
+      })
+    )
+  ),
   conferenceData: Schema.optional(Schema.NullOr(FakeConferenceData)),
   iCalUID: Schema.optional(Schema.String),
   id: Schema.String,
@@ -273,7 +283,11 @@ const writeEvent = Effect.fn("fakeCalendarGoogle.writeEvent")(
       return reply(404, {});
     }
 
-    const { conferenceData: requested, ...ordinaryFields } = fields;
+    const {
+      conferenceData: requested,
+      attachments,
+      ...ordinaryFields
+    } = fields;
 
     const conferenceData = conferenceForWrite(
       previous?.conferenceData,
@@ -288,6 +302,11 @@ const writeEvent = Effect.fn("fakeCalendarGoogle.writeEvent")(
       status: "confirmed",
       ...previous,
       ...ordinaryFields,
+      attachments:
+        url.searchParams.get("supportsAttachments") === "true" &&
+        attachments !== undefined
+          ? attachments
+          : previous?.attachments,
       conferenceData,
       id,
     };

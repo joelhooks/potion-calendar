@@ -63,7 +63,15 @@ export const EventReminders = Schema.Struct({
 
 export type EventRemindersValue = typeof EventReminders.Type;
 
+export const EventAttachment = Schema.Struct({
+  iconUrl: Schema.optional(Schema.String),
+  mimeType: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+  url: Schema.String,
+});
+
 export const EventFields = Schema.Struct({
+  attachments: Schema.optional(Schema.Array(EventAttachment)),
   attendees: Schema.optional(Schema.Array(Attendee)),
   attendeesOmitted: Schema.optional(Schema.Boolean),
   colorId: Schema.optional(Schema.NullOr(Schema.String)),

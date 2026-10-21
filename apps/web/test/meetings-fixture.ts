@@ -21,6 +21,7 @@ export const savedMeeting = (
 ): typeof CalendarEvent.Type =>
   CalendarEvent.make({
     accountId: "work",
+    attachments: [],
     attendees: [
       { email: "person@example.test", responseStatus: "accepted", self: true },
       { email: "guest@example.test", responseStatus: "needsAction" },

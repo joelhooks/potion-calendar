@@ -33,6 +33,16 @@ import type { GoogleRequestValue, GoogleHttp } from "./transport.js";
 
 const GoogleEvent = Schema.Struct({
   ...EventFields.fields,
+  attachments: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        fileUrl: Schema.String,
+        iconLink: Schema.optional(Schema.String),
+        mimeType: Schema.optional(Schema.String),
+        title: Schema.optional(Schema.String),
+      })
+    )
+  ),
   conferenceData: Schema.optional(Schema.NullOr(GoogleConferenceData)),
   etag: Schema.optional(Schema.String),
   hangoutLink: Schema.optional(Schema.String),
@@ -111,12 +121,26 @@ const mapEvent = (
   ref: CalendarRefValue,
   event: typeof GoogleEvent.Type
 ): CalendarEventValue => {
-  const { id, summary, status, hangoutLink, conferenceData, ...fields } = event;
+  const {
+    id,
+    summary,
+    status,
+    hangoutLink,
+    conferenceData,
+    attachments,
+    ...fields
+  } = event;
 
   return {
     accountId: ref.accountId,
     calendarId: ref.calendarId,
     ...fields,
+    attachments: (attachments ?? []).map((attachment) => ({
+      iconUrl: attachment.iconLink,
+      mimeType: attachment.mimeType,
+      title: attachment.title,
+      url: attachment.fileUrl,
+    })),
     ...googleConferencing(conferenceData, hangoutLink),
     eventId: id,
     status: status ?? "confirmed",
@@ -143,10 +167,21 @@ const mapCalendar = (
   };
 };
 
-const eventBody = (fields: EventFieldsValue) => {
-  const { title, ...rest } = fields;
+const eventBody = (fields: EventFieldsValue, copyAttachments = false) => {
+  const { title, attachments, ...rest } = fields;
 
-  return { ...rest, summary: title };
+  return {
+    ...rest,
+    attachments: copyAttachments
+      ? attachments?.map((attachment) => ({
+          fileUrl: attachment.url,
+          iconLink: attachment.iconUrl,
+          mimeType: attachment.mimeType,
+          title: attachment.title,
+        }))
+      : undefined,
+    summary: title,
+  };
 };
 
 export interface ListPageInput {
@@ -329,6 +364,13 @@ export class GoogleCalendarClient extends Context.Service<
               sendUpdates: options.sendUpdates ?? "none",
             });
 
+            if (
+              fields.attachments !== undefined &&
+              fields.attachments.length > 0
+            ) {
+              query.set("supportsAttachments", "true");
+            }
+
             if (options.conferencingRequest !== undefined) {
               query.set("conferenceDataVersion", "1");
             }
@@ -337,7 +379,7 @@ export class GoogleCalendarClient extends Context.Service<
               acceptConflict: true,
               accountId: ref.accountId,
               body: JSON.stringify({
-                ...eventBody(fields),
+                ...eventBody(fields, true),
                 conferenceData,
                 id,
               }),

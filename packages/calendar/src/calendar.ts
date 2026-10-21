@@ -1,4 +1,4 @@
-import { Context, DateTime, Effect, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
 import { CalendarReadFailure } from "./calendar-read-failure.js";
 import { CalendarChanges } from "./changes.js";
@@ -445,17 +445,37 @@ export class CalendarService extends Context.Service<
               .pipe(Effect.asVoid);
           }
         ),
-        getEvent: (ref) =>
-          google.get(ref).pipe(
-            Effect.mapError(
-              (cause) =>
-                new CalendarReadFailure({
-                  accountId: ref.accountId,
-                  calendarId: ref.calendarId,
-                  cause,
-                })
-            )
-          ),
+        getEvent: Effect.fn("CalendarService.getEvent")(
+          function* getEvent(ref) {
+            const snapshot = yield* store.read(ref).pipe(Effect.option);
+
+            const event = yield* google.get(ref).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new CalendarReadFailure({
+                    accountId: ref.accountId,
+                    calendarId: ref.calendarId,
+                    cause,
+                  })
+              )
+            );
+
+            if (Option.isSome(snapshot) && store.hydrateEvent !== undefined) {
+              yield* store
+                .hydrateEvent(ref, snapshot.value.version, event)
+                .pipe(
+                  Effect.tapError(() =>
+                    Effect.logWarning(
+                      "Calendar attachment cache hydration is unavailable"
+                    )
+                  ),
+                  Effect.ignore
+                );
+            }
+
+            return event;
+          }
+        ),
         listCalendars: Effect.fn("CalendarService.listCalendars")(
           function* listCalendars() {
             const accounts = yield* tokens

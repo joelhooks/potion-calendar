@@ -20,6 +20,7 @@ export const searchCalendar = Schema.decodeUnknownSync(Calendar)(
 );
 
 export const outsideSearchEvent = CalendarEvent.make({
+  attachments: [],
   ...Schema.decodeUnknownSync(CalendarEvent)(fixtureEvents[0]),
   end: { dateTime: "2026-11-18T10:00:00-08:00" },
   eventId: "outside-result",

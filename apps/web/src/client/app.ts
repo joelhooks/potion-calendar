@@ -25,6 +25,14 @@ import {
   changeSelection,
   SelectionAction,
 } from "../layout/selection-set.js";
+import {
+  AttachmentReads,
+  initialAttachmentReads,
+} from "./attachments/model.js";
+import {
+  receiveEventAttachments,
+  withEventAttachmentReads,
+} from "./attachments/update.js";
 import { BulkView } from "./bulk/model.js";
 import {
   CalendarUi,
@@ -199,6 +207,7 @@ export const RemoteSession = AsyncData.Schema(SessionSnapshot, Schema.String);
 
 export const Model = Schema.Struct({
   action: Schema.Literals(["idle", "pending"]),
+  attachmentReads: AttachmentReads,
   calendar: CalendarUi,
   clipboard: ClipboardUi,
   conferencing: ConferencingState,
@@ -228,6 +237,7 @@ type Result = Update.Return<
 
 export const initialModel = (now: number, zone: string): AppModel => ({
   action: "idle",
+  attachmentReads: initialAttachmentReads,
   calendar: {
     allDayExpanded: true,
     allDayRows: {},
@@ -1148,6 +1158,8 @@ const updateCore = (
         ? reloadRange(refreshSearch(next.model), false, next.reconcile, model)
         : finishKeyboardOpening(model, next.model);
     },
+    ReceivedEventAttachments: ({ result }) =>
+      receiveEventAttachments(model, result),
     ReceivedEvents: ({ accountId, request, result }) =>
       request === model.calendar.rangeRequest
         ? settleMonthRead(
@@ -1511,12 +1523,15 @@ export const update = (model: AppModel, message: AppMessage): Result => {
       ...result,
       model: {
         ...result.model,
+        attachmentReads: initialAttachmentReads,
         clipboard: resetClipboardScope(model.clipboard),
       },
     };
   }
 
-  return Predicate.isTagged(message, "ReceivedSession")
-    ? { ...result, model: { ...result.model, clipboard: model.clipboard } }
-    : result;
+  return withEventAttachmentReads(
+    Predicate.isTagged(message, "ReceivedSession")
+      ? { ...result, model: { ...result.model, clipboard: model.clipboard } }
+      : result
+  );
 };

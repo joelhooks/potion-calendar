@@ -20,6 +20,15 @@ export const prepareClipboardTemplate = Effect.fn("prepareClipboardTemplate")(
     intentId: string,
     choice: typeof ClipboardGuestChoice.Type
   ) {
+    if (item.creationFields.attachments === undefined) {
+      return yield* new ClipboardInputFailure({
+        message:
+          "This saved clipboard snapshot has no confirmed attachment list. Duplicate the source event instead.",
+        reason: "unsupportedEvent",
+        source: item.source,
+      });
+    }
+
     if (choice === "includeAndEmail" && !item.guestsComplete) {
       return yield* new ClipboardInputFailure({
         message:
@@ -58,6 +67,7 @@ export const composeClipboardDraft = (
   template: typeof ClipboardTemplate.Type
 ): EventDraftValue => ({
   ...draft,
+  attachments: template.creationFields.attachments,
   attendees:
     template.guestChoice === "includeAndEmail"
       ? template.guests.map((guest) =>
@@ -93,7 +103,9 @@ export const clipboardPasteMetadata = (
 type ClipboardCreationMerge<Fields extends EventFieldsValue> =
   Fields extends EventFieldsValue
     ? Omit<Fields, keyof typeof ClipboardCreationFields.Type> &
-        typeof ClipboardCreationFields.Type
+        typeof ClipboardCreationFields.Type & {
+          readonly attachments: EventFieldsValue["attachments"];
+        }
     : never;
 
 export function composeClipboardCreationFields<Fields extends EventFieldsValue>(
@@ -108,6 +120,7 @@ export function composeClipboardCreationFields(
 
   return {
     ...fields,
+    attachments: copied.attachments ?? fields.attachments,
     guestsCanInviteOthers:
       copied.guestsCanInviteOthers ?? fields.guestsCanInviteOthers,
     guestsCanModify: copied.guestsCanModify ?? fields.guestsCanModify,

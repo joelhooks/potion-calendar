@@ -187,30 +187,34 @@ export const eventTextFields = <Message>(
 ): readonly Html[] => [
   draftInput(h, props, "title", "Title"),
   eventDateFields(h, props),
-  draftInput(h, props, "location", "Location"),
-  h.label(
-    [h.Class("editor-field"), h.For("event-description")],
-    [
-      h.span([], ["Description"]),
-      h.textarea([
-        h.Id("event-description"),
-        h.Name("description"),
-        h.Value(props.model.draft.description),
-        h.Disabled(
-          EditorView.guards.Saving(props.model) ||
-            !props.model.permissions.editMeeting
-        ),
-        h.OnInput((value) =>
-          props.send(
-            EditorAction.cases.TextEdited.make({
-              field: "description",
-              value,
-            })
-          )
+  ...(props.model.draft.eventType === "outOfOffice"
+    ? []
+    : [
+        draftInput(h, props, "location", "Location"),
+        h.label(
+          [h.Class("editor-field"), h.For("event-description")],
+          [
+            h.span([], ["Description"]),
+            h.textarea([
+              h.Id("event-description"),
+              h.Name("description"),
+              h.Value(props.model.draft.description),
+              h.Disabled(
+                EditorView.guards.Saving(props.model) ||
+                  !props.model.permissions.editMeeting
+              ),
+              h.OnInput((value) =>
+                props.send(
+                  EditorAction.cases.TextEdited.make({
+                    field: "description",
+                    value,
+                  })
+                )
+              ),
+            ]),
+          ]
         ),
       ]),
-    ]
-  ),
 ];
 
 export const calendarField = <Message>(

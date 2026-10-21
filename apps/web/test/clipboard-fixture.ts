@@ -7,6 +7,7 @@ import { ClipboardCaptureResult } from "../src/client/clipboard/model.js";
 
 export const clipboardSource = CalendarEvent.make({
   accountId: "work",
+  attachments: [],
   attendees: [
     { email: "owner@example.test", responseStatus: "accepted", self: true },
     {

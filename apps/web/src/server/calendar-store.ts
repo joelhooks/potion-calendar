@@ -17,6 +17,8 @@ const ChangeCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 const EventArrayJson = Schema.fromJsonString(Schema.Array(CalendarEvent));
 
+const EventJson = Schema.fromJsonString(CalendarEvent);
+
 const storageFailure = (error: CalendarCacheError) =>
   new Provider({
     message: "Calendar cache is unavailable",
@@ -141,6 +143,19 @@ export const d1CalendarStore = (
                 revision: expectedRevision + 1,
                 version: previous.version + (count > 0 ? 1 : 0),
               })
+              .pipe(Effect.mapError(storageFailure));
+          }
+        ),
+        hydrateEvent: Effect.fn("D1CalendarStore.hydrateEvent")(
+          function* hydrateEvent(ref, version, event) {
+            yield* validateEvents(ref, [event]);
+
+            const encoded = yield* Schema.encodeEffect(EventJson)(event).pipe(
+              Effect.mapError(invalidCache)
+            );
+
+            yield* repository
+              .hydrateEvent(ref, version, event.eventId, encoded)
               .pipe(Effect.mapError(storageFailure));
           }
         ),

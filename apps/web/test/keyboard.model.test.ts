@@ -51,6 +51,7 @@ const bindings: readonly (readonly [string, string])[] = [
   ["e p", "edit-participantEmail"],
   ["e l", "edit-location"],
   ["e w", "edit-description"],
+  ["e k", "edit-links"],
   ["e h", "edit-reminderInput"],
   ["e y", "rsvp-yes"],
   ["e n", "rsvp-no"],

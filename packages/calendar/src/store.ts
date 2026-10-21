@@ -32,6 +32,11 @@ export class CalendarStore extends Context.Service<
       ref: CalendarRefValue,
       expectedRevision: number
     ) => Effect.Effect<boolean, Provider>;
+    readonly hydrateEvent?: (
+      ref: CalendarRefValue,
+      version: number,
+      event: CalendarEventValue
+    ) => Effect.Effect<void, Provider>;
     readonly invalidate: (
       ref: CalendarRefValue
     ) => Effect.Effect<number, Provider>;

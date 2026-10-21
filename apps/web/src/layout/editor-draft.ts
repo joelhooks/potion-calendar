@@ -81,6 +81,7 @@ export const createDraft = Effect.fn("createDraft")(function* createDraft(
   return EventDraft.make({
     ...input.ref,
     allDay: input.allDay,
+    attachments: [],
     attendees: [],
     colorId: null,
     description: "",
@@ -142,12 +143,14 @@ export const eventDraft = Effect.fn("eventDraft")(function* eventDraft(
   return EventDraft.make({
     accountId: event.accountId,
     allDay,
+    attachments: event.attachments,
     attendees: event.attendees ?? [],
     calendarId: event.calendarId,
     colorId: event.colorId ?? null,
     description: event.description ?? "",
     endDate,
     endTime: to.clock,
+    eventType: event.eventType,
     location: event.location ?? "",
     participantEmail: "",
     reminderInput: "",

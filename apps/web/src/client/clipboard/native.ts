@@ -159,6 +159,7 @@ const copy = (
       envelope,
       mode: operation,
       personId: host.personId,
+      selfEmails: host.selfEmails,
       sequence,
       sessionId: host.sessionId,
     })

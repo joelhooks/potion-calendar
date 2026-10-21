@@ -214,5 +214,47 @@ export const calendarCacheRepository = (
     return row.version;
   });
 
-  return { cacheRange, compareAndSwap, invalidate, read, readRange };
+  const hydrateEvent = Effect.fn("CalendarCache.hydrateEvent")(
+    function* hydrateEvent(
+      key: CalendarCacheKey,
+      version: number,
+      eventId: string,
+      encodedEvent: string
+    ) {
+      yield* Effect.tryPromise({
+        catch: () => new CalendarCacheError({ operation: "hydrateEvent" }),
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () =>
+          binding
+            .prepare(`UPDATE calendar_range
+        SET events = (SELECT json_group_array(json(CASE WHEN json_extract(value, '$.eventId') = ? THEN ? ELSE value END)) FROM json_each(calendar_range.events))
+        WHERE person_id = ? AND account_id = ? AND calendar_id = ? AND version = ?
+        AND EXISTS (SELECT 1 FROM calendar_snapshot WHERE person_id = ? AND account_id = ? AND calendar_id = ? AND version = ?)
+        AND EXISTS (SELECT 1 FROM json_each(calendar_range.events) WHERE json_extract(value, '$.eventId') = ?)`)
+            .bind(
+              eventId,
+              encodedEvent,
+              personId,
+              key.accountId,
+              key.calendarId,
+              version,
+              personId,
+              key.accountId,
+              key.calendarId,
+              version,
+              eventId
+            )
+            .run(),
+      });
+    }
+  );
+
+  return {
+    cacheRange,
+    compareAndSwap,
+    hydrateEvent,
+    invalidate,
+    read,
+    readRange,
+  };
 };

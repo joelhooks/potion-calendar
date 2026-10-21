@@ -488,6 +488,11 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
   ),
   field("l", "Edit location", "location"),
   field("w", "Edit description", "description"),
+  field("k", "Open links and attachments", "links", (model) =>
+    selectedEvent(model)?.source.eventType === "outOfOffice"
+      ? "disabled"
+      : personal(model)
+  ),
   field("h", "Edit reminders", "reminderInput", personal),
   row(
     "rsvp-yes",

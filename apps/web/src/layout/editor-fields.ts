@@ -78,6 +78,7 @@ export const draftEventFields = Effect.fn("draftEventFields")(
     });
 
     const common = {
+      attachments: draft.attachments,
       attendees: draft.attendees,
       colorId: draft.colorId,
       description: draft.description,

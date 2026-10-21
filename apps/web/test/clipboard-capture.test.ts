@@ -35,6 +35,7 @@ it.effect(
     Effect.gen(function* ordinaryDefaults() {
       const source = CalendarEvent.make({
         accountId: "work",
+        attachments: [],
         calendarId: "primary",
         end: clipboardSource.end,
         eventId: "plain",
@@ -58,6 +59,7 @@ it.effect(
           template
         )
       ).toEqual({
+        attachments: [],
         guestsCanModify: false,
         transparency: "transparent",
         visibility: "private",

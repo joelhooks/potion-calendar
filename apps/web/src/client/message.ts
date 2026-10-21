@@ -12,6 +12,7 @@ import { Url } from "foldkit/url";
 import { NavigationState, maximumDisplayedDays } from "../layout/navigation.js";
 import { Route } from "../layout/route.js";
 import { SelectionBox, SelectionSet } from "../layout/selection-set.js";
+import { AttachmentReadResult } from "./attachments/model.js";
 import { ReadFailure } from "./calendar-state.js";
 import { ClipboardDelivery } from "./clipboard/delivery.js";
 import { ClipboardAction } from "./clipboard/runtime.js";
@@ -164,6 +165,7 @@ export const Message = defineMessageUnion({
   ReceivedClipboard: { delivery: ClipboardDelivery },
   ReceivedDesktop: { notice: DesktopNotice },
   ReceivedEditing: { notice: EditingNotice, personId: Schema.String },
+  ReceivedEventAttachments: { result: AttachmentReadResult },
   ReceivedEvents: {
     accountId: Schema.String,
     request: Schema.Int,
