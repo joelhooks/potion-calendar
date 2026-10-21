@@ -39,7 +39,9 @@ it.effect.each(["left", "right"] as const)(
         { isHydratable: false }
       );
 
-      expect(html).toContain('class="gesture-preview"');
+      const document = new DOMParser().parseFromString(html, "text/html");
+
+      expect(document.querySelectorAll(".gesture-preview")).toHaveLength(1);
     })
 );
 

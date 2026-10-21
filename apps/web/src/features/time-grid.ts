@@ -31,6 +31,7 @@ import {
 } from "../layout/time-zones-display.js";
 import { zoneColumns } from "../layout/time-zones-grid.js";
 import { zoneLabel } from "../layout/time-zones.js";
+import { timedContent } from "../layout/timed-content.js";
 import { chip } from "./calendar.js";
 import { gesturePreview } from "./gesture-preview.js";
 import { selectionSurface } from "./selection-surface.js";
@@ -421,26 +422,37 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                             (item) => item.key === placement.id
                           );
 
-                          return event === undefined
-                            ? []
-                            : [
-                                chip(
-                                  h,
-                                  event,
-                                  {
-                                    height: `${Math.max(16, timeTop(event.endMinute - event.startMinute, scale) - 2)}px`,
-                                    left: `calc(${placement.left * 100}% + 1px)`,
-                                    position: "absolute",
-                                    top: `${timeTop(event.startMinute, scale)}px`,
-                                    width: `calc(${placement.width * 100}% - 3px)`,
-                                    "z-index": String(placement.paint + 1),
-                                  },
-                                  {
-                                    theme: resolvedTheme(model),
-                                    timeFormat: resolvedTimeFormat(model),
-                                  }
-                                ),
-                              ];
+                          if (event === undefined) {
+                            return [];
+                          }
+
+                          const height = Math.max(
+                            16,
+                            timeTop(
+                              event.endMinute - event.startMinute,
+                              scale
+                            ) - 2
+                          );
+
+                          return [
+                            chip(
+                              h,
+                              event,
+                              {
+                                height: `${height}px`,
+                                left: `calc(${placement.left * 100}% + 1px)`,
+                                position: "absolute",
+                                top: `${timeTop(event.startMinute, scale)}px`,
+                                width: `calc(${placement.width * 100}% - 3px)`,
+                                "z-index": String(placement.paint + 1),
+                              },
+                              {
+                                theme: resolvedTheme(model),
+                                timeFormat: resolvedTimeFormat(model),
+                                timedContent: timedContent(height, "chip"),
+                              }
+                            ),
+                          ];
                         }),
                         ...(day === today
                           ? [

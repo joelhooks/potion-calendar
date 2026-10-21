@@ -39,6 +39,7 @@ import { SettingsRoute, printRoute } from "../layout/route.js";
 import { chipColors } from "../layout/settings-colors.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import type { ResolvedTimeFormat } from "../layout/time-format.js";
+import type { TimedContent } from "../layout/timed-content.js";
 import { bulkDetail } from "./bulk-actions.js";
 import {
   eventAttachments,
@@ -49,23 +50,54 @@ import { eventRsvp } from "./event-rsvp.js";
 
 const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
 
+interface ChipAppearance {
+  readonly theme: "light" | "dark";
+  readonly timeFormat: ResolvedTimeFormat;
+  readonly timeDisplay?: "start" | "range";
+  readonly resize?: "horizontal-only";
+  readonly timedContent?: TimedContent;
+}
+
+const chipText = (
+  h: HtmlBuilder<AppMessage>,
+  item: DisplayEvent,
+  appearance: ChipAppearance
+): readonly Html[] => {
+  const compact = appearance.timedContent?.compact === true;
+  const title = h.strong([], [item.title]);
+
+  const time = h.span(
+    [h.Class("event-time")],
+    [
+      compact || appearance.timeDisplay === "start"
+        ? clockLabel(item.startMinute, appearance.timeFormat)
+        : `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
+    ]
+  );
+
+  if (item.allDay) {
+    return [title];
+  }
+
+  return compact
+    ? [h.span([h.Class("timed-readout")], [time, title])]
+    : [title, time];
+};
+
 export const chip = (
   h: HtmlBuilder<AppMessage>,
   item: DisplayEvent,
   style: Record<string, string>,
-  appearance: {
-    readonly theme: "light" | "dark";
-    readonly timeFormat: ResolvedTimeFormat;
-    readonly timeDisplay?: "start" | "range";
-    readonly resize?: "horizontal-only";
-  } = defaultChipAppearance
+  appearance: ChipAppearance = defaultChipAppearance
 ): Html => {
   const colors = chipColors(item.color, appearance.theme);
+  const content = appearance.timedContent;
+  const compact = content?.compact === true;
 
   return h.button(
     [
       h.Class(
-        `event-chip status-${item.status}${item.selected ? " selected" : ""}`
+        `event-chip status-${item.status}${item.selected ? " selected" : ""}${content === undefined ? "" : ` timed-content timed-content-${compact ? "compact" : "stacked"}`}`
       ),
       h.Style({
         "--event-border": colors.border,
@@ -74,9 +106,16 @@ export const chip = (
         "--event-selected-fill": colors.selectedFill,
         "--event-text": colors.text,
         ...style,
+        ...content?.style,
         "padding-left": `${5 + item.copies.length * 4 + (item.status === "tentative" ? 4 : 0)}px`,
       }),
       h.DataAttribute("event-key", item.key),
+      ...(content === undefined
+        ? []
+        : [
+            h.DataAttribute("content-mode", compact ? "compact" : "stacked"),
+            h.DataAttribute("content-budget", String(content.budget)),
+          ]),
       h.OnClick(Message.ClickedEvent({ key: item.key })),
       h.OnDoubleClick(Message.KeyboardAction({ id: "open-event" })),
       h.AriaLabel(
@@ -123,19 +162,7 @@ export const chip = (
             ])
           )
         : []),
-      h.strong([], [item.title]),
-      ...(item.allDay
-        ? []
-        : [
-            h.span(
-              [h.Class("event-time")],
-              [
-                appearance.timeDisplay === "start"
-                  ? clockLabel(item.startMinute, appearance.timeFormat)
-                  : `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
-              ]
-            ),
-          ]),
+      ...chipText(h, item, appearance),
     ]
   );
 };

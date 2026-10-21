@@ -2,14 +2,45 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
+import type { GestureResult } from "../client/editing/gesture-model.js";
 import { timeTop } from "../layout/geometry.js";
 import { dayFromIso } from "../layout/navigation.js";
 import { clockLabel, resolvedTimeFormat } from "../layout/time-format.js";
+import type { ResolvedTimeFormat } from "../layout/time-format.js";
+import { timedContent } from "../layout/timed-content.js";
 
 const clockMinute = (clock: string): number => {
   const [hour = "0", minute = "0"] = clock.split(":");
 
   return Number(hour) * 60 + Number(minute);
+};
+
+const previewText = (
+  h: HtmlBuilder<AppMessage>,
+  preview: typeof GestureResult.Type,
+  format: ResolvedTimeFormat,
+  compact: boolean
+): readonly Html[] => {
+  const title = Option.isSome(preview.target)
+    ? (preview.target.value.event.title ?? "Event")
+    : "New event";
+
+  const label = h.strong([], [preview.duplicate ? `Copy: ${title}` : title]);
+
+  const time = h.span(
+    [h.Class("event-time")],
+    [
+      `${clockLabel(clockMinute(preview.range.startTime), format)}–${clockLabel(clockMinute(preview.range.endTime), format)}`,
+    ]
+  );
+
+  if (preview.allDayRow) {
+    return [label];
+  }
+
+  return compact
+    ? [h.span([h.Class("timed-readout")], [time, label])]
+    : [label, time];
 };
 
 export const gesturePreview = (
@@ -44,37 +75,34 @@ export const gesturePreview = (
   const from = day === start ? clockMinute(range.startTime) : 0;
   const to = day === end ? clockMinute(range.endTime) : 1440;
 
-  const title = Option.isSome(preview.target)
-    ? (preview.target.value.event.title ?? "Event")
-    : "New event";
+  const height = Math.max(16, timeTop(to - from, scale) - 2);
+  const content = allDay ? undefined : timedContent(height, "preview");
+  const compact = content?.compact === true;
 
   return [
     h.div(
       [
-        h.Class(`gesture-preview${allDay ? " gesture-preview-all-day" : ""}`),
+        h.Class(
+          `gesture-preview${allDay ? " gesture-preview-all-day" : ` timed-content timed-content-${compact ? "compact" : "stacked"}`}`
+        ),
         h.AriaHidden(true),
+        ...(content === undefined
+          ? []
+          : [
+              h.DataAttribute("content-mode", compact ? "compact" : "stacked"),
+              h.DataAttribute("content-budget", String(content.budget)),
+            ]),
         h.Style(
           allDay
             ? {}
             : {
-                height: `${Math.max(16, timeTop(to - from, scale) - 2)}px`,
+                ...content?.style,
+                height: `${height}px`,
                 top: `${timeTop(from, scale)}px`,
               }
         ),
       ],
-      [
-        h.strong([], [preview.duplicate ? `Copy: ${title}` : title]),
-        ...(allDay
-          ? []
-          : [
-              h.span(
-                [],
-                [
-                  `${clockLabel(clockMinute(range.startTime), resolvedTimeFormat(model))}–${clockLabel(clockMinute(range.endTime), resolvedTimeFormat(model))}`,
-                ]
-              ),
-            ]),
-      ]
+      previewText(h, preview, resolvedTimeFormat(model), compact)
     ),
   ];
 };
