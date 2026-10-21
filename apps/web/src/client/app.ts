@@ -95,6 +95,7 @@ import {
   mutationReceived,
   bulkControl,
 } from "./editing/update.js";
+import { emailParticipants } from "./email-participants.js";
 import { KeyboardUi, initialKeyboard } from "./keyboard/state.js";
 import {
   closeKeyboard,
@@ -1342,6 +1343,7 @@ const updateCore = (
         model: { ...model, desktop },
       };
     },
+    RequestedEmailParticipants: () => emailParticipants(model),
     RequestedJoinMeeting: ({ key }) =>
       Option.match(model.person, {
         onNone: () => ({ model }),

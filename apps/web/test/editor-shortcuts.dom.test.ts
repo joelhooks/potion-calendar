@@ -182,7 +182,11 @@ it.effect.each(["with-conferencing", "without-conferencing"] as const)(
 
 it.effect("keys without an implemented field or workflow stay unbound", () =>
   Effect.sync(() => {
-    for (const key of ["e e", "e u", "e f"]) {
+    expect(keyboardRegistry.find((row) => row.keys.includes("e e"))?.id).toBe(
+      "email-participants"
+    );
+
+    for (const key of ["e u", "e f"]) {
       expect(keyboardRegistry.some((row) => row.keys.includes(key))).toBe(
         false
       );

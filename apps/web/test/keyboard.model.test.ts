@@ -43,6 +43,7 @@ const bindings: readonly (readonly [string, string])[] = [
   ["n", "next-selection"],
   ["b", "previous-selection"],
   ["Shift+n", "previous-selection"],
+  ["e e", "email-participants"],
   ["e t", "edit-title"],
   ["e d", "edit-startDate"],
   ["e z", "edit-timeZone"],
@@ -176,10 +177,10 @@ it.effect(
         },
       };
 
-      for (const token of ["Enter", "Mod+Enter", "Shift+Mod+Enter"]) {
+      for (const key of ["Enter", "Mod+Enter", "Shift+Mod+Enter"]) {
         expect(
-          resolveBinding(open, inputFor(token), 0, "dialog").action?.id
-        ).toBe(token === "Shift+Mod+Enter" ? "save-no-email" : "confirm");
+          resolveBinding(open, inputFor(key), 0, "dialog").action?.id
+        ).toBe(key === "Shift+Mod+Enter" ? "save-no-email" : "confirm");
       }
 
       const { pending } = undoFixture();

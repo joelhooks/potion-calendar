@@ -7,6 +7,7 @@ import { Message } from "../client/app.js";
 import { calendarKey } from "../client/calendar-state.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { writableCalendar } from "../client/editing/load-editor.js";
+import { selectedParticipantEmail } from "../client/email-participants.js";
 import { monthNavigation } from "../client/month/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
@@ -541,6 +542,49 @@ export const sidebar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   );
 };
 
+const emailParticipantButton = (
+  model: AppModel,
+  h: HtmlBuilder<AppMessage>
+): readonly Html[] => {
+  const email = selectedParticipantEmail(model);
+
+  return [
+    h.div(
+      [h.Class("email-participants")],
+      [
+        h.div(
+          [
+            h.Style({
+              "align-items": "center",
+              display: "flex",
+              "flex-wrap": "wrap",
+              gap: "8px",
+              "justify-content": "space-between",
+              "margin-top": "24px",
+            }),
+          ],
+          [
+            h.h3(
+              [h.Id("participant-heading"), h.Style({ margin: "0" })],
+              ["Attendees"]
+            ),
+            h.button(
+              [
+                h.Disabled(email.kind !== "ready"),
+                h.OnClick(Message.RequestedEmailParticipants()),
+              ],
+              ["Email participants"]
+            ),
+          ]
+        ),
+        ...(email.kind === "disabled" && email.reason !== undefined
+          ? [h.p([h.Class("muted")], [email.reason])]
+          : []),
+      ]
+    ),
+  ];
+};
+
 export const detailPanel = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>
@@ -697,13 +741,13 @@ export const detailPanel = (
                 [eventLinkedText(h, event.description)]
               ),
             ]),
-        ...(event.eventType === "outOfOffice" || event.attendees === undefined
+        ...(event.eventType === "outOfOffice"
           ? []
           : [
-              h.h3([], ["Attendees"]),
+              ...emailParticipantButton(model, h),
               h.ul(
                 [],
-                event.attendees.map((person) =>
+                (event.attendees ?? []).map((person) =>
                   h.li(
                     [],
                     [
@@ -723,14 +767,6 @@ export const detailPanel = (
                 )
               ),
             ]),
-        ...(event.attendeesOmitted === true
-          ? [
-              h.p(
-                [h.Class("muted")],
-                ["The provider has not shared the complete attendee list."]
-              ),
-            ]
-          : []),
       ]
     ),
   ];

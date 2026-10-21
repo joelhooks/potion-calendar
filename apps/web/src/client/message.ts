@@ -200,6 +200,7 @@ export const Message = defineMessageUnion({
     personId: Schema.String,
   },
   RequestedDesktop: { request: DesktopRequest },
+  RequestedEmailParticipants: {},
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },
   RequestedRoute: { replace: Schema.Boolean, route: Route },
   RequestedRouteBack: {},

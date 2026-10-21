@@ -13,6 +13,7 @@ import {
   instantSaveEligible,
 } from "../editing/instant.js";
 import { writableCalendar } from "../editing/load-editor.js";
+import { selectedParticipantEmail } from "../email-participants.js";
 import { JoinSelection } from "../meetings/model.js";
 import { joinSelection } from "../meetings/selection.js";
 import { Message } from "../message.js";
@@ -228,6 +229,21 @@ const joinAvailability = (model: AppModel): Availability => {
 };
 
 export const keyboardRegistry: readonly KeyboardAction[] = [
+  row(
+    "email-participants",
+    "Email participants",
+    ["e e"],
+    "Workflows",
+    "Event",
+    () => Message.RequestedEmailParticipants(),
+    {
+      availability: (model) =>
+        active(model) === "enabled" &&
+        selectedParticipantEmail(model).kind === "ready"
+          ? "enabled"
+          : "disabled",
+    }
+  ),
   row(
     "join",
     "Join meeting",
