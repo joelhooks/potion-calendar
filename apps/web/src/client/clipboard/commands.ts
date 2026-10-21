@@ -3,7 +3,12 @@ import { Command } from "foldkit";
 
 import { EditingCommand, EditingRuntime } from "../editing/runtime.js";
 import { Message } from "../message.js";
-import { ClipboardCutInput, prepareClipboardCut } from "./cut.js";
+import {
+  ClipboardCutInput,
+  ClipboardGroupCutInput,
+  prepareClipboardCut,
+  prepareClipboardGroupCut,
+} from "./cut.js";
 import { ClipboardAction, ClipboardRuntime } from "./runtime.js";
 
 export const DispatchClipboard = Command.define("DispatchClipboard", {
@@ -28,6 +33,39 @@ export const DispatchClipboard = Command.define("DispatchClipboard", {
     ),
   messages: [Message.DispatchedClipboard, Message.FailedClipboard],
 });
+
+export const DispatchClipboardGroupCut = Command.define(
+  "DispatchClipboardGroupCut",
+  {
+    args: {
+      input: ClipboardGroupCutInput,
+      personId: Schema.String,
+      sessionId: Schema.String,
+    },
+    execute: ({ input, personId, sessionId }) =>
+      Effect.gen(function* stageGroupCut() {
+        const clipboard = yield* ClipboardRuntime;
+        yield* clipboard.validateSession(personId, sessionId);
+        const plan = yield* prepareClipboardGroupCut(input);
+        const editing = yield* EditingRuntime;
+        yield* editing.dispatch(
+          personId,
+          EditingCommand.cases.Bulk.make({ plan, selection: input.selection })
+        );
+      }).pipe(
+        Effect.match({
+          onFailure: (failure) =>
+            Message.FailedClipboard({
+              message: failure.message,
+              personId,
+              sessionId,
+            }),
+          onSuccess: () => Message.DispatchedClipboard(),
+        })
+      ),
+    messages: [Message.DispatchedClipboard, Message.FailedClipboard],
+  }
+);
 
 export const DispatchClipboardCut = Command.define("DispatchClipboardCut", {
   args: {

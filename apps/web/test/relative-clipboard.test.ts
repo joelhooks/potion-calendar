@@ -301,6 +301,11 @@ it.effect.each(["2026-03-08", "2026-11-01"])(
       expect(result.issues).toMatchObject([
         { key: "unsafe", reason: "unsafeLocalTime", title: "Product review" },
       ]);
+      expect(result.issues[0]?.message).toBe(
+        gap
+          ? "Product review would start at 2:30am on Mar 8, which doesn't exist when clocks spring forward. Paste it somewhere else."
+          : "Product review would start at 1:30am on Nov 1, which happens twice when clocks fall back. Paste it somewhere else."
+      );
     })
 );
 
@@ -330,6 +335,9 @@ it.effect(
       expect(result.issues.map((item) => item.reason)).toEqual([
         "unsafeLocalTime",
       ]);
+      expect(result.issues[0]?.message).toBe(
+        "Product review would end at 1:30am on Nov 1, which happens twice when clocks fall back. Paste it somewhere else."
+      );
     })
 );
 

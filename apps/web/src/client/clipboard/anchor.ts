@@ -96,7 +96,12 @@ export const clipboardAnchorAt = (
   if (layout.dateOnly) {
     return day.pipe(
       Option.flatMap(dateAtDay),
-      Option.map((date) => ClipboardAnchor.cases.AllDay.make({ date }))
+      Option.map((date) =>
+        ClipboardAnchor.cases.AllDay.make({
+          date,
+          origin: host.mode === "month" ? "month" : undefined,
+        })
+      )
     );
   }
 

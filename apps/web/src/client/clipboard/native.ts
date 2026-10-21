@@ -1,6 +1,12 @@
 import type { CalendarEventValue } from "@calendar/calendar/contracts";
 import { Effect, Option, Queue, Stream } from "effect";
 
+import {
+  captureSelectionClipboard,
+  SelectionClipboardCapture,
+} from "../../layout/selection-clipboard.js";
+import type { SelectionClipboardCandidate } from "../../layout/selection-clipboard.js";
+import type { SelectionSetValue } from "../../layout/selection-set.js";
 import { captureClipboardItem } from "./capture.js";
 import { nativeClipboardFocusAllowed } from "./focus.js";
 import { clipboardMarker, matchesClipboardEnvelope } from "./identity.js";
@@ -8,6 +14,7 @@ import {
   ClipboardCaptureResult,
   ClipboardEnvelope,
   ClipboardInputFailure,
+  ClipboardRange,
   NativeClipboardNotice,
 } from "./model.js";
 import type { ClipboardAnchor, ClipboardPasteTarget } from "./model.js";
@@ -20,6 +27,12 @@ export interface NativeClipboardHost {
     | Pick<typeof ClipboardEnvelope.Type, "id" | "personId">
     | undefined;
   readonly personId: string;
+  readonly group?:
+    | {
+        readonly candidates: readonly (typeof SelectionClipboardCandidate.Type)[];
+        readonly selection: SelectionSetValue;
+      }
+    | undefined;
   readonly selected: CalendarEventValue | undefined;
   readonly selfEmails: readonly string[];
   readonly sessionId: string;
@@ -58,24 +71,84 @@ const copy = (
   operation: "copy" | "cut",
   sequence: number
 ): Option.Option<typeof NativeClipboardNotice.Type> => {
-  if (host.selected === undefined) {
-    return Option.none();
+  let envelope: typeof ClipboardEnvelope.Type;
+
+  if (host.group === undefined) {
+    if (host.selected === undefined) {
+      return Option.none();
+    }
+
+    const captured = captureClipboardItem(host.selected, host.selfEmails);
+
+    if (ClipboardCaptureResult.guards.Refused(captured)) {
+      event.preventDefault();
+
+      return Option.some(refusal(host, operation, sequence, captured.failure));
+    }
+
+    envelope = ClipboardEnvelope.make({
+      id: `${host.sessionId}.${sequence}`,
+      items: [captured.item],
+      personId: host.personId,
+      version: 1,
+    });
+  } else {
+    const captured = captureSelectionClipboard({
+      ...host.group,
+      copyId: `${host.sessionId}.${sequence}`,
+      personId: host.personId,
+      selfEmails: host.selfEmails,
+    });
+
+    if (SelectionClipboardCapture.guards.Refused(captured)) {
+      event.preventDefault();
+
+      return Option.some(
+        refusal(
+          host,
+          operation,
+          sequence,
+          new ClipboardInputFailure({
+            message: captured.issues
+              .map((issue) => `${issue.title}: ${issue.message}`)
+              .join("\n"),
+            reason: "incompleteSelection",
+          })
+        )
+      );
+    }
+
+    const [first, ...rest] = captured.snapshot.members;
+    const allDay = ClipboardRange.guards.AllDay(first.item.range);
+
+    if (
+      rest.some(
+        (member) => ClipboardRange.guards.AllDay(member.item.range) !== allDay
+      )
+    ) {
+      event.preventDefault();
+
+      return Option.some(
+        refusal(
+          host,
+          operation,
+          sequence,
+          new ClipboardInputFailure({
+            message: `Copy timed and all-day events separately. Nothing was ${operation === "cut" ? "cut" : "copied"}.`,
+            reason: "mixedRanges",
+          })
+        )
+      );
+    }
+
+    envelope = ClipboardEnvelope.make({
+      id: captured.snapshot.copyId,
+      items: [first.item, ...rest.map((member) => member.item)],
+      personId: host.personId,
+      selectionKeys: [first.key, ...rest.map((member) => member.key)],
+      version: 1,
+    });
   }
-
-  const captured = captureClipboardItem(host.selected, host.selfEmails);
-
-  if (ClipboardCaptureResult.guards.Refused(captured)) {
-    event.preventDefault();
-
-    return Option.some(refusal(host, operation, sequence, captured.failure));
-  }
-
-  const envelope = ClipboardEnvelope.make({
-    id: `${host.sessionId}.${sequence}`,
-    items: [captured.item],
-    personId: host.personId,
-    version: 1,
-  });
 
   data.clearData();
   data.setData("text/plain", clipboardMarker(envelope.id));
@@ -193,7 +266,9 @@ export const observeNativeClipboard = (
 
   if (
     (operation === "paste" && host.copied === undefined) ||
-    (operation !== "paste" && host.selected === undefined)
+    (operation !== "paste" &&
+      host.selected === undefined &&
+      host.group === undefined)
   ) {
     return Option.none();
   }

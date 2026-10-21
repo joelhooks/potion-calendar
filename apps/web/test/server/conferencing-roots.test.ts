@@ -263,8 +263,10 @@ layer(fixtureLayer, { excludeTestServices: true })(
 
             expect(prepared._tag).toBe("Prepared");
 
-            if (Predicate.isTagged(prepared, "Refused")) {
-              return yield* Effect.die(prepared.failure);
+            if (!Predicate.isTagged(prepared, "Prepared")) {
+              return yield* Effect.die(
+                "Single-event clipboard preparation did not produce one request"
+              );
             }
 
             const includedTemplate = yield* Effect.fromNullishOr(

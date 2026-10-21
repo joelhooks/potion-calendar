@@ -43,6 +43,15 @@ export const projectClipboard = (
 
   const { pending } = context;
 
+  if (context.groupResult !== undefined) {
+    return ClipboardView.cases.Results.make({
+      ...fields,
+      id: context.groupResult.id,
+      issues: context.groupResult.issues,
+      succeeded: context.groupResult.mutations.length,
+    });
+  }
+
   if (pending === undefined) {
     return ClipboardView.cases.Idle.make(fields);
   }
@@ -51,10 +60,26 @@ export const projectClipboard = (
     return ClipboardView.cases.Guests.make({
       ...fields,
       calendarTitle: pending.target.calendar.title,
-      complete: pending.item.guestsComplete,
-      count: pending.item.guests.length,
+      complete:
+        pending.group === undefined
+          ? pending.item.guestsComplete
+          : pending.group.members.every((member) => member.item.guestsComplete),
+      count:
+        pending.group === undefined
+          ? pending.item.guests.length
+          : pending.group.members.flatMap((member) => member.item.guests)
+              .length,
       intentId: pending.intentId,
+      itemCount: pending.group?.members.length,
       title: pending.item.content.title,
+    });
+  }
+
+  if (snapshot.matches("groupCreating")) {
+    return ClipboardView.cases.Creating.make({
+      ...fields,
+      intentId: pending.intentId,
+      itemCount: pending.group?.members.length,
     });
   }
 
@@ -77,5 +102,6 @@ export const projectClipboard = (
   return ClipboardView.cases.Preparing.make({
     ...fields,
     intentId: pending.intentId,
+    itemCount: pending.group?.members.length,
   });
 };

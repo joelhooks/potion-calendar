@@ -6,6 +6,7 @@ import { hourHeight } from "../../layout/geometry.js";
 import { allDaySection, visibleEvents } from "../../layout/presentation.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
+import { BulkView } from "../bulk/model.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { EditorView } from "../editing/editor-model.js";
 import { defaultCreationCalendar } from "../settings/update.js";
@@ -27,7 +28,9 @@ const clipboardSession = (
     !Option.contains(model.person, session.user.id) ||
     model.action !== "idle" ||
     !Predicate.isTagged(model.route, "Calendar") ||
-    !EditorView.guards.Closed(model.editing.view)
+    !EditorView.guards.Closed(model.editing.view) ||
+    BulkView.guards.Running(model.editing.bulk) ||
+    BulkView.guards.Undoing(model.editing.bulk)
   ) {
     return undefined;
   }
@@ -106,6 +109,16 @@ export const clipboardNativeHost = (
   return {
     anchor,
     copied: connection.copied(),
+    group:
+      model.calendar.selected.length > 1
+        ? {
+            candidates: visibleEvents(model).map((item) => ({
+              event: item.source,
+              key: item.key,
+            })),
+            selection: model.calendar.selected,
+          }
+        : undefined,
     personId: session.user.id,
     selected:
       model.calendar.selected.length === 1 ? selected?.source : undefined,

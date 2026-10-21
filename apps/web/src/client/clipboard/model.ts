@@ -55,11 +55,15 @@ export const ClipboardEnvelope = Schema.Struct({
   id: Schema.NonEmptyString,
   items: Schema.NonEmptyArray(ClipboardItem),
   personId: Schema.NonEmptyString,
+  selectionKeys: Schema.optional(Schema.NonEmptyArray(Schema.NonEmptyString)),
   version: Schema.Literal(1),
 });
 
 export const ClipboardAnchor = Schema.TaggedUnion({
-  AllDay: { date: Schema.String },
+  AllDay: {
+    date: Schema.String,
+    origin: Schema.optional(Schema.Literal("month")),
+  },
   Timed: { date: Schema.String, instant: Schema.Finite },
 });
 
@@ -95,6 +99,13 @@ export const ClipboardIdentity = Schema.Struct({
   personId: Schema.NonEmptyString,
 });
 
+export const ClipboardMemberIssue = Schema.Struct({
+  key: Schema.NonEmptyString,
+  reason: Schema.String,
+  sentence: Schema.optional(Schema.String),
+  title: Schema.String,
+});
+
 export const ClipboardToast = Schema.Struct({
   id: Schema.NonEmptyString,
   message: Schema.String,
@@ -106,7 +117,11 @@ const viewFields = {
 };
 
 export const ClipboardView = Schema.TaggedUnion({
-  Creating: { ...viewFields, intentId: Schema.String },
+  Creating: {
+    ...viewFields,
+    intentId: Schema.String,
+    itemCount: Schema.optional(Schema.Int),
+  },
   Failure: {
     ...viewFields,
     intentId: Schema.String,
@@ -119,10 +134,21 @@ export const ClipboardView = Schema.TaggedUnion({
     complete: Schema.Boolean,
     count: Schema.Int,
     intentId: Schema.String,
+    itemCount: Schema.optional(Schema.Int),
     title: Schema.String,
   },
   Idle: viewFields,
-  Preparing: { ...viewFields, intentId: Schema.String },
+  Preparing: {
+    ...viewFields,
+    intentId: Schema.String,
+    itemCount: Schema.optional(Schema.Int),
+  },
+  Results: {
+    ...viewFields,
+    id: Schema.String,
+    issues: Schema.Array(ClipboardMemberIssue),
+    succeeded: Schema.Int,
+  },
 });
 
 export const initialClipboardView = ClipboardView.cases.Idle.make({
@@ -164,6 +190,8 @@ export class ClipboardInputFailure extends Schema.TaggedError<ClipboardInputFail
       "noWritableCalendar",
       "missingSource",
       "readOnlySource",
+      "incompleteSelection",
+      "mixedRanges",
     ]),
     source: Schema.optionalKey(EventRef),
   }

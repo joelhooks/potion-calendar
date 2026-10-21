@@ -157,136 +157,133 @@ const fixtureHtml = (
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x900"><title>${title}</title><style>${css}</style></head><body>${body}<script>${script}</script></body></html>`;
 };
 
-it.effect(
-  "exports actual editor conferencing controls in every state and the real default row in both themes and viewport sizes",
-  () =>
+it.effect.each([
+  { theme: "light", width: 1440 },
+  { theme: "dark", width: 1440 },
+  { theme: "light", width: 900 },
+  { theme: "dark", width: 900 },
+] satisfies readonly { width: number; theme: "light" | "dark" }[])(
+  "exports actual editor conferencing controls in every state and the real default row: %s",
+  ({ width, theme }) =>
     Effect.gen(function* conferencingArtifacts() {
       const fs = yield* FileSystem.FileSystem;
       const css = yield* fs.readFileString("src/client/style.css");
 
-      for (const width of [1440, 900]) {
-        for (const theme of ["light", "dark"] as const) {
-          for (const scene of scenes) {
-            const fixture = fixtureModel();
+      for (const scene of scenes) {
+        const fixture = fixtureModel();
 
-            const model: AppModel = {
-              ...fixture,
-              calendar: {
-                ...fixture.calendar,
-                calendars: scene.calendars,
-                viewportWidth: width - (width <= 1000 ? 445 : 520),
-              },
-              editing: { ...fixture.editing, view: scene.model },
-              settings: { ...fixture.settings, theme },
-              upcoming: {
-                ...fixture.upcoming,
-                data: RemoteEvents.Success({
-                  data: {
-                    events: [
-                      {
-                        ...editorOriginal,
-                        conferenceUrl: "https://meet.google.com/abc-defg-hij",
-                        end: {
-                          dateTime: DateTime.formatIso(
-                            DateTime.makeUnsafe(
-                              fixture.calendar.now + 45 * 60_000
-                            )
-                          ),
-                        },
-                        start: {
-                          dateTime: DateTime.formatIso(
-                            DateTime.makeUnsafe(
-                              fixture.calendar.now + 15 * 60_000
-                            )
-                          ),
-                        },
-                        title: "Design review",
-                      },
-                    ],
-                    versions: [],
+        const model: AppModel = {
+          ...fixture,
+          calendar: {
+            ...fixture.calendar,
+            calendars: scene.calendars,
+            viewportWidth: width - (width <= 1000 ? 445 : 520),
+          },
+          editing: { ...fixture.editing, view: scene.model },
+          settings: { ...fixture.settings, theme },
+          upcoming: {
+            ...fixture.upcoming,
+            data: RemoteEvents.Success({
+              data: {
+                events: [
+                  {
+                    ...editorOriginal,
+                    conferenceUrl: "https://meet.google.com/abc-defg-hij",
+                    end: {
+                      dateTime: DateTime.formatIso(
+                        DateTime.makeUnsafe(fixture.calendar.now + 45 * 60_000)
+                      ),
+                    },
+                    start: {
+                      dateTime: DateTime.formatIso(
+                        DateTime.makeUnsafe(fixture.calendar.now + 15 * 60_000)
+                      ),
+                    },
+                    title: "Design review",
                   },
-                }),
+                ],
+                versions: [],
               },
-            };
+            }),
+          },
+        };
 
-            const rendered = yield* renderToString(
-              { init: () => ({ model }), view },
-              { isHydratable: false }
-            );
+        const rendered = yield* renderToString(
+          { init: () => ({ model }), view },
+          { isHydratable: false }
+        );
 
-            const document = new DOMParser().parseFromString(
-              rendered.html,
-              "text/html"
-            );
+        const document = new DOMParser().parseFromString(
+          rendered.html,
+          "text/html"
+        );
 
-            expect(
-              document.querySelector('[aria-label="Conferencing"]')
-            ).not.toBeNull();
+        expect(
+          document.querySelector('[aria-label="Conferencing"]')
+        ).not.toBeNull();
 
-            if (scene.name === "confirmation") {
-              expect(
-                document.querySelector("#replace-conferencing-dialog")
-              ).not.toBeNull();
-            }
-
-            yield* fs.writeFileString(
-              `../../.git/conferencing-editor-${scene.name}-${theme}-${width}-fixture.html`,
-              fixtureHtml(
-                rendered.html,
-                css,
-                `Conferencing editor: ${scene.name} ${theme}`,
-                width
-              )
-            );
-          }
-
-          for (const value of ["unset", "none", "googleMeet"] as const) {
-            const fixture = fixtureModel();
-
-            const model: AppModel = {
-              ...fixture,
-              conferencing: {
-                accounts: {
-                  work: {
-                    operation: "read",
-                    remote: RemoteConferencingDefault.Success({
-                      data: { accountId: "work", value },
-                    }),
-                    requestId: 1,
-                  },
-                },
-                nextRequestId: 1,
-              },
-              route: AccountSettingsRoute.make({ accountId: "work" }),
-              settings: { ...fixture.settings, theme },
-            };
-
-            const rendered = yield* renderToString(
-              {
-                init: () => ({ model }),
-                view,
-              },
-              { isHydratable: false }
-            );
-
-            const document = new DOMParser().parseFromString(
-              rendered.html,
-              "text/html"
-            );
-
-            expect(document.querySelector("select")?.value).toBe(value);
-            expect(document.querySelector("select")?.disabled).toBe(false);
-            yield* fs.writeFileString(
-              `../../.git/conferencing-default-${value}-${theme}-${width}-fixture.html`,
-              fixtureHtml(
-                rendered.html,
-                css,
-                `Conferencing account row: ${value} ${theme}`,
-                width
-              )
-            );
-          }
+        if (scene.name === "confirmation") {
+          expect(
+            document.querySelector("#replace-conferencing-dialog")
+          ).not.toBeNull();
         }
+
+        yield* fs.writeFileString(
+          `../../.git/conferencing-editor-${scene.name}-${theme}-${width}-fixture.html`,
+          fixtureHtml(
+            rendered.html,
+            css,
+            `Conferencing editor: ${scene.name} ${theme}`,
+            width
+          )
+        );
+      }
+
+      for (const value of ["unset", "none", "googleMeet"] as const) {
+        const fixture = fixtureModel();
+
+        const model: AppModel = {
+          ...fixture,
+          conferencing: {
+            accounts: {
+              work: {
+                operation: "read",
+                remote: RemoteConferencingDefault.Success({
+                  data: { accountId: "work", value },
+                }),
+                requestId: 1,
+              },
+            },
+            nextRequestId: 1,
+          },
+          route: AccountSettingsRoute.make({ accountId: "work" }),
+          settings: { ...fixture.settings, theme },
+        };
+
+        const rendered = yield* renderToString(
+          {
+            init: () => ({ model }),
+            view,
+          },
+          { isHydratable: false }
+        );
+
+        const document = new DOMParser().parseFromString(
+          rendered.html,
+          "text/html"
+        );
+
+        expect(document.querySelector("select")?.value).toBe(value);
+        expect(document.querySelector("select")?.disabled).toBe(false);
+        yield* fs.writeFileString(
+          `../../.git/conferencing-default-${value}-${theme}-${width}-fixture.html`,
+          fixtureHtml(
+            rendered.html,
+            css,
+            `Conferencing account row: ${value} ${theme}`,
+            width
+          )
+        );
       }
     }).pipe(Effect.provide(NodeServices.layer))
 );

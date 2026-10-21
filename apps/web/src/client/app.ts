@@ -35,6 +35,7 @@ import {
 import {
   DispatchClipboard,
   DispatchClipboardCut,
+  DispatchClipboardGroupCut,
 } from "./clipboard/commands.js";
 import { receiveClipboardDelivery } from "./clipboard/delivery.js";
 import { clipboardCutEvents } from "./clipboard/host.js";
@@ -1031,6 +1032,17 @@ const updateCore = (
               )
             : { model: saved.model };
         },
+        CreatedGroup: ({ mutations }) => {
+          let saved = next;
+
+          for (const mutation of mutations) {
+            saved = mutationReceived(saved, mutation).model;
+          }
+
+          return mutations.length === 0
+            ? { model: next }
+            : reloadRange(refreshSearch(saved), false, undefined, model);
+        },
         Cut: ({ source }) => ({
           commands: [
             DispatchClipboardCut({
@@ -1041,6 +1053,23 @@ const updateCore = (
                 primaryZone: homeZone(next),
                 selection: primarySelection(next.calendar.selected),
                 source,
+              },
+              personId: delivery.personId,
+              sessionId: delivery.sessionId,
+            }),
+          ],
+          model: next,
+        }),
+        CutGroup: ({ selection, sources }) => ({
+          commands: [
+            DispatchClipboardGroupCut({
+              input: {
+                calendars: next.calendar.calendars,
+                events: clipboardCutEvents(next),
+                navigation: next.calendar.navigation,
+                primaryZone: homeZone(next),
+                selection,
+                sources,
               },
               personId: delivery.personId,
               sessionId: delivery.sessionId,

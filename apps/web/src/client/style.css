@@ -155,9 +155,23 @@ h3 {
   min-height: 0;
   display: flex;
 }
-.sidebar {
-  width: 220px;
+.sidebar-shell {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
+  width: 220px;
+}
+.sidebar-command-space {
+  height: 64px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.sidebar {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 18px 14px 12px;
   border-right: 1px solid var(--line);
   overflow-y: auto;
@@ -752,6 +766,9 @@ h3 {
   color: var(--muted);
 }
 @media (max-width: 1000px) {
+  .sidebar-shell {
+    width: 185px;
+  }
   .sidebar {
     width: 185px;
     padding: 14px 8px;
@@ -771,7 +788,8 @@ h3 {
   }
 }
 @media (max-width: 750px) {
-  .sidebar {
+  .sidebar,
+  .sidebar-shell {
     display: none;
   }
   .toolbar {
@@ -830,6 +848,7 @@ h3 {
   padding-bottom: 64px;
   scroll-padding-bottom: 64px;
 }
+.clipboard-dialog .editor-scroll,
 .editor-recovery .editor-scroll {
   padding-bottom: 0;
   scroll-padding-bottom: 0;

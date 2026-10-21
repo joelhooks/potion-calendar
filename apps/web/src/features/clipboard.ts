@@ -16,7 +16,60 @@ export const clipboardPanel = <Message>(
       ? [h.Style({ "max-width": "100%", position: "static" })]
       : [];
 
+  if (ClipboardView.guards.Results(view)) {
+    return h.section(
+      [
+        h.Class("bulk-notice clipboard-results"),
+        h.Role("status"),
+        h.AriaLabel("Paste results"),
+        ...placement,
+      ],
+      [
+        h.h3(
+          [],
+          [
+            `Pasted ${view.succeeded} ${view.succeeded === 1 ? "event" : "events"}`,
+          ]
+        ),
+        ...(view.issues.length === 0
+          ? []
+          : [
+              h.h4(
+                [],
+                [
+                  `Couldn't paste ${view.issues.length} ${view.issues.length === 1 ? "event" : "events"}`,
+                ]
+              ),
+              h.ul(
+                [],
+                view.issues.map((issue) =>
+                  h.li(
+                    [],
+                    [issue.sentence ?? `${issue.title}: ${issue.reason}`]
+                  )
+                )
+              ),
+            ]),
+        ...(view.succeeded > 0
+          ? [h.p([], ["Copies can't be undone; delete them if needed."])]
+          : []),
+        h.button(
+          [
+            h.Type("button"),
+            h.OnClick(
+              send(ClipboardAction.cases.DismissToast.make({ id: view.id }))
+            ),
+          ],
+          ["Dismiss"]
+        ),
+      ]
+    );
+  }
+
   if (ClipboardView.guards.Guests(view)) {
+    const group = (view.itemCount ?? 1) > 1;
+    const label = group ? `Paste ${view.itemCount} events` : "Paste event";
+
     const exclude = send(
       ClipboardAction.cases.Guests.make({
         choice: "exclude",
@@ -32,9 +85,9 @@ export const clipboardPanel = <Message>(
       `clipboard-${view.intentId}`,
       [
         h.Id("clipboard-guests"),
-        h.Class("editor-dialog"),
+        h.Class("editor-dialog clipboard-dialog"),
         h.AriaModal(true),
-        h.AriaLabel("Paste event"),
+        h.AriaLabel(label),
         h.DataAttribute("clipboard-dialog", view.intentId),
         h.DataAttribute("initial-focus", "clipboard-exclude"),
         h.OnKeyDownPreventDefault((key) =>
@@ -45,11 +98,18 @@ export const clipboardPanel = <Message>(
         h.form(
           [h.OnSubmit(exclude)],
           [
-            h.header([h.Class("editor-heading")], [h.h2([], ["Paste event"])]),
+            h.header([h.Class("editor-heading")], [h.h2([], [label])]),
             h.div(
               [h.Class("editor-scroll")],
               [
-                h.p([], [`Paste “${view.title}” into ${view.calendarTitle}.`]),
+                h.p(
+                  [],
+                  [
+                    group
+                      ? `Paste ${view.itemCount} events into ${view.calendarTitle}. One guest choice applies to the whole group.`
+                      : `Paste “${view.title}” into ${view.calendarTitle}.`,
+                  ]
+                ),
                 h.p(
                   [],
                   [
@@ -143,7 +203,7 @@ export const clipboardPanel = <Message>(
         h.Role("status"),
         h.AriaLive("polite"),
       ],
-      ["Pasting event…"]
+      [(view.itemCount ?? 1) > 1 ? "Pasting events…" : "Pasting event…"]
     );
   }
 

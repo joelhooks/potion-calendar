@@ -1,9 +1,10 @@
 import { EventRef } from "@calendar/calendar/contracts";
 import { setupEffect } from "@xstate/effect";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { types } from "xstate";
 import type { SnapshotFrom } from "xstate";
 
+import { SelectionClipboardSnapshot } from "../../layout/selection-clipboard.js";
 import type { EditorRequest } from "../editing/editor-session-model.js";
 import { EditorMutation } from "../editing/editor-session-model.js";
 import {
@@ -14,6 +15,11 @@ import type {
   ClipboardCreatorProblem,
   ClipboardCreatorSnapshot,
 } from "./creator-machine.js";
+import { clipboardGroupMachine } from "./group-machine.js";
+import type {
+  ClipboardGroupPreparation,
+  ClipboardGroupResult,
+} from "./group-model.js";
 import type { ClipboardEnvelope, ClipboardToast } from "./model.js";
 import {
   ClipboardGuestChoice,
@@ -33,11 +39,24 @@ export const ClipboardReceipt = Schema.TaggedUnion({
     mutation: EditorMutation.cases.Saved,
     revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   },
+  CreatedGroup: {
+    id: Schema.String,
+    intentId: Schema.String,
+    mutations: Schema.Array(EditorMutation.cases.Saved),
+    revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  },
   Cut: {
     copyId: Schema.String,
     id: Schema.String,
     revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     source: EventRef,
+  },
+  CutGroup: {
+    copyId: Schema.String,
+    id: Schema.String,
+    revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    selection: Schema.NonEmptyArray(Schema.NonEmptyString),
+    sources: Schema.NonEmptyArray(EventRef),
   },
 });
 
@@ -46,6 +65,10 @@ export interface ClipboardContext {
   readonly creatorPhase: "working" | "failed" | "refused";
   readonly envelope: typeof ClipboardEnvelope.Type | undefined;
   readonly failure: typeof ClipboardCreatorProblem.Type | undefined;
+  readonly groupPreparation: typeof ClipboardGroupPreparation.Type | undefined;
+  readonly groupResult:
+    | (typeof ClipboardGroupResult.Type & { readonly id: string })
+    | undefined;
   readonly lastNativeSequence: number;
   readonly nativeSessionId: string | undefined;
   readonly pending: typeof PendingClipboardPaste.Type | undefined;
@@ -64,6 +87,17 @@ interface NativeDecision {
 const idleState = (envelope: ClipboardContext["envelope"]) =>
   envelope === undefined ? "empty" : "ready";
 
+const groupFor = (envelope: typeof ClipboardEnvelope.Type) =>
+  Schema.decodeUnknownOption(SelectionClipboardSnapshot)({
+    copyId: envelope.id,
+    members: envelope.items.map((item, index) => ({
+      item,
+      key: envelope.selectionKeys?.[index],
+    })),
+    personId: envelope.personId,
+    version: 1,
+  });
+
 const nativeDecision = (
   context: ClipboardContext,
   notice: typeof NativeClipboardNotice.Type
@@ -76,14 +110,16 @@ const nativeDecision = (
     return {};
   }
 
-  const base = { lastNativeSequence: notice.sequence };
+  const base = { groupResult: undefined, lastNativeSequence: notice.sequence };
   const toastId = `${notice.sessionId}.${notice.sequence}`;
 
   return NativeClipboardNotice.match<NativeDecision>(notice, {
     Copied: ({ envelope, mode }) => {
       if (
         envelope.personId !== context.personId ||
-        envelope.items.length !== 1
+        (envelope.items.length > 1 &&
+          (Option.isNone(groupFor(envelope)) ||
+            new Set(envelope.selectionKeys).size !== envelope.items.length))
       ) {
         return {
           context: {
@@ -91,7 +127,8 @@ const nativeDecision = (
             envelope: undefined,
             toast: {
               id: toastId,
-              message: "Copy one event for the current signed-in person.",
+              message:
+                "Copy a complete selection for the current signed-in person.",
             },
           },
           target: "empty",
@@ -99,23 +136,52 @@ const nativeDecision = (
       }
 
       const [item] = envelope.items;
-      const omitted = item.recurring || item.nativeConference;
+
+      const omitted = envelope.items.some(
+        (member) => member.recurring || member.nativeConference
+      );
+
+      const group = Option.getOrUndefined(groupFor(envelope));
+      let receipt: typeof ClipboardReceipt.Type | undefined;
+
+      if (mode === "cut") {
+        receipt =
+          envelope.items.length > 1 && group !== undefined
+            ? ClipboardReceipt.cases.CutGroup.make({
+                copyId: envelope.id,
+                id: `${envelope.id}.cut`,
+                revision: context.receiptRevision + 1,
+                selection: [
+                  group.members[0].key,
+                  ...group.members.slice(1).map((member) => member.key),
+                ],
+                sources: [
+                  item.source,
+                  ...envelope.items.slice(1).map((member) => member.source),
+                ],
+              })
+            : ClipboardReceipt.cases.Cut.make({
+                copyId: envelope.id,
+                id: `${envelope.id}.cut`,
+                revision: context.receiptRevision + 1,
+                source: item.source,
+              });
+      }
+
+      const label =
+        envelope.items.length === 1
+          ? "event"
+          : `${envelope.items.length} events`;
 
       return {
         context: {
           ...base,
           envelope,
           failure: undefined,
+          groupPreparation: undefined,
+          groupResult: undefined,
           pending: undefined,
-          receipt:
-            mode === "cut"
-              ? ClipboardReceipt.cases.Cut.make({
-                  copyId: envelope.id,
-                  id: `${envelope.id}.cut`,
-                  revision: context.receiptRevision + 1,
-                  source: item.source,
-                })
-              : undefined,
+          receipt,
           receiptRevision:
             mode === "cut"
               ? context.receiptRevision + 1
@@ -124,8 +190,8 @@ const nativeDecision = (
           toast: {
             id: toastId,
             message: omitted
-              ? "Copied event. Repeat and native conferencing are not copied."
-              : "Copied event.",
+              ? `Copied ${label}. Repeat and native conferencing are not copied.`
+              : `Copied ${label}.`,
           },
         },
         target: "ready",
@@ -173,9 +239,15 @@ const nativeDecision = (
           choice: "exclude",
           creatorPhase: "working",
           failure: undefined,
+          groupPreparation: undefined,
+          groupResult: undefined,
           pending: PendingClipboardPaste.make({
             anchor,
             copyId,
+            group:
+              envelope.items.length > 1
+                ? Option.getOrUndefined(groupFor(envelope))
+                : undefined,
             intentId: `${toastId}.paste`,
             item,
             target,
@@ -231,10 +303,14 @@ const requestFor = (context: ClipboardContext) => {
   return context.request;
 };
 
+const creatingState = (context: ClipboardContext) =>
+  context.groupPreparation === undefined ? "creating" : "groupCreating";
+
 const clearPaste = (context: ClipboardContext) => ({
   context: {
     creatorPhase: "working" as const,
     failure: undefined,
+    groupPreparation: undefined,
     pending: undefined,
     request: undefined,
   },
@@ -252,6 +328,7 @@ const nativeTransition = ({
 const clipboard = setupEffect({
   actors: {
     creator: clipboardCreatorMachine,
+    group: clipboardGroupMachine,
     prepare: prepareClipboardLogic,
   },
   schemas: {
@@ -280,6 +357,8 @@ export const clipboardMachine = clipboard.createMachine({
     creatorPhase: "working",
     envelope: undefined,
     failure: undefined,
+    groupPreparation: undefined,
+    groupResult: undefined,
     lastNativeSequence: 0,
     nativeSessionId: undefined,
     pending: undefined,
@@ -304,12 +383,21 @@ export const clipboardMachine = clipboard.createMachine({
       context.nativeSessionId === event.sessionId
         ? { context: { nativeSessionId: undefined } }
         : {},
-    DISMISS_TOAST: ({ context, event }) =>
-      context.toast?.id === event.id ? { context: { toast: undefined } } : {},
+    DISMISS_TOAST: ({ context, event }) => ({
+      context: {
+        groupResult:
+          context.groupResult?.id === event.id
+            ? undefined
+            : context.groupResult,
+        toast: context.toast?.id === event.id ? undefined : context.toast,
+      },
+    }),
     RETIRE: () => ({
       context: {
         envelope: undefined,
         failure: undefined,
+        groupPreparation: undefined,
+        groupResult: undefined,
         nativeSessionId: undefined,
         pending: undefined,
         receipt: undefined,
@@ -405,6 +493,45 @@ export const clipboardMachine = clipboard.createMachine({
       },
     },
     empty: { on: { NATIVE: nativeTransition } },
+    groupCreating: {
+      invoke: clipboard.createInvoke({
+        input: ({ context }) => {
+          if (context.groupPreparation === undefined) {
+            throw new Error("Group paste has no prepared requests");
+          }
+
+          return context.groupPreparation;
+        },
+        onDone: ({ context, event }) => ({
+          context: {
+            groupPreparation: undefined,
+            groupResult: { ...event.output, id: pendingFor(context).intentId },
+            pending: undefined,
+            receipt: ClipboardReceipt.cases.CreatedGroup.make({
+              id: `${pendingFor(context).intentId}.created`,
+              intentId: pendingFor(context).intentId,
+              mutations: event.output.mutations,
+              revision: context.receiptRevision + 1,
+            }),
+            receiptRevision: context.receiptRevision + 1,
+          },
+          target: idleState(context.envelope),
+        }),
+        onError: ({ context }) => ({
+          context: {
+            groupPreparation: undefined,
+            pending: undefined,
+            toast: {
+              id: pendingFor(context).intentId,
+              message:
+                "Group paste stopped with an unconfirmed result. Refresh before creating another copy.",
+            },
+          },
+          target: idleState(context.envelope),
+        }),
+        src: clipboardGroupMachine,
+      }),
+    },
     guests: {
       on: {
         CANCEL: ({ context, event }) =>
@@ -415,7 +542,10 @@ export const clipboardMachine = clipboard.createMachine({
           context.pending?.intentId === event.intentId
             ? {
                 context: { choice: event.choice },
-                target: event.choice === "exclude" ? "creating" : "preparing",
+                target:
+                  event.choice === "exclude"
+                    ? creatingState(context)
+                    : "preparing",
               }
             : {},
       },
@@ -433,6 +563,7 @@ export const clipboardMachine = clipboard.createMachine({
             return {
               context: {
                 failure: undefined,
+                groupPreparation: undefined,
                 pending: undefined,
                 request: undefined,
                 toast: {
@@ -441,6 +572,24 @@ export const clipboardMachine = clipboard.createMachine({
                 },
               },
               target: idleState(context.envelope),
+            };
+          }
+
+          if (ClipboardPreparation.guards.PreparedGroup(event.output)) {
+            const { group } = pendingFor(context);
+
+            return {
+              context: { groupPreparation: event.output },
+              target:
+                context.choice === "exclude" &&
+                event.output.requests.length > 0 &&
+                group !== undefined &&
+                group.members.some(
+                  (member) =>
+                    member.item.guests.length > 0 || !member.item.guestsComplete
+                )
+                  ? "guests"
+                  : "groupCreating",
             };
           }
 
@@ -456,6 +605,7 @@ export const clipboardMachine = clipboard.createMachine({
         },
         onError: ({ context }) => ({
           context: {
+            groupPreparation: undefined,
             pending: undefined,
             request: undefined,
             toast: {

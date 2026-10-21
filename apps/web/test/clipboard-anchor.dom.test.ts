@@ -186,11 +186,19 @@ it.effect(
 
       const point = pointer(50, 50);
       expect(Option.getOrThrow(clipboardAnchorAt(host, point, first))).toEqual(
-        ClipboardAnchor.cases.AllDay.make({ date: "2026-10-19" })
+        ClipboardAnchor.cases.AllDay.make({
+          date: "2026-10-19",
+          origin: "month",
+        })
       );
       expect(
         Option.getOrThrow(clipboardAnchorAt(host, pointer(50, 150), next))
-      ).toEqual(ClipboardAnchor.cases.AllDay.make({ date: "2026-10-26" }));
+      ).toEqual(
+        ClipboardAnchor.cases.AllDay.make({
+          date: "2026-10-26",
+          origin: "month",
+        })
+      );
       expect(
         Option.isNone(clipboardAnchorAt(host, pointer(50, 150), first))
       ).toBe(true);
@@ -202,7 +210,10 @@ it.effect(
       ).toBe(true);
       scroll = 100;
       expect(Option.getOrThrow(clipboardAnchorAt(host, point, next))).toEqual(
-        ClipboardAnchor.cases.AllDay.make({ date: "2026-10-26" })
+        ClipboardAnchor.cases.AllDay.make({
+          date: "2026-10-26",
+          origin: "month",
+        })
       );
     })
 );

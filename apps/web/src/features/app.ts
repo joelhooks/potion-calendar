@@ -237,7 +237,17 @@ const routedPage = (
   return h.div(
     [h.Class("workspace")],
     [
-      ...(model.keyboard.sidebar ? [sidebar(model, h)] : []),
+      ...(model.keyboard.sidebar
+        ? [
+            h.div(
+              [h.Class("sidebar-shell")],
+              [
+                sidebar(model, h),
+                h.div([h.Class("sidebar-command-space"), h.AriaHidden(true)]),
+              ]
+            ),
+          ]
+        : []),
       workspaceContent(model, h, prepare, prepareMonth),
       ...(model.settings.hideContextPanel
         ? []

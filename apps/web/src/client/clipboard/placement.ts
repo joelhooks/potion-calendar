@@ -1,5 +1,9 @@
 import { DateTime, Effect } from "effect";
 
+import {
+  clipboardDayDelta,
+  shiftClipboardTimedDates,
+} from "../../layout/clipboard-time.js";
 import { editorDate, editorLocalTime } from "../../layout/editor-time.js";
 import { requireEditorZone } from "../../layout/editor-zone.js";
 import type { ClipboardItem } from "./model.js";
@@ -67,15 +71,13 @@ const placeTimed = Effect.fn("placeTimedClipboardItem")(function* placeTimed(
   anchor: typeof ClipboardAnchor.Type,
   homeZone: string
 ) {
-  if (ClipboardAnchor.guards.AllDay(anchor)) {
+  if (ClipboardAnchor.guards.AllDay(anchor) && anchor.origin !== "month") {
     return yield* new ClipboardInputFailure({
       message: "Choose a time slot before pasting a timed event.",
       reason: "missingTime",
       source: item.source,
     });
   }
-
-  const duration = range.end - range.start;
 
   const invalid = () =>
     new ClipboardInputFailure({
@@ -85,20 +87,49 @@ const placeTimed = Effect.fn("placeTimedClipboardItem")(function* placeTimed(
       source: item.source,
     });
 
-  if (!Number.isFinite(duration) || duration <= 0) {
-    return yield* invalid();
-  }
-
   const timeZone = yield* requireEditorZone(homeZone).pipe(
     Effect.mapError(invalid)
   );
 
+  let timedRange = range;
+  let timedAnchor: typeof ClipboardAnchor.cases.Timed.Type;
+
+  if (ClipboardAnchor.guards.AllDay(anchor)) {
+    const original = yield* Effect.fromOption(
+      DateTime.makeZoned(range.start, { timeZone })
+    ).pipe(Effect.mapError(invalid));
+
+    const days = yield* Effect.fromOption(
+      clipboardDayDelta(DateTime.formatIsoDate(original), anchor.date)
+    ).pipe(Effect.mapError(invalid));
+
+    timedRange = yield* shiftClipboardTimedDates({
+      days,
+      homeZone: timeZone,
+      range,
+      source: item.source,
+      title: item.content.title,
+    });
+    timedAnchor = ClipboardAnchor.cases.Timed.make({
+      date: anchor.date,
+      instant: timedRange.start,
+    });
+  } else {
+    timedAnchor = anchor;
+  }
+
+  const duration = timedRange.end - timedRange.start;
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return yield* invalid();
+  }
+
   const from = yield* Effect.fromOption(
-    DateTime.makeZoned(anchor.instant, { timeZone })
+    DateTime.makeZoned(timedAnchor.instant, { timeZone })
   ).pipe(Effect.mapError(invalid));
 
   const to = yield* Effect.fromOption(
-    DateTime.makeZoned(anchor.instant + duration, { timeZone })
+    DateTime.makeZoned(timedAnchor.instant + duration, { timeZone })
   ).pipe(Effect.mapError(invalid));
 
   const start = parts(from);
@@ -113,8 +144,8 @@ const placeTimed = Effect.fn("placeTimedClipboardItem")(function* placeTimed(
   ).pipe(Effect.mapError(invalid));
 
   if (
-    DateTime.toEpochMillis(checkedStart) !== anchor.instant ||
-    DateTime.toEpochMillis(checkedEnd) !== anchor.instant + duration
+    DateTime.toEpochMillis(checkedStart) !== timedAnchor.instant ||
+    DateTime.toEpochMillis(checkedEnd) !== timedAnchor.instant + duration
   ) {
     return yield* invalid();
   }

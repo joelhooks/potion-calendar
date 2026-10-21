@@ -1,7 +1,17 @@
 import { DateTime, Effect, Option, Result, Schema } from "effect";
 
-import { ClipboardAnchor, ClipboardRange } from "../client/clipboard/model.js";
+import {
+  ClipboardAnchor,
+  ClipboardInputFailure,
+  ClipboardRange,
+} from "../client/clipboard/model.js";
 import { placeClipboardItem } from "../client/clipboard/placement.js";
+import {
+  clipboardLocalCoordinates as localCoordinates,
+  clipboardUniqueLocalInstant as uniqueLocalInstant,
+  clipboardLocalTimeExplanation as describeUnsafeLocalTime,
+  shiftClipboardTimedDates,
+} from "./clipboard-time.js";
 import { editorDate } from "./editor-time.js";
 import { requireEditorZone } from "./editor-zone.js";
 import type { SelectionClipboardSnapshot } from "./selection-clipboard.js";
@@ -58,24 +68,6 @@ const issue = (
     title: member.item.content.title,
   });
 
-const localCoordinates = (instant: number, timeZone: string) =>
-  DateTime.makeZoned(instant, { timeZone }).pipe(
-    Option.map((zoned) => DateTime.makeUnsafe(DateTime.toParts(zoned))),
-    Option.map(DateTime.toEpochMillis)
-  );
-
-const uniqueLocalInstant = (coordinates: number, timeZone: string) =>
-  DateTime.make(coordinates).pipe(
-    Option.flatMap((local) =>
-      DateTime.makeZoned(DateTime.toPartsUtc(local), {
-        adjustForTimeZone: true,
-        disambiguation: "reject",
-        timeZone,
-      })
-    ),
-    Option.map(DateTime.toEpochMillis)
-  );
-
 const dateCoordinates = (date: string) =>
   editorDate(date).pipe(Option.map(DateTime.toEpochMillis));
 
@@ -109,6 +101,42 @@ const earliestMember = (
   }
 
   return earliest;
+};
+
+const describeShiftFailure = (
+  member: typeof SelectionClipboardMember.Type,
+  delta: number,
+  zone: string
+) => {
+  if (!ClipboardRange.guards.Timed(member.item.range)) {
+    return `${member.item.content.title} would land outside the supported date range. Choose another target.`;
+  }
+
+  const coordinates = localCoordinates(member.item.range.start, zone);
+
+  if (Option.isNone(coordinates)) {
+    return `${member.item.content.title} has no supported home-zone coordinates. Choose another target.`;
+  }
+
+  const start = coordinates.value + delta;
+  const instant = uniqueLocalInstant(start, zone);
+
+  const explanation = Option.isNone(instant)
+    ? describeUnsafeLocalTime(start, zone, "start", member.item.content.title)
+    : localCoordinates(
+        instant.value + member.item.range.end - member.item.range.start,
+        zone
+      ).pipe(
+        Option.flatMap((end) =>
+          describeUnsafeLocalTime(end, zone, "end", member.item.content.title)
+        )
+      );
+
+  return Option.getOrElse(
+    explanation,
+    () =>
+      `${member.item.content.title} cannot be represented safely in the home zone. Choose another target.`
+  );
 };
 
 const shiftedTimedAnchor = (
@@ -157,6 +185,65 @@ const shiftedDateAnchor = (
         )
       )
     : Option.none();
+
+const placeRelativeMember = Effect.fn("placeRelativeClipboardMember")(
+  function* placeRelativeMember(
+    member: typeof SelectionClipboardMember.Type,
+    delta: number,
+    zone: string,
+    allDay: boolean,
+    monthDate: boolean
+  ) {
+    let { item } = member;
+    let anchor: Option.Option<typeof ClipboardAnchor.Type>;
+
+    if (monthDate && ClipboardRange.guards.Timed(item.range)) {
+      const range = yield* shiftClipboardTimedDates({
+        days: delta / 86_400_000,
+        homeZone: zone,
+        range: item.range,
+        source: item.source,
+        title: item.content.title,
+      });
+
+      item = { ...item, range };
+      anchor = Option.some(
+        ClipboardAnchor.cases.Timed.make({
+          date: DateTime.makeZonedUnsafe(range.start, { timeZone: zone }).pipe(
+            DateTime.formatIsoDate
+          ),
+          instant: range.start,
+        })
+      );
+    } else {
+      anchor = allDay
+        ? shiftedDateAnchor(member, delta)
+        : shiftedTimedAnchor(member, delta, zone);
+    }
+
+    const target = yield* Effect.fromOption(anchor).pipe(
+      Effect.mapError(
+        () =>
+          new ClipboardInputFailure({
+            message: describeShiftFailure(member, delta, zone),
+            reason: "ambiguousTime",
+            source: item.source,
+          })
+      )
+    );
+
+    return yield* placeClipboardItem(item, target, zone).pipe(
+      Effect.mapError(
+        (failure) =>
+          new ClipboardInputFailure({
+            message: `${member.item.content.title}: ${failure.message}`,
+            reason: failure.reason,
+            source: member.item.source,
+          })
+      )
+    );
+  }
+);
 
 export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
   function* planRelativeClipboard(input: {
@@ -214,7 +301,12 @@ export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
       });
     }
 
-    if (!allDay && ClipboardAnchor.guards.AllDay(input.anchor)) {
+    const monthDate =
+      !allDay &&
+      ClipboardAnchor.guards.AllDay(input.anchor) &&
+      input.anchor.origin === "month";
+
+    if (!allDay && ClipboardAnchor.guards.AllDay(input.anchor) && !monthDate) {
       return refuse(
         "missingTime",
         "Choose a time slot before pasting timed events."
@@ -238,13 +330,25 @@ export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
       Timed: ({ instant }) => localCoordinates(instant, zone.value),
     });
 
-    const target = allDay ? dateCoordinates(input.anchor.date) : timedTarget;
+    const target =
+      allDay || monthDate ? dateCoordinates(input.anchor.date) : timedTarget;
 
-    const origin = allDay
-      ? start
-      : start.pipe(
-          Option.flatMap((instant) => localCoordinates(instant, zone.value))
-        );
+    const origin = start.pipe(
+      Option.flatMap((instant) => {
+        if (allDay) {
+          return Option.some(instant);
+        }
+
+        if (monthDate) {
+          return DateTime.makeZoned(instant, { timeZone: zone.value }).pipe(
+            Option.map(DateTime.formatIsoDate),
+            Option.flatMap(dateCoordinates)
+          );
+        }
+
+        return localCoordinates(instant, zone.value);
+      })
+    );
 
     if (Option.isNone(target) || Option.isNone(origin)) {
       return refuse(
@@ -258,25 +362,12 @@ export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
     const issues: (typeof RelativeClipboardIssue.Type)[] = [];
 
     for (const member of snapshot.members) {
-      const anchor = allDay
-        ? shiftedDateAnchor(member, delta)
-        : shiftedTimedAnchor(member, delta, zone.value);
-
-      if (Option.isNone(anchor)) {
-        issues.push(
-          issue(
-            member,
-            "unsafeLocalTime",
-            "This event would land on a missing or ambiguous local time. Choose another target."
-          )
-        );
-        continue;
-      }
-
-      const placed = yield* placeClipboardItem(
-        member.item,
-        anchor.value,
-        zone.value
+      const placed = yield* placeRelativeMember(
+        member,
+        delta,
+        zone.value,
+        allDay,
+        monthDate
       ).pipe(Effect.result);
 
       if (Result.isFailure(placed)) {

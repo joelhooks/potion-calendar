@@ -46,9 +46,10 @@ it.effect(
                 "text/html"
               );
 
-              expect(dom.querySelector(".workspace > .sidebar") !== null).toBe(
-                left
-              );
+              expect(
+                dom.querySelector(".workspace > .sidebar-shell > .sidebar") !==
+                  null
+              ).toBe(left);
               expect(
                 dom.querySelector(".workspace > .detail-panel") !== null
               ).toBe(right);
@@ -60,7 +61,7 @@ it.effect(
               ).toBeGreaterThan(0);
 
               const mode = `left-${left ? "shown" : "hidden"}-context-${right ? "shown" : "hidden"}`;
-              const proof = `const left=${left};const right=${right};const sidebar=document.querySelector('.workspace > .sidebar');const panel=document.querySelector('.workspace > .detail-panel');const frame=document.querySelector('#time-viewport');if(document.documentElement.scrollWidth>innerWidth)throw Error('Page widened');if(Boolean(sidebar)!==left||Boolean(panel)!==right||!frame)throw Error('Incorrect visible panels');const box=frame.getBoundingClientRect();const start=sidebar?sidebar.getBoundingClientRect().right:0;const end=panel?panel.getBoundingClientRect().left:innerWidth;if(Math.abs(box.left-start)>1||Math.abs(box.right-end)>1)throw Error('Grid leaves blank strip');if(panel){const bounds=panel.getBoundingClientRect();for(const button of panel.querySelectorAll('button')){const item=button.getBoundingClientRect();if(item.right>bounds.right-8||item.left<bounds.left)throw Error('Context action clipped');}}if(!left){for(const control of document.querySelectorAll('body *')){if(getComputedStyle(control).position!=='fixed'||(!control.matches('button,a,input,select,textarea,[role="button"]')&&!control.querySelector('button,a,input,select,textarea,[role="button"]')))continue;const item=control.getBoundingClientRect();if(item.width>0&&item.height>0&&item.left<box.right&&item.right>box.left&&item.top<box.bottom&&item.bottom>box.top)throw Error('Fixed control intersects grid');}}document.documentElement.dataset.panelLayoutProof='pass';`;
+              const proof = `const left=${left};const right=${right};const sidebar=document.querySelector('.workspace > .sidebar-shell');const panel=document.querySelector('.workspace > .detail-panel');const frame=document.querySelector('#time-viewport');if(document.documentElement.scrollWidth>innerWidth)throw Error('Page widened');if(Boolean(sidebar)!==left||Boolean(panel)!==right||!frame)throw Error('Incorrect visible panels');const box=frame.getBoundingClientRect();const start=sidebar?sidebar.getBoundingClientRect().right:0;const end=panel?panel.getBoundingClientRect().left:innerWidth;if(Math.abs(box.left-start)>1||Math.abs(box.right-end)>1)throw Error('Grid leaves blank strip');if(panel){const bounds=panel.getBoundingClientRect();for(const button of panel.querySelectorAll('button')){const item=button.getBoundingClientRect();if(item.right>bounds.right-8||item.left<bounds.left)throw Error('Context action clipped');}}if(!left){for(const control of document.querySelectorAll('body *')){if(getComputedStyle(control).position!=='fixed'||(!control.matches('button,a,input,select,textarea,[role="button"]')&&!control.querySelector('button,a,input,select,textarea,[role="button"]')))continue;const item=control.getBoundingClientRect();if(item.width>0&&item.height>0&&item.left<box.right&&item.right>box.left&&item.top<box.bottom&&item.bottom>box.top)throw Error('Fixed control intersects grid');}}document.documentElement.dataset.panelLayoutProof='pass';`;
 
               yield* fs.writeFileString(
                 `../../.git/rank6-${theme}-${width}-${mode}-fixture.html`,
