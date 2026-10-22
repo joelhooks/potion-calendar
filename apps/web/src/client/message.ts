@@ -28,6 +28,7 @@ import {
   NotificationEvent,
   NotificationFailure,
   PermissionOutcome,
+  ReminderCardAction,
 } from "./reminders/model.js";
 import { SearchNotice, SearchProblem } from "./search/model.js";
 import { ManagementChange } from "./settings-management/model.js";
@@ -192,6 +193,11 @@ export const Message = defineMessageUnion({
     hostKey: Schema.String,
     personId: Schema.String,
     reason: MonthGestureRefused.fields.reason,
+  },
+  ReminderCardAction: {
+    action: ReminderCardAction,
+    id: Schema.String,
+    personId: Schema.String,
   },
   ReminderDeliveryCompleted: {
     failure: Schema.Option(NotificationFailure),

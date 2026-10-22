@@ -1,6 +1,12 @@
 import { Option } from "effect";
 
 import { conferenceLink } from "../../layout/conferencing.js";
+import {
+  arbitrateReminder,
+  reminderCardExpired,
+  reminderOccurrence,
+  resolveReminderCard,
+} from "./action-machine.js";
 import { eligibleNotificationEvent, eligibleReminder } from "./candidates.js";
 import type {
   ReminderCandidateValue,
@@ -166,9 +172,23 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
   const active = memory.active.flatMap((notification) => {
     const candidate = current.get(notification.candidate.identity);
 
-    return permitted && candidate !== undefined
-      ? [{ ...notification, candidate }]
-      : [];
+    if (
+      (!permitted && notification.card === undefined) ||
+      (notification.card !== undefined && scan.webCards !== true) ||
+      reminderCardExpired(notification, scan.now) ||
+      candidate === undefined ||
+      (notification.card !== undefined &&
+        notification.candidate.start !== candidate.start)
+    ) {
+      const card =
+        notification.card === undefined
+          ? undefined
+          : resolveReminderCard(notification.card, "EXPIRE");
+
+      return card?.state === "active" ? [notification] : [];
+    }
+
+    return [{ ...notification, candidate }];
   });
 
   const activeIds = new Set(active.map((notification) => notification.id));
@@ -196,7 +216,9 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
   const invitations = invitationsIn(candidates);
 
   const proposals =
-    permitted && scan.now >= highWater && Option.isSome(scan.accepted)
+    (permitted || scan.webCards === true) &&
+    scan.now >= highWater &&
+    Option.isSome(scan.accepted)
       ? popupNotifications(
           scan,
           floor,
@@ -205,6 +227,8 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
           )
         )
       : [];
+
+  const popupIds = new Set(proposals.map((notification) => notification.id));
 
   if (
     permitted &&
@@ -226,21 +250,53 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
 
   const fired = new Set(memory.fired);
 
-  const deliveries = proposals.filter((notification) => {
+  const selected = new Set<string>();
+
+  const deliveries = proposals.flatMap((notification) => {
     if (fired.has(notification.id)) {
-      return false;
+      return [];
     }
 
     fired.add(notification.id);
 
-    return true;
+    if (scan.webCards !== true || !popupIds.has(notification.id)) {
+      return [notification];
+    }
+
+    const occurrence = reminderOccurrence(
+      notification.personId,
+      notification.candidate
+    );
+
+    if (selected.has(occurrence)) {
+      return [];
+    }
+
+    selected.add(occurrence);
+
+    return [
+      arbitrateReminder(notification, scan.now, memory.dismissedPrompts ?? []),
+    ];
   });
+
+  const replaced = active.filter(
+    (notification) =>
+      notification.card !== undefined &&
+      selected.has(
+        reminderOccurrence(notification.personId, notification.candidate)
+      )
+  );
+
+  const replacedIds = new Set(replaced.map((notification) => notification.id));
 
   return {
     ...memory,
     ...readMemory(memory, scan, fresh, sameScope, checked, invitations),
-    active: [...active, ...deliveries],
-    close,
+    active: [
+      ...active.filter((notification) => !replacedIds.has(notification.id)),
+      ...deliveries,
+    ],
+    close: [...close, ...replacedIds],
     deliveries,
     fired: [...fired],
     lastChecked: Option.some(checked),

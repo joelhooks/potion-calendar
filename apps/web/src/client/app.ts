@@ -122,6 +122,7 @@ import {
   settleMonthRead,
 } from "./month/update.js";
 import { navigationTransition, preserveMonthDisplay } from "./navigation.js";
+import { actOnReminderCard } from "./reminders/actions.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
@@ -956,10 +957,15 @@ const updateCore = (
           }
         : { model },
     Navigated: () => ({ model }),
-    ObservedNotification: ({ event, now }) =>
-      NotificationEvent.guards.Clicked(event)
+    ObservedNotification: ({ event, now }) => {
+      if (!NotificationEvent.guards.Clicked(event)) {
+        return observeReminder(model, event, now);
+      }
+
+      return event.notification.card === undefined
         ? selectReminderNotification(model, event.notification, dispatch)
-        : observeReminder(model, event, now),
+        : { model };
+    },
     PageHidden: () => leaveEditing(model),
     PreparedGestureHost: () => ({ model }),
     PreparedGestureTargets: () => ({ model }),
@@ -1325,6 +1331,8 @@ const updateCore = (
           }
         : model,
     }),
+    ReminderCardAction: ({ action, id, personId }) =>
+      actOnReminderCard(model, personId, id, action, dispatch),
     ReminderDeliveryCompleted: (result) =>
       completeReminderDelivery(model, result),
     ReminderEffectCompleted: () => ({ model }),

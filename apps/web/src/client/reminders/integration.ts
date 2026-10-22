@@ -16,6 +16,7 @@ const inputsChanged = (previous: AppModel, next: AppModel): boolean =>
   previous.upcoming.accepted !== next.upcoming.accepted ||
   previous.session !== next.session ||
   previous.settings !== next.settings ||
+  previous.desktop.availability !== next.desktop.availability ||
   previous.reminders.context.permission !== next.reminders.context.permission;
 
 const startReminders = (previous: AppModel, model: AppModel): Result => {
@@ -87,7 +88,11 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
     if (snapshot !== undefined) {
       const scanned = commitReminders(
         model,
-        stepReminder(model.reminders, { ...snapshot, type: "SCAN" })
+        stepReminder(model.reminders, {
+          ...snapshot,
+          type: "SCAN",
+          webCards: model.desktop.availability === "unavailable",
+        })
       );
 
       ({ model } = scanned);

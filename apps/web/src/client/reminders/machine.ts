@@ -56,7 +56,11 @@ export const reminderMachine = setupEffect({
 
       return {
         context: {
-          active: granted ? context.active : [],
+          active: granted
+            ? context.active
+            : context.active.filter(
+                (notification) => notification.card !== undefined
+              ),
           close: granted
             ? []
             : context.active.map((notification) => notification.id),
@@ -83,8 +87,8 @@ export const reminderMachine = setupEffect({
         target: permissionState(event.permission),
       };
     },
-    START: ({ context, event }) => ({
-      context: {
+    START: ({ context, event }) => {
+      const next: typeof ReminderMemory.Type = {
         ...emptyMemory(),
         close: context.active.map((notification) => notification.id),
         fired: context.fired,
@@ -95,9 +99,16 @@ export const reminderMachine = setupEffect({
           )
         ),
         permission: context.permission,
-      },
-      target: permissionState(context.permission),
-    }),
+      };
+
+      return {
+        context:
+          context.dismissedPrompts === undefined
+            ? next
+            : { ...next, dismissedPrompts: context.dismissedPrompts },
+        target: permissionState(context.permission),
+      };
+    },
     STOP: ({ context }) => ({
       context: {
         active: [],

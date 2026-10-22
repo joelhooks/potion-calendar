@@ -337,6 +337,7 @@ it.effect.prop(
           personId: "fixture-person",
           scope: "generated-selection",
           type: "SCAN",
+          webCards: false,
         });
 
         observed.push(...snapshot.context.deliveries.map(emittedKey));

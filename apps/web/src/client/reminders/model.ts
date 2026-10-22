@@ -21,8 +21,21 @@ export const ReminderCandidate = Schema.Struct({
 
 export type ReminderCandidateValue = typeof ReminderCandidate.Type;
 
+export const ReminderCardAction = Schema.Literals([
+  "join",
+  "show",
+  "email",
+  "dismiss",
+]);
+
+export const ReminderCard = Schema.Struct({
+  kind: Schema.Literals(["upcoming", "reminder"]),
+  state: Schema.Literals(["active", "resolved"]),
+});
+
 export const NotificationContent = Schema.Struct({
   candidate: ReminderCandidate,
+  card: Schema.optional(ReminderCard),
   id: Schema.String,
   personId: Schema.String,
   title: Schema.String,
@@ -32,6 +45,7 @@ export type NotificationContentValue = typeof NotificationContent.Type;
 
 export const NotificationEvent = Schema.TaggedUnion({
   Clicked: { notification: NotificationContent },
+  Closed: { id: Schema.String, personId: Schema.String },
   Failed: { id: Schema.String, personId: Schema.String },
   Permission: { permission: NotificationPermission, personId: Schema.String },
 });
@@ -60,6 +74,7 @@ export const ReminderMemory = Schema.Struct({
   close: Schema.Array(Schema.String),
   coverage: Schema.Option(Schema.Finite),
   deliveries: Schema.Array(NotificationContent),
+  dismissedPrompts: Schema.optional(Schema.Array(Schema.String)),
   fired: Schema.Array(Schema.String),
   invitations: Schema.Record(
     Schema.String,
@@ -95,4 +110,5 @@ export const ReminderScan = Schema.Struct({
   now: Schema.Finite,
   personId: Schema.String,
   scope: Schema.String,
+  webCards: Schema.optional(Schema.Boolean),
 });

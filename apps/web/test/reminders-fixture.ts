@@ -101,5 +101,6 @@ export const scanReminders = (
     personId: "fixture-person",
     scope: "fixture-selection",
     type: "SCAN",
+    webCards: false,
     ...changes,
   });

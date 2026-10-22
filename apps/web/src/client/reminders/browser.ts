@@ -32,8 +32,9 @@ export const browserNotifications = (): NotificationPortService => {
     yield* Effect.sync(() => {
       for (const id of ids) {
         const key = handleKey(personId, id);
-        handles.get(key)?.notification.close();
+        const handle = handles.get(key);
         handles.delete(key);
+        handle?.notification.close();
       }
     });
   });
@@ -57,14 +58,21 @@ export const browserNotifications = (): NotificationPortService => {
       catch: () => new NotificationFailure({ reason: "delivery" }),
       try: () => {
         const native = new Notification(content.title, {
-          body: content.candidate.body,
+          body:
+            content.card === undefined
+              ? content.candidate.body
+              : `${content.candidate.body}\nClick to open Calendar and view this card. Actions are available on the card in Calendar, not in this plain browser notification.`,
           tag: JSON.stringify([content.personId, content.candidate.identity]),
         });
 
         const key = handleKey(content.personId, content.id);
         handles.set(key, { notification: native, personId: content.personId });
         native.addEventListener("click", () => {
-          if (connected.has(content.personId)) {
+          if (
+            connected.has(content.personId) &&
+            (content.card === undefined ||
+              handles.get(key)?.notification === native)
+          ) {
             window.focus();
             window.dispatchEvent(
               new CustomEvent(channel, {
@@ -76,6 +84,14 @@ export const browserNotifications = (): NotificationPortService => {
           }
         });
         native.addEventListener("error", () => {
+          if (content.card !== undefined) {
+            if (handles.get(key)?.notification !== native) {
+              return;
+            }
+
+            handles.delete(key);
+          }
+
           native.close();
           window.dispatchEvent(
             new CustomEvent(channel, {
@@ -89,6 +105,17 @@ export const browserNotifications = (): NotificationPortService => {
         native.addEventListener("close", () => {
           if (handles.get(key)?.notification === native) {
             handles.delete(key);
+
+            if (content.card !== undefined && connected.has(content.personId)) {
+              window.dispatchEvent(
+                new CustomEvent(channel, {
+                  detail: NotificationEvent.cases.Closed.make({
+                    id: content.id,
+                    personId: content.personId,
+                  }),
+                })
+              );
+            }
           }
         });
       },

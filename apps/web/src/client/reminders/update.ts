@@ -2,6 +2,7 @@ import { Option } from "effect";
 
 import type { AppModel, update } from "../app.js";
 import type { Message } from "../message.js";
+import { reminderOccurrence, resolveReminderCard } from "./action-machine.js";
 import {
   CloseReminderNotifications,
   DeliverReminderNotification,
@@ -27,9 +28,13 @@ export const commitReminders = (
                 personId: model.person.value,
               }),
             ]),
-        ...state.context.deliveries.map((notification) =>
-          DeliverReminderNotification({ notification })
-        ),
+        ...state.context.deliveries
+          .filter(
+            (notification) =>
+              notification.card === undefined ||
+              state.context.permission === "granted"
+          )
+          .map((notification) => DeliverReminderNotification({ notification })),
       ]
     : [],
   model: {
@@ -40,6 +45,47 @@ export const commitReminders = (
     },
   },
 });
+
+export const resolveReminderPresentation = (
+  model: AppModel,
+  personId: string,
+  id: string,
+  event: "RESOLVE" | "EXPIRE" = "RESOLVE"
+): Result => {
+  if (!Option.contains(model.person, personId)) {
+    return { model };
+  }
+
+  const notification = model.reminders.context.active.find(
+    (item) => item.id === id && item.personId === personId
+  );
+
+  if (
+    notification?.card === undefined ||
+    resolveReminderCard(notification.card, event).state !== "resolved"
+  ) {
+    return { model };
+  }
+
+  const dismissed = model.reminders.context.dismissedPrompts ?? [];
+  const occurrence = reminderOccurrence(personId, notification.candidate);
+
+  return commitReminders(model, {
+    ...model.reminders,
+    context: {
+      ...model.reminders.context,
+      active: model.reminders.context.active.filter((item) => item.id !== id),
+      close: [id],
+      deliveries: [],
+      dismissedPrompts:
+        event === "RESOLVE" &&
+        notification.card.kind === "upcoming" &&
+        !dismissed.includes(occurrence)
+          ? [...dismissed, occurrence]
+          : dismissed,
+    },
+  });
+};
 
 export const requestReminders = (model: AppModel): Result => {
   if (Option.isNone(model.person)) {
@@ -128,7 +174,8 @@ const failNotification = (
         context: {
           ...model.reminders.context,
           active: model.reminders.context.active.filter(
-            (notification) => notification.id !== id
+            (notification) =>
+              notification.id !== id || notification.card !== undefined
           ),
         },
         failure: report
@@ -144,16 +191,33 @@ const failNotification = (
 export const completeReminderDelivery = (
   model: AppModel,
   result: ReturnType<typeof Message.ReminderDeliveryCompleted>
-): Result =>
-  Option.isSome(result.failure)
-    ? failNotification(
-        model,
-        result.personId,
-        result.id,
-        result.failure.value.reason !== "expired" &&
-          result.failure.value.reason !== "inactive"
-      )
-    : { model };
+): Result => {
+  if (Option.isNone(result.failure)) {
+    return { model };
+  }
+
+  const { reason } = result.failure.value;
+
+  const notification = model.reminders.context.active.find(
+    (item) => item.id === result.id && item.personId === result.personId
+  );
+
+  if (reason === "expired" && notification?.card !== undefined) {
+    return resolveReminderPresentation(
+      model,
+      result.personId,
+      result.id,
+      "EXPIRE"
+    );
+  }
+
+  return failNotification(
+    model,
+    result.personId,
+    result.id,
+    reason !== "expired" && reason !== "inactive"
+  );
+};
 
 export const observeReminder = (
   model: AppModel,
@@ -176,6 +240,10 @@ export const observeReminder = (
       }),
       failure: Option.none(),
     });
+  }
+
+  if (NotificationEvent.guards.Closed(event)) {
+    return { model };
   }
 
   return NotificationEvent.guards.Failed(event)

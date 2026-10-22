@@ -28,6 +28,7 @@ import { conferencingSaveNotice } from "./conferencing-save-notice.js";
 import { editorDialogs } from "./event-editor.js";
 import { gestureRefusalNotice } from "./gesture-refusal.js";
 import { instantSaveNotice } from "./instant-save-notice.js";
+import { reminderCards } from "./reminder-cards.js";
 import { searchPanel } from "./search.js";
 import { settingsPage } from "./settings.js";
 import { shortcutsPage } from "./shortcuts-page.js";
@@ -83,6 +84,7 @@ const notificationLayers = (
   );
 
   const refreshNotices = calendarRefreshNotices(model, h);
+  const cards = reminderCards(model, h);
 
   const clipboardReady =
     Option.isSome(model.person) && Option.isSome(model.clipboard.sessionId);
@@ -100,7 +102,8 @@ const notificationLayers = (
     !undoReady &&
     BulkView.guards.Idle(model.editing.bulk) &&
     Option.isNone(model.calendar.rectangle) &&
-    refreshNotices.length === 0
+    refreshNotices.length === 0 &&
+    cards.length === 0
   ) {
     return [];
   }
@@ -131,6 +134,7 @@ const notificationLayers = (
       ],
       [
         ...refreshNotices,
+        ...cards,
         ...instantSaveNotice(model, h),
         ...bulkNotice(model, h),
         ...selectionRectangle(model, h),
