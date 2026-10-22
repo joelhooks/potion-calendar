@@ -24,6 +24,7 @@ const runGuard = Effect.fn("runEvidenceGuard")(function* runGuard(
     readonly allowed?: string;
     readonly measured?: string;
     readonly root?: string;
+    readonly matchLocation?: boolean;
   } = {}
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -58,6 +59,10 @@ const runGuard = Effect.fn("runEvidenceGuard")(function* runGuard(
 
   if (options.root !== undefined) {
     args.push("--root", options.root);
+  }
+
+  if (options.matchLocation === true) {
+    args.push("--match-location");
   }
 
   const result = yield* Effect.sync(() =>
@@ -148,14 +153,17 @@ it.layer(NodeServices.layer)("test evidence acceptance", (test) => {
   );
 
   test.effect(
-    "checks duplicate multiplicity, extra cases, names and exact locations",
+    "checks multiplicity and names by default and exact locations only on request",
     () =>
       Effect.gen(function* identityChecks() {
         const report = JSON.stringify(sample());
 
         const missingDuplicate = yield* runGuard(
           report,
-          JSON.stringify([inventoryCase, inventoryCase])
+          JSON.stringify([
+            inventoryCase,
+            { ...inventoryCase, location: { column: 4, line: 1 } },
+          ])
         );
 
         expect(missingDuplicate.reasons.map((entry) => entry.code)).toContain(
@@ -166,7 +174,8 @@ it.layer(NodeServices.layer)("test evidence acceptance", (test) => {
           report,
           JSON.stringify([
             { ...inventoryCase, location: { column: 1, line: 2 } },
-          ])
+          ]),
+          { matchLocation: true }
         );
 
         expect(changedLocation.reasons.map((entry) => entry.code)).toContain(
@@ -196,6 +205,84 @@ it.layer(NodeServices.layer)("test evidence acceptance", (test) => {
         );
 
         expect(relative.accepted).toBe(true);
+      })
+  );
+
+  test.effect(
+    "accepts the frozen Effect-wrapper column mismatch unless exact location is requested",
+    () =>
+      Effect.gen(function* effectWrapperLocations() {
+        const fs = yield* FileSystem.FileSystem;
+
+        const report = yield* fs.readFileString(
+          `${fixtures}/effect-columns-report.json`
+        );
+
+        const expected = yield* fs.readFileString(
+          `${fixtures}/effect-columns-inventory.json`
+        );
+
+        const accepted = yield* runGuard(report, expected);
+        expect(accepted.accepted).toBe(true);
+        expect(accepted.exit).toBe(0);
+        expect(accepted.reasons).toEqual([]);
+
+        const exact = yield* runGuard(report, expected, {
+          matchLocation: true,
+        });
+
+        expect(exact.accepted).toBe(false);
+        expect(exact.exit).toBe(1);
+
+        const matching = yield* runGuard(JSON.stringify(sample()), inventory, {
+          matchLocation: true,
+        });
+
+        expect(matching.accepted).toBe(true);
+        expect(exact.reasons.map((entry) => entry.code).toSorted()).toEqual([
+          ...Array.from({ length: 8 }, () => "extra-case"),
+          ...Array.from({ length: 8 }, () => "missing-case"),
+        ]);
+
+        const allowances = JSON.stringify([
+          {
+            ...inventoryCase,
+            location: { column: 4, line: 1 },
+            statuses: ["pending"],
+          },
+        ]);
+
+        const measured = JSON.stringify([
+          { ...inventoryCase, location: { column: 4, line: 1 } },
+        ]);
+
+        const allowed = yield* runGuard(
+          JSON.stringify(sample("pending", null)),
+          inventory,
+          { allowed: allowances, measured: "[]" }
+        );
+
+        expect(allowed.accepted).toBe(true);
+
+        const timed = yield* runGuard(
+          JSON.stringify(sample("passed", null)),
+          inventory,
+          { measured }
+        );
+
+        expect(timed.reasons.map((entry) => entry.code)).toEqual([
+          "non-finite-duration",
+        ]);
+
+        const strictAllowance = yield* runGuard(
+          JSON.stringify(sample("pending", null)),
+          inventory,
+          { allowed: allowances, matchLocation: true, measured: "[]" }
+        );
+
+        expect(strictAllowance.reasons.map((entry) => entry.code)).toEqual([
+          "invalid-input",
+        ]);
       })
   );
 

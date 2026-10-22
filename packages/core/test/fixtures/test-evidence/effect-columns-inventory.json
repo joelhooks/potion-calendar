@@ -1,0 +1,66 @@
+[
+  {
+    "file": "apps/web/test/edge-scroll-fixtures.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 93
+    },
+    "name": "exports twelve frozen native edge-scroll previews with exact step-driven scripts"
+  },
+  {
+    "file": "apps/web/test/email-participants.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 48
+    },
+    "name": "the actual details button dispatches the safe external workflow, while hidden/solo/omitted native sequences stay inert"
+  },
+  {
+    "file": "apps/web/test/email-participants.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 72
+    },
+    "name": "exports twenty actual-root mail workflow scenes and checks each exact proof with labelled stand-in geometry"
+  },
+  {
+    "file": "apps/web/test/email-participants.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 217
+    },
+    "name": "refusal copy and disabled command rows render without opening a mail workflow"
+  },
+  {
+    "file": "apps/web/test/email-participants.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 310
+    },
+    "name": "the mail action does not hide pre-existing attendee presentation on non-default sources"
+  },
+  {
+    "file": "apps/web/test/empty-states-fixtures.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 14
+    },
+    "name": "exports twenty actual-app empty/unavailable scenes with geometry and state proofs"
+  },
+  {
+    "file": "apps/web/test/held-mod-fixtures.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 20
+    },
+    "name": "exports sixteen actual-root held-modifier results with loaded preconditions and executes the exact embedded scripts with labelled stand-in boxes"
+  },
+  {
+    "file": "apps/web/test/location-maps-fixtures.dom.test.ts",
+    "location": {
+      "column": 1,
+      "line": 24
+    },
+    "name": "exports sixteen saved-preference route snapshots and executes each exact proof, including negative preconditions"
+  }
+]

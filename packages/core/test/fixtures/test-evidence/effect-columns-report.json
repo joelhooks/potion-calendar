@@ -1,0 +1,122 @@
+{
+  "numFailedTests": 0,
+  "numPassedTests": 8,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "numTotalTests": 8,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 1215.5355779999998,
+          "fullName": "exports twelve frozen native edge-scroll previews with exact step-driven scripts",
+          "location": {
+            "column": 4,
+            "line": 93
+          },
+          "status": "passed",
+          "title": "exports twelve frozen native edge-scroll previews with exact step-driven scripts"
+        }
+      ],
+      "name": "apps/web/test/edge-scroll-fixtures.dom.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 31.510890000000018,
+          "fullName": "the actual details button dispatches the safe external workflow, while hidden/solo/omitted native sequences stay inert",
+          "location": {
+            "column": 4,
+            "line": 48
+          },
+          "status": "passed",
+          "title": "the actual details button dispatches the safe external workflow, while hidden/solo/omitted native sequences stay inert"
+        },
+        {
+          "ancestorTitles": [],
+          "duration": 687.984827,
+          "fullName": "exports twenty actual-root mail workflow scenes and checks each exact proof with labelled stand-in geometry",
+          "location": {
+            "column": 4,
+            "line": 72
+          },
+          "status": "passed",
+          "title": "exports twenty actual-root mail workflow scenes and checks each exact proof with labelled stand-in geometry"
+        },
+        {
+          "ancestorTitles": [],
+          "duration": 114.09328899999991,
+          "fullName": "refusal copy and disabled command rows render without opening a mail workflow",
+          "location": {
+            "column": 4,
+            "line": 217
+          },
+          "status": "passed",
+          "title": "refusal copy and disabled command rows render without opening a mail workflow"
+        },
+        {
+          "ancestorTitles": [],
+          "duration": 22.27238400000033,
+          "fullName": "the mail action does not hide pre-existing attendee presentation on non-default sources",
+          "location": {
+            "column": 4,
+            "line": 310
+          },
+          "status": "passed",
+          "title": "the mail action does not hide pre-existing attendee presentation on non-default sources"
+        }
+      ],
+      "name": "apps/web/test/email-participants.dom.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 856.2664610000002,
+          "fullName": "exports twenty actual-app empty/unavailable scenes with geometry and state proofs",
+          "location": {
+            "column": 4,
+            "line": 14
+          },
+          "status": "passed",
+          "title": "exports twenty actual-app empty/unavailable scenes with geometry and state proofs"
+        }
+      ],
+      "name": "apps/web/test/empty-states-fixtures.dom.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 1004.9781660000001,
+          "fullName": "exports sixteen actual-root held-modifier results with loaded preconditions and executes the exact embedded scripts with labelled stand-in boxes",
+          "location": {
+            "column": 4,
+            "line": 20
+          },
+          "status": "passed",
+          "title": "exports sixteen actual-root held-modifier results with loaded preconditions and executes the exact embedded scripts with labelled stand-in boxes"
+        }
+      ],
+      "name": "apps/web/test/held-mod-fixtures.dom.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 953.41697,
+          "fullName": "exports sixteen saved-preference route snapshots and executes each exact proof, including negative preconditions",
+          "location": {
+            "column": 4,
+            "line": 24
+          },
+          "status": "passed",
+          "title": "exports sixteen saved-preference route snapshots and executes each exact proof, including negative preconditions"
+        }
+      ],
+      "name": "apps/web/test/location-maps-fixtures.dom.test.ts"
+    }
+  ]
+}

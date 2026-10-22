@@ -3,10 +3,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const usage = `Usage: node scripts/check-test-evidence.mjs --report FILE --inventory FILE --target-exit INTEGER [--root DIR] [--allow FILE] [--measured FILE]
+const usage = `Usage: node scripts/check-test-evidence.mjs --report FILE --inventory FILE --target-exit INTEGER [--root DIR] [--allow FILE] [--measured FILE] [--match-location]
 Inventory: Vitest list --json for the same commit and selection flags.
 Docs: https://vitest.dev/guide/cli.html#vitest-list
 List names use suite > test; reporter hierarchy is reconstructed without replacing literal delimiters.
+Identity defaults to file and hierarchical name with duplicate multiplicity.
+Match-location: opt into exact line and column matching for all identity-scoped inputs.
 Allow: inventory-shaped rows with statuses arrays; inventory membership is never waived.
 Measured: inventory-shaped rows requiring finite nonnegative durations; defaults to all cases.
 An empty measured array permits explicitly allowed untimed cases.
@@ -55,8 +57,8 @@ const location = (value) => {
   return [Number(value.line), Number(value.column)];
 };
 
-/** @param {unknown} row @param {string} root */
-const identity = (row, root) => {
+/** @param {unknown} row @param {string} root @param {boolean} matchLocation */
+const identity = (row, root, matchLocation) => {
   requireObject(row);
   requireText(row.file);
   requireText(row.name);
@@ -64,7 +66,7 @@ const identity = (row, root) => {
   return JSON.stringify([
     path.resolve(root, row.file),
     row.name,
-    location(row.location),
+    matchLocation ? location(row.location) : null,
   ]);
 };
 
@@ -108,8 +110,14 @@ const parseOptions = (args) => {
     "--measured",
   ]);
 
-  for (let index = 0; index < args.length; index += 2) {
+  for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
+
+    if (flag === "--match-location" && !options.has(flag)) {
+      options.set(flag, "true");
+      continue;
+    }
+
     const value = args[index + 1];
 
     if (
@@ -122,13 +130,14 @@ const parseOptions = (args) => {
     }
 
     options.set(flag, value);
+    index += 1;
   }
 
   return options;
 };
 
-/** @param {Map<string, string>} options @param {Map<string, number>} expected @param {string} root */
-const allowances = async (options, expected, root) => {
+/** @param {Map<string, string>} options @param {Map<string, number>} expected @param {string} root @param {boolean} matchLocation */
+const allowances = async (options, expected, root, matchLocation) => {
   /** @type {Map<string, Set<string>>} */
   const result = new Map();
   const file = options.get("--allow");
@@ -143,7 +152,7 @@ const allowances = async (options, expected, root) => {
 
   for (const row of rows) {
     requireObject(row);
-    const key = identity(row, root);
+    const key = identity(row, root, matchLocation);
     requireArray(row.statuses);
 
     const statuses = row.statuses.map((status) => {
@@ -168,8 +177,8 @@ const allowances = async (options, expected, root) => {
 
 /** @typedef {{code: string, detail: unknown}} Reason */
 
-/** @param {unknown} report @param {string} root @param {Set<string>} measured @param {Map<string, Set<string>>} allowed */
-const assertions = (report, root, measured, allowed) => {
+/** @param {unknown} report @param {string} root @param {Set<string>} measured @param {Map<string, Set<string>>} allowed @param {boolean} matchLocation */
+const assertions = (report, root, measured, allowed, matchLocation) => {
   requireObject(report);
   requireArray(report.testResults);
   /** @type {Reason[]} */
@@ -215,7 +224,8 @@ const assertions = (report, root, measured, allowed) => {
           location: row.location,
           name: [...ancestors, row.title].join(" > "),
         },
-        root
+        root,
+        matchLocation
       );
 
       keys.push(key);
@@ -313,22 +323,30 @@ const main = async () => {
   const root = path.resolve(options.get("--root") ?? process.cwd());
   const inventory = await readJson(inventoryFile);
   requireArray(inventory);
-  const expected = counts(inventory.map((row) => identity(row, root)));
+  const matchLocation = options.has("--match-location");
+
+  const expected = counts(
+    inventory.map((row) => identity(row, root, matchLocation))
+  );
+
   const measuredFile = options.get("--measured");
 
   const measuredRows =
     measuredFile === undefined ? inventory : await readJson(measuredFile);
 
   requireArray(measuredRows);
-  const measured = new Set(measuredRows.map((row) => identity(row, root)));
+
+  const measured = new Set(
+    measuredRows.map((row) => identity(row, root, matchLocation))
+  );
 
   if ([...measured].some((key) => !expected.has(key))) {
     throw new Error("Measured entries must identify expected cases");
   }
 
-  const allowed = await allowances(options, expected, root);
+  const allowed = await allowances(options, expected, root, matchLocation);
   const report = await readJson(reportFile);
-  const result = assertions(report, root, measured, allowed);
+  const result = assertions(report, root, measured, allowed, matchLocation);
 
   const reasons = [
     ...result.reasons,

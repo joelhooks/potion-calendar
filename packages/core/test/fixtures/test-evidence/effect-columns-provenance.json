@@ -1,0 +1,27 @@
+{
+  "baseline": "81c3178cc375336394446eb97b71b012cc8020ef",
+  "fixtures": {
+    "effect-columns-inventory.json": {
+      "sha256": "7e135866c72ea09171b8b6824442f4955a6c20a1d757d4e8e3805c01d1a41062"
+    },
+    "effect-columns-report.json": {
+      "sha256": "d9d1a5268d15dadad778c1b5ddc0a4e3f7aa57bb16531e0ac9703ded90715982"
+    }
+  },
+  "note": "Eight passing cases from the rejected byte control. Only checker-read fields are retained and file paths are repository-relative. All list columns are one; matching report columns are four. Target exit is zero. Exact location mode must still reject these rows.",
+  "sources": {
+    "inventory.json": {
+      "label": "shirley byte control original inventory.json",
+      "sha256": "420ba4719f4807cbad0ec902998b5922c7667b96e8266fc8158284aa26eb63cf"
+    },
+    "report.json": {
+      "label": "shirley byte control original report.json",
+      "sha256": "d4783e58ac328f38be3dd18b9553f43a62c93b5b9b5d4210d15a246d517aff28"
+    },
+    "verdict.log": {
+      "label": "shirley byte control original verdict.log",
+      "sha256": "569bbe357759d79b935c72ebeea2ec1036f2543b88afb71f99451136506b8bc5"
+    }
+  },
+  "targetExit": 0
+}
