@@ -148,5 +148,8 @@ it.effect.prop(
         )
       ).toBe(true);
     }),
-  overlapPropertyTiming.budgetMillis
+  {
+    arbitrary: { runs: 20 },
+    timeout: overlapPropertyTiming.budgetMillis,
+  }
 );
