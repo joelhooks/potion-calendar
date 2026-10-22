@@ -1,0 +1,69 @@
+{
+  "fixtures": {
+    "complete.json": {
+      "label": "direct reporter complete",
+      "preNormalizationSha256": "167bb40ca808d0618a474136dfdea710e685d3b998b8d168ccbcff4dae60ce7e",
+      "sha256": "b423d81d7b3cfd9ac54dfcad6557086e1e30c9760a3193eda1026050deb20d76"
+    },
+    "empty.json": {
+      "label": "direct reporter empty",
+      "preNormalizationSha256": "118ce35f7b7690da5b17a14945f9d1f84d7943333e16d59eb7d409efe325a63e",
+      "sha256": "ecdd99fa5faec546ce6a103d168adf14236d71584d9c470440b9cf6b4c50839d"
+    },
+    "error.json": {
+      "label": "direct reporter ignored error",
+      "preNormalizationSha256": "63667a485cf557ad1ee713150f44e917f339351fa1e71d540494b917f8c3f839",
+      "sha256": "b423d81d7b3cfd9ac54dfcad6557086e1e30c9760a3193eda1026050deb20d76"
+    },
+    "lime-missing-inventory.json": {
+      "label": "lime expected inventory reconstructed from bounded-workers-16/alone-01.json",
+      "preNormalizationSha256": "b7813e380b3f219a3d20c82fd1562931adeb4bd1aaaadb3fba5124508b7933d7",
+      "sha256": "bd17482032983b0c0ca533e385a31e58cfd4af81713f9427da4a7798bb57d52a"
+    },
+    "lime-missing.json": {
+      "label": "lime bounded-workers-16/loaded-05.json",
+      "preNormalizationSha256": "efd55cad21e1267c58b1a207a26ba9e767f71b2911a1c8538585dd76edfe34a6",
+      "sha256": "24c2947570ed767f23efa14b61259be3100e7d0ef2da2eda1909222404938772"
+    },
+    "pending.json": {
+      "label": "direct reporter pending",
+      "preNormalizationSha256": "1a25b3a268efb7b22339f6dc54cf77f361933fbe2acc95305405f76c3477a306",
+      "sha256": "8acef58ff504f3be981489c123abad20baefec404b9247c2f365e938369b9113"
+    },
+    "synthetic-inventory.json": {
+      "label": "direct reporter expected inventory",
+      "preNormalizationSha256": "d7628da2d075cc9e42ca8ce0b5cd913c953f73b757ff2f1c57ae3981bbdca515",
+      "sha256": "d8c78328707d3f57f20def589172ce1af5f4fb9ede7aff8d268e84dfdfe46957"
+    },
+    "warrenn-pending-inventory.json": {
+      "label": "warrenn expected inventory reconstructed from baseline/alone-01.json",
+      "preNormalizationSha256": "f3ffe961326d22c3d28105019c914cd32f90f14cfa09157543c62369ec20f227",
+      "sha256": "07498c61726fd3e3117ee9ba26ceed6dd5bee1e6ccf7b5c4c36f773689e01771"
+    },
+    "warrenn-pending.json": {
+      "label": "warrenn baseline/alone-04.json",
+      "preNormalizationSha256": "ad375bfaaff6e546c42995409cf4c78892732849543a16732642ad70ba7be060",
+      "sha256": "bfc4fc531f2d773870eb798b6a6a79876b1e65a57bbf80f0ae75dd21d32e2f32"
+    }
+  },
+  "note": "Only fields consumed by the checker are retained. File identities are repository-relative. Historical inventories are reconstructed from same-source complete baseline reports, not fresh list runs. Original source and pre-normalization fixture hashes identify private evidence; normalized hashes identify the checked-in bytes.",
+  "reporterSourceSha256": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+  "sources": {
+    "lime": {
+      "label": "lime bounded-workers-16/loaded-05.json",
+      "sha256": "c6e92bd87340f8d4b086888b0f2ae1293a835e6eb776f048cb08285f91a7a1a7"
+    },
+    "limeInventoryBaseline": {
+      "label": "lime bounded-workers-16/alone-01.json",
+      "sha256": "2addacea4fd112adb791fa8e14ee1557750db603f8ef7eaee9b40efb92b0259f"
+    },
+    "warrenn": {
+      "label": "warrenn baseline/alone-04.json",
+      "sha256": "e3d1897e85a07e9b550aacbfa4a24c7a47f9903174a4b9b13621001e9c1aa1bb"
+    },
+    "warrennInventoryBaseline": {
+      "label": "warrenn baseline/alone-01.json",
+      "sha256": "ce09470e4175655638114f25f1bb6b6483ecc28fbffd66a398d0dae1da6ecb9f"
+    }
+  }
+}

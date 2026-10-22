@@ -1,0 +1,10 @@
+[
+  {
+    "file": "synthetic/first.test.mjs",
+    "name": "first > control"
+  },
+  {
+    "file": "synthetic/second.test.mjs",
+    "name": "second > second"
+  }
+]

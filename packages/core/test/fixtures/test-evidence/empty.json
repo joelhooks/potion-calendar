@@ -1,0 +1,27 @@
+{
+  "numFailedTests": 0,
+  "numPassedTests": 1,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "numTotalTests": 1,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["first"],
+          "duration": 1,
+          "fullName": "first control",
+          "status": "passed",
+          "title": "control"
+        }
+      ],
+      "message": "",
+      "name": "synthetic/first.test.mjs"
+    },
+    {
+      "assertionResults": [],
+      "message": "",
+      "name": "synthetic/second.test.mjs"
+    }
+  ]
+}

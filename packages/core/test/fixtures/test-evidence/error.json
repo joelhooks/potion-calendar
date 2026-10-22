@@ -1,0 +1,35 @@
+{
+  "numFailedTests": 0,
+  "numPassedTests": 2,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "numTotalTests": 2,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["first"],
+          "duration": 1,
+          "fullName": "first control",
+          "status": "passed",
+          "title": "control"
+        }
+      ],
+      "message": "",
+      "name": "synthetic/first.test.mjs"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["second"],
+          "duration": 1,
+          "fullName": "second second",
+          "status": "passed",
+          "title": "second"
+        }
+      ],
+      "message": "",
+      "name": "synthetic/second.test.mjs"
+    }
+  ]
+}
