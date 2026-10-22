@@ -1,56 +1,111 @@
 import { CalendarEvent, CalendarStore } from "@calendar/calendar";
-import { calendarStoreContract } from "@calendar/calendar/testing";
+import { calendarStoreContractWith } from "@calendar/calendar/testing";
 import { expireCalendarRanges } from "@calendar/database/calendar-cache";
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer, Schema } from "effect";
+import { Clock, Effect, Predicate, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { afterAll, beforeAll } from "vitest";
 
 import {
   d1CalendarStore,
   calendarRangeTtlMs,
   calendarRangeCacheByteLimit,
 } from "../../src/server/calendar-store.js";
-import { calendarMigration, d1Fixture, makeD1Instance } from "./d1-fixture.js";
-
-describe("D1 contract histories", { timeout: 30_000 }, () => {
-  const instance = makeD1Instance();
-
-  // @effect-diagnostics-next-line asyncFunction:off -- Vitest owns the native fixture setup lifecycle.
-  beforeAll(async () => {
-    const database = await instance.getD1Database("DB");
-
-    const statements = calendarMigration
-      .split(";")
-      .map((statement) => statement.trim())
-      .filter(Boolean)
-      .map((statement) => database.prepare(statement));
-
-    await database.batch(statements);
-  });
-  afterAll(instance.dispose.bind(instance));
-
-  calendarStoreContract("D1 calendar store", () =>
-    Layer.unwrap(
-      Effect.gen(function* isolatedStore() {
-        const database = yield* Effect.promise(
-          instance.getD1Database.bind(instance, "DB", undefined)
-        );
-
-        yield* Effect.promise(
-          database.batch.bind(database, [
-            database.prepare("DELETE FROM calendar_range"),
-            database.prepare("DELETE FROM calendar_snapshot"),
-          ])
-        );
-
-        return d1CalendarStore(database, "person");
-      })
-    )
-  );
-});
+import { d1Fixture } from "./d1-fixture.js";
+import {
+  nativeHistoryStore,
+  runNativeStoreHistory,
+  StoreHistoryFixture,
+} from "./store-history-fixture.js";
 
 const ref = { accountId: "account", calendarId: "calendar" };
+
+describe("D1 contract histories", { timeout: 30_000 }, () => {
+  it.layer(StoreHistoryFixture.layer)((test) => {
+    calendarStoreContractWith("D1 calendar store", () => nativeHistoryStore, {
+      effect: test.effect,
+      history: runNativeStoreHistory,
+    });
+
+    test.effect(
+      "native history requests reset D1 and local services even for an empty history, preserve undefined cursors, and use the host test clock",
+      () =>
+        Effect.gen(function* historyIsolation() {
+          const fixture = yield* StoreHistoryFixture;
+          const clock = yield* Clock.currentTimeMillis;
+
+          const firstSteps = yield* fixture.run([
+            "read",
+            "emptySync",
+            "read",
+            "changedSync",
+            "read",
+            "write",
+            "read",
+          ]);
+
+          expect(firstSteps.map((step) => step._tag)).toEqual(
+            Array.from({ length: 7 }, () => "Observed")
+          );
+
+          const first = firstSteps.filter((step) =>
+            Predicate.isTagged(step, "Observed")
+          );
+
+          expect(first).toHaveLength(7);
+          expect(first.map((step) => step.clockMilliseconds)).toEqual(
+            Array.from({ length: 7 }, () => clock)
+          );
+          expect(first[6]?.snapshot).toEqual({
+            cursor: "cursor-3",
+            revision: 3,
+            version: 2,
+          });
+          expect(first[6]?.requests).toHaveLength(7);
+          expect(first[6]?.published).toEqual([
+            { ...ref, reason: "sync", version: 1 },
+            { ...ref, reason: "write", version: 2 },
+          ]);
+          expect(first[6]?.pending).toEqual([]);
+          expect(yield* fixture.run([])).toEqual([]);
+
+          const store = yield* CalendarStore.pipe(
+            Effect.provide(d1CalendarStore(fixture.database, "person"))
+          );
+
+          expect(yield* store.read(ref)).toEqual({
+            cursor: undefined,
+            revision: 0,
+            version: 0,
+          });
+          yield* TestClock.adjust(calendarRangeTtlMs + 1);
+          const laterClock = yield* Clock.currentTimeMillis;
+          const secondSteps = yield* fixture.run(["read", "emptySync", "read"]);
+
+          expect(secondSteps.map((step) => step._tag)).toEqual(
+            Array.from({ length: 3 }, () => "Observed")
+          );
+
+          const second = secondSteps.filter((step) =>
+            Predicate.isTagged(step, "Observed")
+          );
+
+          expect(second).toHaveLength(3);
+          expect(second[0]?.snapshot.cursor).toBeUndefined();
+          expect(second[0]?.snapshot.version).toBe(0);
+          expect(second[0]?.published).toEqual([]);
+          expect(second[0]?.requests).toHaveLength(1);
+          expect(second[2]?.requests).toHaveLength(2);
+          expect(
+            second[2]?.listed?.events.map((event) => event.eventId)
+          ).toEqual(["event"]);
+          expect(second[2]?.pending).toEqual([]);
+          expect(second.map((step) => step.clockMilliseconds)).toEqual(
+            Array.from({ length: 3 }, () => laterClock)
+          );
+        })
+    );
+  });
+});
 
 const range = { end: "2026-11-02T00:00:00Z", start: "2026-10-19T00:00:00Z" };
 

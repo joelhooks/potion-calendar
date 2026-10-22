@@ -1,215 +1,212 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer, Ref, Schema } from "effect";
+import type { Vitest } from "@effect/vitest";
+import { Clock, Effect, Layer, Predicate, Ref } from "effect";
+import type { Scope } from "effect";
 import * as Arbitrary from "effect/Arbitrary";
 
-import { CalendarService } from "../src/calendar.js";
 import { CalendarChanges } from "../src/changes.js";
 import type { CalendarChangedValue } from "../src/changes.js";
 import { GoogleCalendarClient } from "../src/google.js";
 import { CalendarStore } from "../src/store.js";
 import { CalendarSync, syncCalendar } from "../src/sync.js";
 import { fakeGoogle, ref, response, timedEvent } from "./fake-google.js";
+import { runStoreHistory, StoreCommands } from "./store-history.js";
+import type {
+  StoreCommandValue,
+  StoreObservationValue,
+} from "./store-history.js";
 
-const histories = Arbitrary.schema(
-  Schema.Array(
-    Schema.Literals(["read", "emptySync", "changedSync", "write"])
-  ).check(Schema.isMaxLength(20))
-);
+const histories = Arbitrary.schema(StoreCommands);
 
-const range = {
-  end: "2026-04-01T00:00:00-07:00",
-  start: "2026-03-01T00:00:00-08:00",
-};
-
-export const calendarStoreContract = <E>(
+export const calendarStoreContractWith = <E, R, HistoryError = never>(
   name: string,
-  makeStoreLayer: () => Layer.Layer<CalendarStore, E>
+  makeStoreLayer: () => Layer.Layer<CalendarStore, E, R>,
+  options: {
+    readonly effect: Vitest.Tester<R | Scope.Scope>;
+    readonly history?: (
+      commands: readonly StoreCommandValue[]
+    ) => Effect.Effect<readonly StoreObservationValue[], HistoryError, R>;
+  }
 ) =>
   describe(name, () => {
-    it.effect(
-      "a 5000-change sync commits only bounded cursor and version metadata",
-      () =>
-        Effect.gen(function* largeSyncMetadata() {
-          const items = Array.from({ length: 5000 }, (_, index) =>
-            timedEvent(`event-${index}`)
-          );
+    const test = options.effect;
 
-          const fake = yield* fakeGoogle([
-            response(200, {
-              items: items.slice(0, 2500),
-              nextPageToken: "second",
-            }),
-            response(200, { items: items.slice(2500), nextSyncToken: "large" }),
-          ]);
+    test("a 5000-change sync commits only bounded cursor and version metadata", () =>
+      Effect.gen(function* largeSyncMetadata() {
+        const items = Array.from({ length: 5000 }, (_, index) =>
+          timedEvent(`event-${index}`)
+        );
 
-          const published = yield* Ref.make<readonly CalendarChangedValue[]>(
-            []
-          );
+        const fake = yield* fakeGoogle([
+          response(200, {
+            items: items.slice(0, 2500),
+            nextPageToken: "second",
+          }),
+          response(200, { items: items.slice(2500), nextSyncToken: "large" }),
+        ]);
 
-          const signals = Layer.succeed(CalendarChanges, {
-            publish: (change) =>
-              Ref.update(published, (previous) => [...previous, change]),
+        const published = yield* Ref.make<readonly CalendarChangedValue[]>([]);
+
+        const signals = Layer.succeed(CalendarChanges, {
+          publish: (change) =>
+            Ref.update(published, (previous) => [...previous, change]),
+        });
+
+        const base = Layer.mergeAll(
+          GoogleCalendarClient.layer.pipe(Layer.provide(fake.layer)),
+          makeStoreLayer(),
+          signals
+        );
+
+        const layer = CalendarSync.layer.pipe(Layer.provideMerge(base));
+        yield* Effect.gen(function* verifyLargeSync() {
+          const store = yield* CalendarStore;
+          expect(yield* syncCalendar(ref)).toEqual({
+            changed: 5000,
+            cursor: "large",
+            version: 1,
           });
-
-          const base = Layer.mergeAll(
-            GoogleCalendarClient.layer.pipe(Layer.provide(fake.layer)),
-            makeStoreLayer(),
-            signals
+          const large = yield* store.read(ref);
+          expect(large).toEqual({ cursor: "large", revision: 1, version: 1 });
+          expect(yield* Ref.get(published)).toEqual([
+            { ...ref, reason: "sync", version: 1 },
+          ]);
+          yield* Ref.set(fake.pending, [
+            response(200, {
+              items: [timedEvent("one")],
+              nextSyncToken: "small",
+            }),
+          ]);
+          expect(yield* syncCalendar(ref)).toEqual({
+            changed: 1,
+            cursor: "small",
+            version: 2,
+          });
+          const small = yield* store.read(ref);
+          expect(small).toEqual({ cursor: "small", revision: 2, version: 2 });
+          expect(JSON.stringify(large).length).toBe(
+            JSON.stringify(small).length
           );
-
-          const layer = CalendarSync.layer.pipe(Layer.provideMerge(base));
-          yield* Effect.gen(function* verifyLargeSync() {
-            const store = yield* CalendarStore;
-            expect(yield* syncCalendar(ref)).toEqual({
-              changed: 5000,
-              cursor: "large",
-              version: 1,
-            });
-            const large = yield* store.read(ref);
-            expect(large).toEqual({ cursor: "large", revision: 1, version: 1 });
-            expect(yield* Ref.get(published)).toEqual([
-              { ...ref, reason: "sync", version: 1 },
-            ]);
-            yield* Ref.set(fake.pending, [
-              response(200, {
-                items: [timedEvent("one")],
-                nextSyncToken: "small",
-              }),
-            ]);
-            expect(yield* syncCalendar(ref)).toEqual({
-              changed: 1,
-              cursor: "small",
-              version: 2,
-            });
-            const small = yield* store.read(ref);
-            expect(small).toEqual({ cursor: "small", revision: 2, version: 2 });
-            expect(JSON.stringify(large).length).toBe(
-              JSON.stringify(small).length
-            );
-            expect(yield* Ref.get(fake.pending)).toEqual([]);
-          }).pipe(Effect.provide(layer));
-        })
-    );
-    it.effect.prop(
+          expect(yield* Ref.get(fake.pending)).toEqual([]);
+        }).pipe(Effect.provide(layer));
+      }));
+    test.prop(
       "only calendar changes invalidate ranges; every successful mutation publishes its version",
       { commands: histories },
       ({ commands }) =>
         Effect.gen(function* cacheHistory() {
-          const fake = yield* fakeGoogle();
+          const clockMilliseconds = yield* Clock.currentTimeMillis;
 
-          const published = yield* Ref.make<readonly CalendarChangedValue[]>(
-            []
-          );
+          const observations = yield* options.history === undefined
+            ? runStoreHistory(commands, makeStoreLayer)
+            : options.history(commands);
 
-          const signals = Layer.succeed(CalendarChanges, {
-            publish: (change) =>
-              Ref.update(published, (previous) => [...previous, change]),
-          });
+          let cached = false;
+          let version = 0;
+          let revision = 0;
+          let cursor: string | undefined;
+          let requestCount = 0;
+          const expectedChanges: CalendarChangedValue[] = [];
 
-          const base = Layer.mergeAll(
-            GoogleCalendarClient.layer.pipe(Layer.provide(fake.layer)),
-            makeStoreLayer(),
-            fake.layer,
-            signals
-          );
+          for (const [index, observation] of observations.entries()) {
+            const command = commands[index];
 
-          const layer = Layer.merge(
-            CalendarService.layer,
-            CalendarSync.layer
-          ).pipe(Layer.provideMerge(base));
+            expect(observation.command).toBe(command);
 
-          yield* Effect.gen(function* runHistory() {
-            const calendar = yield* CalendarService;
-            const store = yield* CalendarStore;
-            let cached = false;
-            let version = 0;
-            let requestCount = 0;
-            const expectedChanges: CalendarChangedValue[] = [];
+            if (Predicate.isTagged(observation, "Failed")) {
+              expect(
+                observation._tag,
+                `${command} failed during ${observation.phase}: ${observation.cause}`
+              ).toBe("Observed");
+              continue;
+            }
 
-            for (const command of commands) {
-              if (command === "read") {
-                if (!cached) {
-                  yield* Ref.set(fake.pending, [
-                    response(200, { items: [timedEvent("event")] }),
-                  ]);
-                  requestCount += 1;
-                }
+            expect(observation.clockMilliseconds).toBe(clockMilliseconds);
 
-                const listed = yield* calendar.listEvents({
-                  calendars: [ref],
-                  range,
-                });
-
-                expect(listed.versions).toEqual([{ ...ref, version }]);
-                expect(listed.events.map((event) => event.eventId)).toEqual([
-                  "event",
-                ]);
-                cached = true;
-              } else if (command === "write") {
-                yield* Ref.set(fake.pending, [
-                  response(200, timedEvent("event")),
-                  response(200, timedEvent("event", "Edited")),
-                ]);
-                yield* calendar.updateEvent({
-                  ...ref,
-                  changes: { title: "Edited" },
-                  eventId: "event",
-                  scope: "single",
-                });
-                version += 1;
-                requestCount += 2;
-                cached = false;
-                expectedChanges.push({ ...ref, reason: "write", version });
-              } else {
-                yield* Ref.set(fake.pending, [
-                  response(200, {
-                    items: command === "emptySync" ? [] : [timedEvent("event")],
-                    nextSyncToken: "cursor",
-                  }),
-                ]);
-                const result = yield* syncCalendar(ref);
+            if (command === "read") {
+              if (!cached) {
                 requestCount += 1;
-
-                if (command === "changedSync") {
-                  version += 1;
-                  cached = false;
-                  expectedChanges.push({ ...ref, reason: "sync", version });
-                }
-
-                expect(result.version).toBe(version);
               }
 
-              expect((yield* store.read(ref)).version).toBe(version);
-              expect(yield* Ref.get(published)).toEqual(expectedChanges);
-              expect(yield* Ref.get(fake.requests)).toHaveLength(requestCount);
-              expect(yield* Ref.get(fake.pending)).toEqual([]);
+              expect(observation.listed?.versions).toEqual([
+                { ...ref, version },
+              ]);
+              expect(
+                observation.listed?.events.map((event) => event.eventId)
+              ).toEqual(["event"]);
+              expect(observation.synced).toBeUndefined();
+              cached = true;
+            } else if (command === "write") {
+              version += 1;
+              revision += 1;
+              requestCount += 2;
+              cached = false;
+              expectedChanges.push({ ...ref, reason: "write", version });
+              expect(observation.listed).toBeUndefined();
+              expect(observation.synced).toBeUndefined();
+            } else {
+              const syncRequest = observation.requests[requestCount];
+
+              const query = new URL(
+                syncRequest?.path ?? "/",
+                "https://fixture.test"
+              ).searchParams;
+
+              expect(query.get("syncToken")).toBe(cursor ?? null);
+              cursor = `cursor-${index}`;
+              revision += 1;
+              requestCount += 1;
+
+              if (command === "changedSync") {
+                version += 1;
+                cached = false;
+                expectedChanges.push({ ...ref, reason: "sync", version });
+              }
+
+              expect(observation.synced).toEqual({
+                changed: command === "emptySync" ? 0 : 1,
+                cursor,
+                version,
+              });
+              expect(observation.listed).toBeUndefined();
             }
-          }).pipe(Effect.provide(layer));
+
+            expect(observation.snapshot.cursor).toBe(cursor);
+            expect(observation.snapshot.revision).toBe(revision);
+            expect(observation.snapshot.version).toBe(version);
+            expect(observation.published).toEqual(expectedChanges);
+            expect(observation.requests).toHaveLength(requestCount);
+            expect(observation.pending).toEqual([]);
+          }
+
+          expect(observations).toHaveLength(commands.length);
         })
     );
 
-    it.effect(
-      "an expired concurrent pull cannot clear a newer committed cursor",
-      () =>
-        Effect.gen(function* staleReset() {
-          const fake = yield* fakeGoogle([response(410)]);
+    test("an expired concurrent pull cannot clear a newer committed cursor", () =>
+      Effect.gen(function* staleReset() {
+        const fake = yield* fakeGoogle([response(410)]);
 
-          const base = Layer.merge(
-            GoogleCalendarClient.layer.pipe(Layer.provide(fake.layer)),
-            makeStoreLayer()
-          );
+        const base = Layer.merge(
+          GoogleCalendarClient.layer.pipe(Layer.provide(fake.layer)),
+          makeStoreLayer()
+        );
 
-          const layer = CalendarSync.layer.pipe(Layer.provideMerge(base));
-          yield* Effect.gen(function* runStaleReset() {
-            const sync = yield* CalendarSync;
-            const store = yield* CalendarStore;
-            const failure = yield* sync.pull(ref).pipe(Effect.flip);
-            expect(failure._tag).toBe("SyncExpired");
-            expect(yield* store.commit(ref, 0, 0, "newer")).toBe(true);
-            const error = yield* sync.reset(ref, 0).pipe(Effect.flip);
-            expect(error._tag).toBe("Provider");
-            expect((yield* store.read(ref)).cursor).toBe("newer");
-          }).pipe(Effect.provide(layer));
-        })
-    );
+        const layer = CalendarSync.layer.pipe(Layer.provideMerge(base));
+        yield* Effect.gen(function* runStaleReset() {
+          const sync = yield* CalendarSync;
+          const store = yield* CalendarStore;
+          const failure = yield* sync.pull(ref).pipe(Effect.flip);
+          expect(failure._tag).toBe("SyncExpired");
+          expect(yield* store.commit(ref, 0, 0, "newer")).toBe(true);
+          const error = yield* sync.reset(ref, 0).pipe(Effect.flip);
+          expect(error._tag).toBe("Provider");
+          expect((yield* store.read(ref)).cursor).toBe("newer");
+        }).pipe(Effect.provide(layer));
+      }));
   });
+
+export const calendarStoreContract = <E>(
+  name: string,
+  makeStoreLayer: () => Layer.Layer<CalendarStore, E>
+) => calendarStoreContractWith(name, makeStoreLayer, { effect: it.effect });
