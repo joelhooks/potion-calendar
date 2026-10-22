@@ -10,77 +10,123 @@ class ConferencingDatabase extends Context.Service<
   Effect.Success<typeof d1Fixture>
 >()("test/ConferencingDatabase") {}
 
+const Preference = Schema.Literals(["none", "googleMeet", "unset"]);
+
+const conferencingFixture = Effect.fnUntraced(function* conferencingFixture() {
+  const database = yield* ConferencingDatabase;
+  const personId = "conferencing-race-person";
+  const accountId = "conferencing-race-account";
+
+  const batch = [
+    database
+      .prepare("DELETE FROM calendar_account_conferencing WHERE person_id = ?")
+      .bind(personId),
+    database
+      .prepare("DELETE FROM calendar_account_disconnect WHERE person_id = ?")
+      .bind(personId),
+    database.prepare("DELETE FROM account WHERE userId = ?").bind(personId),
+    database
+      .prepare(
+        'INSERT OR IGNORE INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)'
+      )
+      .bind(personId, "Race", "conferencing-race@example.test"),
+    ...[accountId, "conferencing-race-survivor"].map((id) =>
+      database
+        .prepare(
+          "INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt, disconnected) VALUES (?, ?, 'google', ?, 0, 0, 0)"
+        )
+        .bind(id, id, personId)
+    ),
+  ];
+
+  yield* Effect.tryPromise({
+    catch: (cause) =>
+      new Cause.UnknownError(cause, "Conferencing race setup failed"),
+    // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+    try: () => database.batch(batch),
+  });
+
+  return {
+    accountId,
+    database,
+    disconnect: accountDisconnectRepository(database, personId),
+    personId,
+    preference: accountConferencingDefaultRepository(database, personId),
+  };
+});
+
+const preferenceRace = Effect.fnUntraced(function* preferenceRace(input: {
+  readonly reverse: boolean;
+  readonly value: typeof Preference.Type;
+}) {
+  const { accountId, disconnect, preference } = yield* conferencingFixture();
+  const write = preference.set({ accountId, value: input.value });
+  const reserve = disconnect.begin(accountId);
+
+  yield* Effect.all(input.reverse ? [reserve, write] : [write, reserve], {
+    concurrency: "unbounded",
+  });
+
+  expect(yield* disconnect.load(accountId)).toMatchObject({
+    phase: "reserved",
+  });
+  expect(yield* preference.set({ accountId, value: input.value })).toBeNull();
+  expect(yield* preference.get(accountId)).toBeNull();
+});
+
 layer(Layer.effect(ConferencingDatabase, d1Fixture))(
   "D1 conferencing reservation fence",
   (it) => {
-    it.effect.prop(
-      "a preference write racing reservation cannot survive forgetting or repopulate an old connection id",
-      {
-        reverse: Schema.Boolean,
-        value: Schema.Literals(["none", "googleMeet", "unset"]),
-      },
-      ({ reverse, value }) =>
-        Effect.gen(function* conferencingProof() {
-          const database = yield* ConferencingDatabase;
-          const personId = "conferencing-race-person";
-          const accountId = "conferencing-race-account";
+    it.effect(
+      "every preference and native request order remains fenced after reservation",
+      () =>
+        Effect.gen(function* preferenceRaceMatrix() {
+          for (const value of Preference.literals) {
+            for (const reverse of [false, true]) {
+              yield* preferenceRace({ reverse, value });
+            }
+          }
+        }),
+      15_000
+    );
 
-          const batch = [
-            database
-              .prepare(
-                "DELETE FROM calendar_account_conferencing WHERE person_id = ?"
-              )
-              .bind(personId),
-            database
-              .prepare(
-                "DELETE FROM calendar_account_disconnect WHERE person_id = ?"
-              )
-              .bind(personId),
-            database
-              .prepare("DELETE FROM account WHERE userId = ?")
-              .bind(personId),
-            database
-              .prepare(
-                'INSERT OR IGNORE INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)'
-              )
-              .bind(personId, "Race", "conferencing-race@example.test"),
-            ...[accountId, "conferencing-race-survivor"].map((id) =>
-              database
-                .prepare(
-                  "INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt, disconnected) VALUES (?, ?, 'google', ?, 0, 0, 0)"
-                )
-                .bind(id, id, personId)
-            ),
-          ];
+    it.effect(
+      "forgetting removes an existing native preference and refuses foreign and stale writes",
+      () =>
+        Effect.gen(function* forgetPreference() {
+          const { accountId, database, disconnect, personId, preference } =
+            yield* conferencingFixture();
 
-          yield* Effect.tryPromise({
-            catch: (cause) =>
-              new Cause.UnknownError(cause, "Conferencing race setup failed"),
-            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-            try: () => database.batch(batch),
+          expect(
+            yield* accountConferencingDefaultRepository(
+              database,
+              "foreign-person"
+            ).set({ accountId, value: "googleMeet" })
+          ).toBeNull();
+          expect(
+            yield* preference.set({ accountId, value: "googleMeet" })
+          ).toEqual({ accountId, value: "googleMeet" });
+          expect(yield* preference.get(accountId)).toEqual({
+            accountId,
+            value: "googleMeet",
           });
 
-          const preference = accountConferencingDefaultRepository(
-            database,
-            personId
-          );
-
-          const disconnect = accountDisconnectRepository(database, personId);
-          const write = preference.set({ accountId, value });
-          const reserve = disconnect.begin(accountId);
-          yield* Effect.all(reverse ? [reserve, write] : [write, reserve], {
-            concurrency: "unbounded",
-          });
+          yield* disconnect.begin(accountId);
           expect(yield* disconnect.load(accountId)).toMatchObject({
             phase: "reserved",
           });
           expect(
             yield* preference.set({ accountId, value: "googleMeet" })
           ).toBeNull();
+          expect(yield* preference.get(accountId)).toBeNull();
           yield* disconnect.advance(accountId, "reserved", "stopped");
           yield* disconnect.remove(accountId);
           yield* disconnect.advance(accountId, "removed", "done");
-          expect(yield* preference.set({ accountId, value })).toBeNull();
+
+          for (const value of Preference.literals) {
+            expect(yield* preference.set({ accountId, value })).toBeNull();
+          }
+
           expect(yield* preference.get(accountId)).toBeNull();
 
           const row: unknown = yield* Effect.tryPromise({
@@ -105,7 +151,7 @@ layer(Layer.effect(ConferencingDatabase, d1Fixture))(
             )(row)
           ).toEqual({ count: 0 });
         }),
-      { arbitrary: { runs: 20 }, timeout: 15_000 }
+      15_000
     );
   }
 );
