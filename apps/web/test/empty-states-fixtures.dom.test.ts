@@ -10,6 +10,7 @@ import {
   emptyStateScenarios,
 } from "./empty-states-fixture.js";
 import { executeEmptyStateProofWithStandInBoxes } from "./empty-states-proof.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 it.effect(
   "exports twenty actual-app empty/unavailable scenes with geometry and state proofs",
@@ -104,7 +105,7 @@ it.effect(
 
             const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x960"><title>${scenario} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script>${proof}${membership}</script></body></html>`;
             const path = `../../.git/empty-states-${scenario}-${theme}-${width}-fixture.html`;
-            yield* fs.writeFileString(path, html);
+            yield* publishFixtureArtifact(path, html);
             const exported = yield* fs.readFileString(path);
 
             const checked = executeEmptyStateProofWithStandInBoxes(

@@ -14,6 +14,7 @@ import {
   edgeStandInStyle,
 } from "./edge-scroll-proof.js";
 import type { EdgeProof } from "./edge-scroll-proof.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 const verifyExport = Effect.fn("verifyFrozenEdgeExport")(
   function* verifyFrozenEdgeExport(
@@ -117,7 +118,7 @@ it.effect(
             const path = `../../.git/edge-${scene}-${theme}-${width}-fixture.html`;
             const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>${rendered.html}<script>${script}</script></body></html>`;
 
-            yield* fs.writeFileString(path, html);
+            yield* publishFixtureArtifact(path, html);
             const exported = yield* fs.readFileString(path);
 
             yield* Effect.scoped(verifyExport(exported, result.proof, width));

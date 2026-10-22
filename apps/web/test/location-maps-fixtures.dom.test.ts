@@ -20,6 +20,7 @@ import {
   executeMapsProofWithStandIns,
   locationMapsProofScript,
 } from "./location-maps-proof.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 it.effect(
   "exports sixteen saved-preference route snapshots and executes each exact proof, including negative preconditions",
@@ -121,7 +122,7 @@ it.effect(
               const evidence = JSON.stringify(facts).replaceAll("<", "\\u003c");
               const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x960"><title>${scenario} ${theme} ${width}</title><style>${css}</style></head><body><section data-maps-surface="settings" ${visible === "settings" ? "" : "hidden"}>${settings.html}</section><section data-maps-surface="calendar" ${visible === "calendar" ? "" : "hidden"}>${calendar.html}</section><script type="application/json" id="maps-evidence">${evidence}</script><script data-maps-proof>${locationMapsProofScript}</script></body></html>`;
               const path = `../../.git/maps-${scenario}-${theme}-${width}-fixture.html`;
-              yield* fs.writeFileString(path, html);
+              yield* publishFixtureArtifact(path, html);
               const exported = yield* fs.readFileString(path);
               const document = executeMapsProofWithStandIns(exported, width);
               expect(document.documentElement.dataset.mapsProof).toContain(

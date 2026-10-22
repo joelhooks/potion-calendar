@@ -16,6 +16,7 @@ import {
   heldModScenarios,
   heldModTimes,
 } from "./held-mod-runtime-fixture.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 it.effect(
   "exports sixteen actual-root held-modifier results with loaded preconditions and executes the exact embedded scripts with labelled stand-in boxes",
@@ -103,7 +104,7 @@ it.effect(
 
             const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x960"><title>${scenario} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script type="application/json" id="held-mod-evidence">${evidence}</script><script data-held-mod-proof>${heldModProofScript}</script></body></html>`;
             const path = `../../.git/held-mod-${scenario}-${theme}-${width}-fixture.html`;
-            yield* fs.writeFileString(path, html);
+            yield* publishFixtureArtifact(path, html);
             const exported = yield* fs.readFileString(path);
 
             const document = executeHeldModProofWithStandInBoxes(

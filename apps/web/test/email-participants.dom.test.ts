@@ -21,6 +21,7 @@ import {
   participantProofScript,
   prepareParticipantProofWithStandInBoxes,
 } from "./email-participants-proof.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 const detailsView = (model: AppModel, h: HtmlBuilder<AppMessage>) =>
   h.div([], detailPanel(model, h));
@@ -157,7 +158,7 @@ it.effect(
             const payload = JSON.stringify(evidence).replaceAll("<", "\\u003c");
             const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x960"><title>${scene} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script type="application/json" id="participant-evidence">${payload}</script><script data-participant-proof>${scene === "hidden" ? hiddenParticipantProofScript : participantProofScript}</script></body></html>`;
             const path = `../../.git/email-participants-${scene}-${theme}-${width}-fixture.html`;
-            yield* fs.writeFileString(path, html);
+            yield* publishFixtureArtifact(path, html);
             const exported = yield* fs.readFileString(path);
 
             const prove = prepareParticipantProofWithStandInBoxes(
