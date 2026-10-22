@@ -96,6 +96,7 @@ import {
   bulkControl,
 } from "./editing/update.js";
 import { emailParticipants } from "./email-participants.js";
+import { resumeTimeGrid } from "./grid-resume/update.js";
 import { KeyboardUi, initialKeyboard } from "./keyboard/state.js";
 import {
   closeKeyboard,
@@ -1412,6 +1413,7 @@ const updateCore = (
       commands: [BackRoute()],
       model: closeKeyboard(model),
     }),
+    ResumedFromBackground: ({ now }) => resumeTimeGrid(model, now),
     SavedPreferences: () => ({ model }),
     SearchBlur: () => blurSearch(model),
     SearchClear: () => clearSearch(model),

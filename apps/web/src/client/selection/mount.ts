@@ -25,6 +25,30 @@ export const PrepareSelection = Mount.defineStream("PrepareSelection", {
         const actor = yield* createEffectActor(rectangleMachine);
         yield* watchActor("calendar.selection.rectangle", actor);
         yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            element.dataset.selectionPhase = "idle";
+
+            return actor.subscribe((snapshot) => {
+              let phase: "idle" | "armed" | "dragging" = "idle";
+
+              if (snapshot.matches("armed")) {
+                phase = "armed";
+              }
+
+              if (snapshot.matches("dragging")) {
+                phase = "dragging";
+              }
+
+              element.dataset.selectionPhase = phase;
+            });
+          }),
+          (subscription) =>
+            Effect.sync(() => {
+              subscription.unsubscribe();
+              Reflect.deleteProperty(element.dataset, "selectionPhase");
+            })
+        );
+        yield* Effect.acquireRelease(
           Effect.sync(() =>
             bindSelectionEvents({
               actor,

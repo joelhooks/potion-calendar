@@ -2,7 +2,7 @@ import { setupEffect } from "@xstate/effect";
 import { Option, Schema } from "effect";
 import { types } from "xstate";
 
-import { doubleClick } from "../../layout/edit-time.js";
+import { doubleClick, dragPrecision } from "../../layout/edit-time.js";
 import { gestureRange } from "../../layout/gesture-range.js";
 import type { GestureResult } from "./gesture-model.js";
 import { GesturePoint, GestureStart } from "./gesture-model.js";
@@ -75,7 +75,14 @@ export const gestureMachine = setupEffect({
           ) {
             const point = start.allDay
               ? event.point
-              : { ...event.point, minute: start.point.minute + 30 };
+              : {
+                  ...event.point,
+                  minute:
+                    start.point.minute +
+                    (event.point.alt && !event.point.shift
+                      ? dragPrecision(event.point)
+                      : 30),
+                };
 
             return {
               context: {

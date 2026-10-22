@@ -13,6 +13,7 @@ import { gridGeometry, initialScroll } from "../layout/geometry.js";
 import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
 import { MinuteRange } from "../layout/time-blocks.js";
 import { readFailure } from "./calendar-state.js";
+import { canResumeHost } from "./grid-resume/host.js";
 import { Message } from "./message.js";
 import { browserGroup, protocol } from "./rpc.js";
 import { SavedPreferences } from "./settings/model.js";
@@ -116,12 +117,19 @@ export const ScrollToNow = Command.define("ScrollToNow", {
   args: {
     hidden: Schema.optionalKey(Schema.Array(MinuteRange)),
     minute: Schema.Finite,
+    resume: Schema.optionalKey(
+      Schema.Struct({ day: Schema.Finite, hostKey: Schema.String })
+    ),
     scale: Schema.Finite,
   },
-  execute: ({ hidden, minute, scale }) =>
+  execute: ({ hidden, minute, resume, scale }) =>
     Render.afterCommit.pipe(
       Effect.andThen(
         Effect.sync(() => {
+          if (resume !== undefined && !canResumeHost(document, resume)) {
+            return Message.CompletedGridScroll();
+          }
+
           const viewport =
             document.querySelector<HTMLElement>("#time-viewport");
 

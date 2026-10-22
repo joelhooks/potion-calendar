@@ -1,4 +1,6 @@
+import { watchActor } from "@calendar/capability/actor-watch";
 import { expect, it } from "@effect/vitest";
+import { createEffectActor } from "@xstate/effect";
 import {
   Effect,
   Exit,
@@ -14,6 +16,8 @@ import { vi } from "vitest";
 
 import { update } from "../src/client/app.js";
 import type { AppMessage, AppModel } from "../src/client/app.js";
+import { bindGestureEvents } from "../src/client/editing/gesture-events.js";
+import { gestureMachine } from "../src/client/editing/gesture-machine.js";
 import { observeKeyboard } from "../src/client/keyboard/input.js";
 import { PrepareSelection } from "../src/client/selection/mount.js";
 import { view } from "../src/features/app.js";
@@ -365,6 +369,69 @@ it.effect.each([false, true])(
         new MouseEvent("click", { bubbles: true, detail: 1, shiftKey: true })
       );
       expect(bubble).not.toHaveBeenCalled();
+
+      return yield* Effect.void;
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "Shift clicks on empty timed grid keep the current selection and Shift-drag still replaces it without entering event creation",
+  () =>
+    Effect.gen(function* preserveEmptyShiftSelection() {
+      const h = yield* mountFixture(false);
+      const actor = yield* createEffectActor(gestureMachine);
+      yield* watchActor("calendar.gesture.shift-regression", actor);
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          bindGestureEvents({
+            actor,
+            getTargets: () => [],
+            root: h.root,
+            scale: 48,
+          })
+        ),
+        (release) => Effect.sync(release)
+      );
+
+      const surface = h.root.querySelector(".day-column");
+      const [, beta] = h.chips;
+
+      if (surface === null || beta === undefined) {
+        return yield* Effect.die("Missing empty-grid Shift fixture.");
+      }
+
+      beta.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, ctrlKey: true })
+      );
+      yield* takeMessage(h.messages, "ModifiedEventSelection");
+
+      for (let click = 0; click < 2; click += 1) {
+        pointer(surface, "pointerdown", 320, 350);
+        pointer(h.root, "pointerup", 320, 350);
+        surface.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            detail: click + 1,
+            shiftKey: true,
+          })
+        );
+        expect((yield* Ref.get(h.state)).calendar.selected).toEqual([
+          h.keys[1],
+        ]);
+        expect(actor.getSnapshot().context.completed).toBeUndefined();
+      }
+
+      pointer(surface, "pointerdown", 0, 100);
+      yield* Effect.yieldNow;
+      expect(h.root.dataset.selectionPhase).toBe("armed");
+      pointer(h.root, "pointermove", 180, 245);
+      yield* takeMessage(h.messages, "PreviewedSelectionRectangle");
+      expect(h.root.dataset.selectionPhase).toBe("dragging");
+      pointer(h.root, "pointerup", 180, 245);
+      yield* takeMessage(h.messages, "SelectedRectangle");
+      expect((yield* Ref.get(h.state)).calendar.selected).toEqual([h.keys[0]]);
+      expect((yield* Ref.get(h.state)).editing.view._tag).toBe("Closed");
+      expect(actor.getSnapshot().context.completed).toBeUndefined();
 
       return yield* Effect.void;
     }).pipe(Effect.scoped)

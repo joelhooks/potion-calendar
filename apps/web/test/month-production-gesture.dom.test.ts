@@ -291,10 +291,8 @@ it.effect.each([false, true])(
       pointer("pointerdown", 150, chip);
 
       if (readOnly) {
-        yield* untilDom(() =>
-          Option.isSome(current.editing.gestureRefusal)
-            ? current.editing.gestureRefusal.value
-            : undefined
+        yield* untilDom(
+          () => document.querySelector(".gesture-refusal") ?? undefined
         );
         expect(
           document.querySelector(".gesture-refusal")?.textContent

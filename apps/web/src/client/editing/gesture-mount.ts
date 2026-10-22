@@ -46,6 +46,7 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                   const actor = yield* createEffectActor(gestureMachine);
                   yield* watchActor("calendar.gesture", actor);
                   let completed = 0;
+                  element.dataset.gesturePhase = "idle";
                   Queue.offerUnsafe(
                     queue,
                     Message.PreviewedGesture({
@@ -68,6 +69,7 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                           phase = "dragging";
                         }
 
+                        element.dataset.gesturePhase = phase;
                         Queue.offerUnsafe(
                           queue,
                           Message.PreviewedGesture({
@@ -129,7 +131,13 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
               )
         ),
         Stream.ensuring(
-          Effect.sync(() => registry?.releaseHost(hostKey, element))
+          Effect.sync(() => {
+            if (element instanceof HTMLElement) {
+              Reflect.deleteProperty(element.dataset, "gesturePhase");
+            }
+
+            registry?.releaseHost(hostKey, element);
+          })
         )
       ),
     messages: [

@@ -13,6 +13,7 @@ import {
   desktopDependencies,
 } from "./desktop/subscription.js";
 import { EditingRuntime } from "./editing/runtime.js";
+import { visibilityResumeStream } from "./grid-resume/subscription.js";
 import { keyboardStream } from "./keyboard/subscription.js";
 import { liveSocketStream } from "./live/socket.js";
 import { Message } from "./message.js";
@@ -149,6 +150,7 @@ export const subscriptions = Subscription.make<
       modelToDependencies: (model) => ({ person: model.person }),
     }
   ),
+  resumeGrid: Subscription.persistentEntry(visibilityResumeStream()),
   search: entry(
     { task: Schema.Option(SearchTask) },
     {

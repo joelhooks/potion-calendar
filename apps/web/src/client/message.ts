@@ -217,6 +217,7 @@ export const Message = defineMessageUnion({
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },
   RequestedRoute: { replace: Schema.Boolean, route: Route },
   RequestedRouteBack: {},
+  ResumedFromBackground: { now: Schema.Finite },
   SavedPreferences: {},
   SearchBlur: {},
   SearchClear: {},
