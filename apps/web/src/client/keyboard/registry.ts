@@ -1,6 +1,7 @@
 import { statusEventType } from "@calendar/calendar/contracts";
 import { Option, Predicate } from "effect";
 
+import { ordinaryLink } from "../../layout/event-links.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
 import { SettingsRoute } from "../../layout/route.js";
@@ -109,6 +110,34 @@ const active = (model: AppModel): Availability =>
 
 const selected = (model: AppModel): Availability =>
   selectedEvent(model) === undefined ? "hidden" : active(model);
+
+export const selectedReadEvent = (
+  model: AppModel
+): DisplayEvent | undefined => {
+  if (active(model) !== "enabled" || model.calendar.selected.length !== 1) {
+    return undefined;
+  }
+
+  return (
+    selectedEvent(model) ??
+    selectedEvent({
+      ...model,
+      calendar: { ...model.calendar, hidden: [] },
+    })
+  );
+};
+
+export const selectedProviderOriginal = (
+  model: AppModel
+): string | undefined => {
+  const link = selectedReadEvent(model)?.source.htmlLink;
+  const href = link === undefined ? undefined : ordinaryLink(link);
+
+  return href?.startsWith("http:") === true ||
+    href?.startsWith("https:") === true
+    ? href
+    : undefined;
+};
 
 export const calendarWritable = (model: AppModel): boolean => {
   const event = selectedEvent(model)?.source;
@@ -231,6 +260,30 @@ const joinAvailability = (model: AppModel): Availability => {
 };
 
 export const keyboardRegistry: readonly KeyboardAction[] = [
+  row(
+    "go-to-selection",
+    "Go to selection",
+    [],
+    "Calendar navigation",
+    "Event",
+    special("go-to-selection"),
+    {
+      availability: (model) =>
+        selectedReadEvent(model) === undefined ? "disabled" : "enabled",
+    }
+  ),
+  row(
+    "open-in-provider",
+    "Open in provider",
+    [],
+    "Workflows",
+    "Event",
+    special("open-in-provider"),
+    {
+      availability: (model) =>
+        selectedProviderOriginal(model) === undefined ? "disabled" : "enabled",
+    }
+  ),
   row(
     "email-participants",
     "Email participants",

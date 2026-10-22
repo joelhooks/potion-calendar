@@ -11,6 +11,7 @@ import {
 import type { AppModel } from "../app.js";
 import { bulkSummary } from "../bulk/selection.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
+import { SavePreferences } from "../commands.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
 import type { EditingRuntime } from "../editing/runtime.js";
@@ -20,7 +21,9 @@ import type { AppMessage } from "../message.js";
 import type { MonthRuntime } from "../month/runtime.js";
 import type { CalendarSearchClient } from "../search/client.js";
 import { selectionRangeDays } from "../selection/range.js";
-import { FocusShortcutSearch } from "./browser.js";
+import { preferenceSnapshot } from "../settings/update.js";
+import { calendarVisible, chooseVisibility } from "../settings/visibility.js";
+import { FocusShortcutSearch, OpenProviderOriginal } from "./browser.js";
 import { commandChoices, enterChoice, moveHighlight } from "./choices.js";
 import { resolveBinding } from "./input.js";
 import type { KeyboardInput } from "./input.js";
@@ -29,6 +32,8 @@ import {
   calendarWritable,
   editableSelection,
   selectedEvent,
+  selectedProviderOriginal,
+  selectedReadEvent,
 } from "./registry.js";
 
 export type KeyboardResult = Update.Return<
@@ -261,6 +266,65 @@ const selectionAction = (
   }
 };
 
+const goToSelection = (model: AppModel, apply: Apply): KeyboardResult => {
+  const event = selectedReadEvent(model);
+  const person = Option.getOrUndefined(model.person);
+
+  if (event === undefined || person === undefined) {
+    return { model };
+  }
+
+  const revealed = !calendarVisible(
+    event.calendar,
+    model.calendar.visibility,
+    model.calendar.visibilityMigration
+  );
+
+  const visibility = revealed
+    ? chooseVisibility(
+        model.calendar.calendars,
+        model.calendar.visibility,
+        model.calendar.visibilityMigration,
+        event.calendar,
+        true
+      )
+    : { hidden: model.calendar.hidden, visibility: model.calendar.visibility };
+
+  const shown = {
+    ...closeKeyboard(model),
+    calendar: { ...model.calendar, ...visibility },
+  };
+
+  const navigated = apply(shown, Message.KeyboardDate({ day: event.startDay }));
+
+  const routed: KeyboardResult = Predicate.isTagged(
+    navigated.model.route,
+    "Calendar"
+  )
+    ? { model: navigated.model }
+    : apply(
+        navigated.model,
+        Message.RequestedRoute({
+          replace: false,
+          route: CalendarRoute.make({}),
+        })
+      );
+
+  return {
+    commands: [
+      ...(revealed
+        ? [SavePreferences({ person, ...preferenceSnapshot(shown) })]
+        : []),
+      ...(navigated.commands ?? []),
+      ...(routed.commands ?? []),
+    ],
+    model: {
+      ...routed.model,
+      calendar: { ...routed.model.calendar, selected: model.calendar.selected },
+    },
+  };
+};
+
 export const keyboardAction = (
   model: AppModel,
   id: string,
@@ -307,6 +371,21 @@ export const keyboardAction = (
   }
 
   switch (id) {
+    case "go-to-selection": {
+      return goToSelection(model, apply);
+    }
+
+    case "open-in-provider": {
+      const href = selectedProviderOriginal(model);
+
+      return href === undefined
+        ? { model }
+        : {
+            commands: [OpenProviderOriginal({ href })],
+            model: closeKeyboard(model),
+          };
+    }
+
     case "join": {
       return apply(model, Message.RequestedJoinMeeting({ key: Option.none() }));
     }
