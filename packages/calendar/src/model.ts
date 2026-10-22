@@ -127,6 +127,13 @@ export const CalendarEvent = Schema.Struct({
   conference: Schema.optional(ConferenceDetails),
   conferenceUrl: Schema.optional(Schema.String),
   conferencingStatus: Schema.optional(ConferencingStatus),
+  creator: Schema.optional(
+    Schema.Struct({
+      displayName: Schema.optional(Schema.String),
+      email: Schema.optional(Schema.String),
+      self: Schema.optional(Schema.Boolean),
+    })
+  ),
   etag: Schema.optional(Schema.String),
   htmlLink: Schema.optional(Schema.String),
   iCalUID: Schema.optional(Schema.String),

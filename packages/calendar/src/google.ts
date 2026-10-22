@@ -44,6 +44,7 @@ const GoogleEvent = Schema.Struct({
     )
   ),
   conferenceData: Schema.optional(Schema.NullOr(GoogleConferenceData)),
+  creator: CalendarEvent.fields.creator,
   etag: Schema.optional(Schema.String),
   hangoutLink: Schema.optional(Schema.String),
   htmlLink: Schema.optional(Schema.String),

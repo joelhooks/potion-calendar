@@ -19,6 +19,7 @@ import { resolvedTheme } from "../client/settings/model.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
 import { calendarReadFailures } from "../layout/calendar-read-state.js";
 import { conferenceLink } from "../layout/conferencing.js";
+import { creatorPresentation } from "../layout/event-creator.js";
 import {
   dayInZone,
   maximumDisplayedDays,
@@ -663,6 +664,7 @@ export const detailPanel = (
 
   const event = selected.source;
   const status = statusEventType(event.eventType);
+  const creator = creatorPresentation(event);
 
   const writable = model.calendar.calendars.some(
     (calendar) =>
@@ -818,7 +820,7 @@ export const detailPanel = (
                       h.span(
                         [],
                         [
-                          `${person.self === true ? " · You" : ""}${person.organizer === true ? " · Organizer" : ""}${person.optional === true ? " · Optional" : ""}`,
+                          `${person.self === true ? " · You" : ""}${person.organizer === true ? " · Organizer" : ""}${person === creator.attendee ? " · Creator" : ""}${person.optional === true ? " · Optional" : ""}`,
                         ]
                       ),
                       h.span(
@@ -829,6 +831,9 @@ export const detailPanel = (
                   )
                 )
               ),
+              ...(creator.byline === undefined
+                ? []
+                : [h.p([h.Class("muted")], [creator.byline])]),
             ]),
       ]
     ),
