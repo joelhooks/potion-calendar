@@ -97,6 +97,8 @@ import {
 } from "./editing/update.js";
 import { emailParticipants } from "./email-participants.js";
 import { resumeTimeGrid } from "./grid-resume/update.js";
+import { IcsExportUi, initialIcsExport } from "./ics-export/model.js";
+import { beginIcsExport, receiveIcsExport } from "./ics-export/update.js";
 import { KeyboardUi, initialKeyboard } from "./keyboard/state.js";
 import {
   closeKeyboard,
@@ -235,6 +237,7 @@ export const Model = Schema.Struct({
   desktop: DesktopUi,
   editing: EditingUi,
   error: Schema.Option(Schema.String),
+  icsExport: IcsExportUi,
   keyboard: KeyboardUi,
   month: MonthUi,
   person: Schema.Option(Schema.String),
@@ -311,6 +314,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
     write: Option.none(),
   },
   error: Option.none(),
+  icsExport: initialIcsExport(),
   keyboard: initialKeyboard(),
   month: initialMonthUi(),
   person: Option.none(),
@@ -816,6 +820,20 @@ const updateCore = (
           }
         : model,
     }),
+    DismissedIcsExport: ({ personId, revision }) => ({
+      model:
+        Option.contains(model.person, personId) &&
+        Option.exists(
+          model.icsExport.notice,
+          (notice) =>
+            notice.personId === personId && notice.revision === revision
+        )
+          ? {
+              ...model,
+              icsExport: { ...model.icsExport, notice: Option.none() },
+            }
+          : model,
+    }),
     DispatchedClipboard: () => ({ model }),
     DispatchedEditing: () => ({ model }),
     EditingAction: ({ action, personId }) =>
@@ -1261,6 +1279,9 @@ const updateCore = (
             )
           )
         : { model },
+    ReceivedIcsExport: ({ notice }) => ({
+      model: receiveIcsExport(model, notice),
+    }),
     ReceivedLive: ({ notice, personId }) => {
       if (!Option.contains(model.person, personId)) {
         return { model };
@@ -1421,6 +1442,7 @@ const updateCore = (
       };
     },
     RequestedEmailParticipants: () => emailParticipants(model),
+    RequestedIcsExport: () => beginIcsExport(model),
     RequestedJoinMeeting: ({ key }) =>
       Option.match(model.person, {
         onNone: () => ({ model }),

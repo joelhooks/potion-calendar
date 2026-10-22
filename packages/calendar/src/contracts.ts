@@ -77,6 +77,12 @@ export { LastCalendarAccount } from "./last-calendar-account.js";
 
 export { CalendarAppearanceRefused } from "./calendar-appearance-refused.js";
 
+export {
+  exportIcsCalendar,
+  IcsExportOutcome,
+  IcsSkippedEvent,
+} from "./ical-export.js";
+
 export const AccountCalendars = Schema.Union([
   Schema.Struct({
     accountId: Schema.String,

@@ -20,6 +20,7 @@ import {
 } from "../editing/instant.js";
 import { writableCalendar } from "../editing/load-editor.js";
 import { selectedParticipantEmail } from "../email-participants.js";
+import { icsExportAvailable } from "../ics-export/selection.js";
 import { JoinSelection } from "../meetings/model.js";
 import { joinSelection } from "../meetings/selection.js";
 import { Message } from "../message.js";
@@ -394,6 +395,18 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
             : "enabled",
       }
     )
+  ),
+  row(
+    "export-ics",
+    "Export as .ics",
+    [],
+    "Workflows",
+    "Event",
+    () => Message.RequestedIcsExport(),
+    {
+      availability: (model) =>
+        icsExportAvailable(model) ? "enabled" : "hidden",
+    }
   ),
   row(
     "email-participants",

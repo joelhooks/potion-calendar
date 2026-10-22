@@ -22,6 +22,7 @@ import { DesktopNotice, DesktopRequest } from "./desktop/model.js";
 import { EditorAction } from "./editing/editor-action.js";
 import { GestureResult } from "./editing/gesture-model.js";
 import { EditingNotice } from "./editing/runtime.js";
+import { IcsExportNotice } from "./ics-export/model.js";
 import { LiveNotice } from "./live/protocol.js";
 import { MonthGestureRefused } from "./month/gesture.js";
 import { MonthNotice } from "./month/model.js";
@@ -94,6 +95,7 @@ export const Message = defineMessageUnion({
   CompletedMonthRead: {},
   CycledTheme: {},
   DismissedGestureRefusal: { personId: Schema.String },
+  DismissedIcsExport: { personId: Schema.String, revision: Schema.Int },
   DispatchedClipboard: {},
   DispatchedEditing: {},
   EditingAction: {
@@ -192,6 +194,7 @@ export const Message = defineMessageUnion({
     request: Schema.Int,
     result: ListEventsOutput,
   },
+  ReceivedIcsExport: { notice: IcsExportNotice },
   ReceivedLive: { notice: LiveNotice, personId: Schema.String },
   ReceivedMonth: { notice: MonthNotice },
   ReceivedOccurrence: { notice: OccurrenceNotice },
@@ -227,6 +230,7 @@ export const Message = defineMessageUnion({
   },
   RequestedDesktop: { request: DesktopRequest },
   RequestedEmailParticipants: {},
+  RequestedIcsExport: {},
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },
   RequestedRoute: { replace: Schema.Boolean, route: Route },
   RequestedRouteBack: {},
