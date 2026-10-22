@@ -1,5 +1,12 @@
 import { Option, Schema } from "effect";
 
+export const ColorOpening = Schema.TaggedStruct("color", {
+  event: Schema.String,
+  person: Schema.String,
+  selection: Schema.String,
+  value: Schema.NullOr(Schema.String),
+});
+
 export const KeyboardUi = Schema.Struct({
   cursor: Schema.Option(Schema.String),
   deadline: Schema.Finite,
@@ -7,7 +14,10 @@ export const KeyboardUi = Schema.Struct({
   flashVersion: Schema.Int,
   focus: Schema.String,
   highlighted: Schema.String,
-  opening: Schema.Literals(["none", "toggleAllDay"]),
+  opening: Schema.Union([
+    Schema.Literals(["none", "toggleAllDay"]),
+    ColorOpening,
+  ]),
   prefix: Schema.String,
   query: Schema.String,
   screen: Schema.Literals([
@@ -18,6 +28,9 @@ export const KeyboardUi = Schema.Struct({
     "zones",
     "event-zone",
     "weekdays",
+    "theme",
+    "week-start",
+    "colors",
   ]),
   sidebar: Schema.Boolean,
 });

@@ -6,10 +6,15 @@ import type { AppModel } from "../app.js";
 import { eventZoneChoices } from "../editing/zone-choices.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
-import { weekdayChoices } from "../settings/weekday-choices.js";
+import { SettingsChange } from "../settings/model.js";
+import { weekdayChoices, weekdayNames } from "../settings/weekday-choices.js";
 import { timeZoneChoices } from "../time-zones/choices.js";
 import { displayedKeyTokens } from "./hints.js";
-import { actionCatalog } from "./registry.js";
+import {
+  actionCatalog,
+  availableEventColors,
+  selectedColorEvent,
+} from "./registry.js";
 import type { KeyboardAction, CommandSection } from "./registry.js";
 
 export const similarity = (left: string, right: string): number => {
@@ -135,8 +140,116 @@ const dayChoice = (day: number): CommandChoice => ({
   title: `Display ${day} day${day === 1 ? "" : "s"}`,
 });
 
+const filterSubchoices = (
+  choices: readonly CommandChoice[],
+  query: string
+): readonly CommandChoice[] =>
+  choices.flatMap((choice) => {
+    const score =
+      query === "" ? 1 : textScore(choice.title.toLowerCase(), query);
+
+    return score > 0
+      ? [
+          {
+            ...choice,
+            exact: query !== "" && choice.title.toLowerCase() === query,
+            score,
+          },
+        ]
+      : [];
+  });
+
+const preferenceChoices = (
+  model: AppModel,
+  query: string
+): readonly CommandChoice[] => {
+  const enabled =
+    actionCatalog(model)
+      .find((action) => action.id === model.keyboard.screen)
+      ?.availability(model) === "enabled";
+
+  const themes = [
+    { title: "Auto", value: "auto" },
+    { title: "Light mode", value: "light" },
+    { title: "Dark mode", value: "dark" },
+  ] satisfies readonly {
+    readonly title: string;
+    readonly value: "auto" | "light" | "dark";
+  }[];
+
+  return filterSubchoices(
+    model.keyboard.screen === "theme"
+      ? themes.map(({ title, value }): CommandChoice => ({
+          disabled: !enabled,
+          exact: false,
+          id: `theme-${value}`,
+          keys: [],
+          message: Message.ChangedSettings({
+            change: SettingsChange.cases.Theme.make({ value }),
+          }),
+          score: 1,
+          section: "Settings & help",
+          title,
+        }))
+      : weekdayNames.flatMap((title, value): readonly CommandChoice[] =>
+          value === (model.calendar.navigation.weekStartsOn ?? 0)
+            ? []
+            : [
+                {
+                  disabled: !enabled,
+                  exact: false,
+                  id: `week-start-${value}`,
+                  keys: [],
+                  message: Message.ChangedSettings({
+                    change: SettingsChange.cases.WeekStart.make({ value }),
+                  }),
+                  score: 1,
+                  section: "View",
+                  title,
+                },
+              ]
+        ),
+    query
+  );
+};
+
+const colorChoices = (
+  model: AppModel,
+  query: string
+): readonly CommandChoice[] =>
+  filterSubchoices(
+    [
+      { title: "Use calendar color", value: "calendar" },
+      ...availableEventColors(model).map((color) => ({
+        title: color.name,
+        value: color.google,
+      })),
+    ].map(({ title, value }): CommandChoice => ({
+      disabled: selectedColorEvent(model) === undefined,
+      exact: false,
+      id: `color-${value}`,
+      keys: [],
+      message: Message.KeyboardAction({ id: `color:${value}` }),
+      score: 1,
+      section: "Event",
+      title,
+    })),
+    query
+  );
+
 const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
   const query = model.keyboard.query.trim().toLowerCase();
+
+  if (
+    model.keyboard.screen === "theme" ||
+    model.keyboard.screen === "week-start"
+  ) {
+    return preferenceChoices(model, query);
+  }
+
+  if (model.keyboard.screen === "colors") {
+    return colorChoices(model, query);
+  }
 
   if (model.keyboard.screen === "event-zone") {
     return eventZoneChoices(model);

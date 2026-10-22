@@ -34,17 +34,40 @@ export const PrepareEditingDialogs = Mount.defineStream(
       Stream.callback<ReturnType<typeof Message.EditingAction>>((queue) =>
         Effect.acquireRelease(
           Effect.sync(() => {
+            const appliedFocus = new WeakMap<HTMLDialogElement, string>();
+
             const openDialogs = () => {
+              const keyboardOpen =
+                element.querySelector("dialog[data-keyboard-dialog][open]") !==
+                null;
+
               for (const dialog of element.querySelectorAll<HTMLDialogElement>(
                 "dialog[data-editing-dialog]"
               )) {
-                if (!dialog.open && dialog.isConnected) {
-                  dialog.showModal();
-                  const id = dialog.dataset.initialFocus;
+                if (!dialog.isConnected) {
+                  continue;
+                }
 
-                  if (id !== undefined) {
-                    element.querySelector<HTMLElement>(`#${id}`)?.focus();
-                  }
+                if (!dialog.open) {
+                  dialog.showModal();
+                  appliedFocus.delete(dialog);
+                }
+
+                const id = dialog.dataset.initialFocus;
+
+                const target =
+                  id === undefined
+                    ? null
+                    : dialog.querySelector<HTMLElement>(`#${id}`);
+
+                if (
+                  !keyboardOpen &&
+                  target !== null &&
+                  id !== undefined &&
+                  appliedFocus.get(dialog) !== id
+                ) {
+                  target.focus();
+                  appliedFocus.set(dialog, id);
                 }
               }
             };
@@ -52,7 +75,12 @@ export const PrepareEditingDialogs = Mount.defineStream(
             const cancel = cancelDialog(queue, person);
 
             const observer = new MutationObserver(openDialogs);
-            observer.observe(element, { childList: true, subtree: true });
+            observer.observe(element, {
+              attributeFilter: ["data-initial-focus", "open"],
+              attributes: true,
+              childList: true,
+              subtree: true,
+            });
             element.addEventListener("cancel", cancel, true);
             openDialogs();
 

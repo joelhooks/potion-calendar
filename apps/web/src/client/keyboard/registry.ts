@@ -1,6 +1,8 @@
 import { statusEventType } from "@calendar/calendar/contracts";
 import { Option, Predicate } from "effect";
+import { AsyncData } from "foldkit";
 
+import { eventPalette } from "../../layout/colors.js";
 import { ordinaryLink } from "../../layout/event-links.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
@@ -8,6 +10,8 @@ import { SettingsRoute } from "../../layout/route.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import { persistentZoneLimit } from "../../layout/time-zones.js";
 import type { AppModel } from "../app.js";
+import { BulkView } from "../bulk/model.js";
+import { eventKey } from "../calendar-state.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
 import {
@@ -150,6 +154,64 @@ export const calendarWritable = (model: AppModel): boolean => {
         calendar.calendarId === event.calendarId &&
         writableCalendar(calendar)
     )
+  );
+};
+
+export const selectedColorEvent = (
+  model: AppModel
+): DisplayEvent | undefined => {
+  const event = selectedEvent(model);
+  const { view } = model.editing;
+
+  if (
+    Option.isNone(model.person) ||
+    BulkView.guards.Running(model.editing.bulk) ||
+    BulkView.guards.Undoing(model.editing.bulk) ||
+    model.calendar.selected.length !== 1 ||
+    event === undefined ||
+    !calendarWritable(model)
+  ) {
+    return undefined;
+  }
+
+  return EditorView.guards.Closed(view) ||
+    (EditorView.guards.Editing(view) &&
+      Option.contains(model.editing.owner, model.person.value) &&
+      view.kind === "edit" &&
+      view.operation === "save" &&
+      view.permissions.calendarWritable &&
+      Option.exists(
+        view.original,
+        (original) => eventKey(original) === eventKey(event.source)
+      ))
+    ? event
+    : undefined;
+};
+
+export const availableEventColors = (model: AppModel) => {
+  const event = selectedEvent(model);
+  const index = AsyncData.getData(model.calendar.index);
+
+  const account = Option.isSome(index)
+    ? index.value.accounts.find(
+        (entry) => entry.accountId === event?.source.accountId
+      )
+    : undefined;
+
+  if (
+    event === undefined ||
+    account === undefined ||
+    !("calendars" in account) ||
+    !account.calendars.some(
+      (calendar) => calendar.calendarId === event.source.calendarId
+    )
+  ) {
+    return [];
+  }
+
+  return eventPalette.filter(
+    (color) =>
+      color.google !== "" && Object.hasOwn(account.colors.event, color.google)
   );
 };
 
@@ -601,6 +663,11 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
       : selectedAvailability(model, false);
   }),
   field("c", "Edit calendar / color", "calendar", personal),
+  row("colors", "Change color", [], "Editing", "Event", special("colors"), {
+    availability: (model) =>
+      selectedColorEvent(model) === undefined ? "disabled" : "enabled",
+    keywords: [{ text: "colour calendar provider", weight: 0.8 }],
+  }),
   field("a", "Toggle all-day", "allDay", ordinaryField),
   field("r", "Edit repeat pattern", "repeat"),
   field("p", "Edit participants", "participantEmail", (model) =>
@@ -970,7 +1037,22 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     "General",
     "Settings & help",
     () => Message.CycledTheme(),
-    { scope: "app" }
+    { menu: false, scope: "app" }
+  ),
+  row("theme", "Theme", [], "General", "Settings & help", special("theme"), {
+    keywords: [{ text: "appearance auto light dark", weight: 0.8 }],
+    scope: "app",
+  }),
+  row(
+    "week-start",
+    "Start week on",
+    [],
+    "Calendar view",
+    "View",
+    special("week-start"),
+    {
+      keywords: [{ text: "week start sunday monday", weight: 0.8 }],
+    }
   ),
   row(
     "shortcuts",

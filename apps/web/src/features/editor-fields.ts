@@ -327,6 +327,7 @@ export const colourField = <Message>(
         [
           h.Type("button"),
           h.Id("event-color"),
+          ...(props.initialFocus === "event-color" ? [h.Autofocus(true)] : []),
           h.Class("editor-default-colour"),
           h.Role("radio"),
           h.AriaChecked(props.model.draft.colorId === null),
@@ -342,6 +343,13 @@ export const colourField = <Message>(
           h.button([
             h.Type("button"),
             h.Class("editor-colour"),
+            ...(colour.google === ""
+              ? []
+              : [h.Id(`event-color-${colour.google}`)]),
+            ...(colour.google !== "" &&
+            props.initialFocus === `event-color-${colour.google}`
+              ? [h.Autofocus(true)]
+              : []),
             h.Role("radio"),
             h.AriaChecked(
               colour.google !== "" &&

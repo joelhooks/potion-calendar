@@ -19,9 +19,17 @@ export const commandMenu = (
   h: HtmlBuilder<AppMessage>
 ): readonly Html[] => {
   if (
-    !["commands", "days", "date", "zones", "event-zone", "weekdays"].includes(
-      model.keyboard.screen
-    )
+    ![
+      "commands",
+      "days",
+      "date",
+      "zones",
+      "event-zone",
+      "weekdays",
+      "theme",
+      "week-start",
+      "colors",
+    ].includes(model.keyboard.screen)
   ) {
     return [];
   }
@@ -35,6 +43,9 @@ export const commandMenu = (
       : (new Map([
           ["event-zone", "Event time zone"],
           ["weekdays", "Hide/unhide weekdays"],
+          ["theme", "Theme"],
+          ["week-start", "Start week on"],
+          ["colors", "Change color"],
           ["date", "Go to date"],
           ["days", "Number of displayed days"],
         ]).get(model.keyboard.screen) ?? "Command menu");

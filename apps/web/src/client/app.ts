@@ -840,9 +840,11 @@ const updateCore = (
       Option.contains(model.clipboard.sessionId, sessionId)
         ? { model: { ...model, error: Option.some(failureMessage) } }
         : { model },
-    FailedEditing: ({ message: failureMessage }) => ({
-      model: { ...model, error: Option.some(failureMessage) },
-    }),
+    FailedEditing: ({ message: failureMessage }) =>
+      finishKeyboardOpening(model, {
+        ...model,
+        error: Option.some(failureMessage),
+      }),
     FailedEvents: ({ accountId, failure, request }) =>
       request === model.calendar.rangeRequest
         ? settleMonthRead({

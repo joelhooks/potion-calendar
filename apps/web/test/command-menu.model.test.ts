@@ -65,12 +65,7 @@ it.effect(
         empty.some((choice) => /notion|clipboard/iu.test(choice.title))
       ).toBe(false);
       expect(empty.map((choice) => choice.id)).toEqual(
-        expect.arrayContaining([
-          "create",
-          "settings",
-          "cycle-theme",
-          "search-events",
-        ])
+        expect.arrayContaining(["create", "settings", "theme", "search-events"])
       );
     })
 );

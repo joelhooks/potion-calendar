@@ -10,6 +10,7 @@ import {
 } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { bulkSummary } from "../bulk/selection.js";
+import { eventKey } from "../calendar-state.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
 import { SavePreferences } from "../commands.js";
 import { EditorAction } from "../editing/editor-action.js";
@@ -29,12 +30,15 @@ import { resolveBinding } from "./input.js";
 import type { KeyboardInput } from "./input.js";
 import { PanelAction, panelAction } from "./panels.js";
 import {
+  availableEventColors,
   calendarWritable,
   editableSelection,
+  selectedColorEvent,
   selectedEvent,
   selectedProviderOriginal,
   selectedReadEvent,
 } from "./registry.js";
+import { ColorOpening } from "./state.js";
 
 export type KeyboardResult = Update.Return<
   AppModel,
@@ -127,22 +131,33 @@ const nextPeriod = (
 
 const openScreen = (
   model: AppModel,
-  screen: "commands" | "days" | "date" | "event-zone" | "weekdays"
-): KeyboardResult => ({
-  model: {
-    ...model,
-    keyboard: {
-      ...model.keyboard,
-      highlighted: "",
-      prefix: "",
-      query: "",
-      screen:
-        model.keyboard.screen === screen && screen !== "days"
-          ? "closed"
-          : screen,
-    },
-  },
-});
+  screen:
+    | "commands"
+    | "days"
+    | "date"
+    | "event-zone"
+    | "weekdays"
+    | "theme"
+    | "week-start"
+    | "colors"
+): KeyboardResult =>
+  screen === "colors" && selectedColorEvent(model) === undefined
+    ? { model }
+    : {
+        model: {
+          ...model,
+          keyboard: {
+            ...model.keyboard,
+            highlighted: "",
+            prefix: "",
+            query: "",
+            screen:
+              model.keyboard.screen === screen && screen !== "days"
+                ? "closed"
+                : screen,
+          },
+        },
+      };
 
 const openingScreen = Schema.Literals([
   "commands",
@@ -150,6 +165,9 @@ const openingScreen = Schema.Literals([
   "date",
   "event-zone",
   "weekdays",
+  "theme",
+  "week-start",
+  "colors",
 ]);
 
 const openEvent = (model: AppModel, apply: Apply): KeyboardResult => {
@@ -325,6 +343,52 @@ const goToSelection = (model: AppModel, apply: Apply): KeyboardResult => {
   };
 };
 
+const chooseColor = (model: AppModel, id: string): KeyboardResult => {
+  const event = selectedColorEvent(model);
+  const requested = id.slice("color:".length);
+
+  if (
+    event === undefined ||
+    Option.isNone(model.person) ||
+    (requested !== "calendar" &&
+      !availableEventColors(model).some((color) => color.google === requested))
+  ) {
+    return { model };
+  }
+
+  const value = requested === "calendar" ? null : requested;
+
+  const closed = closeKeyboard({
+    ...model,
+    keyboard: {
+      ...model.keyboard,
+      focus: value === null ? "event-color" : `event-color-${value}`,
+      opening: "none",
+    },
+  });
+
+  if (EditorView.guards.Editing(model.editing.view)) {
+    return editAction(closed, EditorAction.cases.ColorSelected.make({ value }));
+  }
+
+  return editAction(
+    {
+      ...closed,
+      keyboard: {
+        ...closed.keyboard,
+        focus: closed.keyboard.focus,
+        opening: ColorOpening.make({
+          event: eventKey(event.source),
+          person: model.person.value,
+          selection: event.key,
+          value,
+        }),
+      },
+    },
+    EditorAction.cases.OpenEdit.make({})
+  );
+};
+
 export const keyboardAction = (
   model: AppModel,
   id: string,
@@ -344,6 +408,10 @@ export const keyboardAction = (
             route: ShortcutsRoute.make({ section: Option.none() }),
           })
         );
+  }
+
+  if (id.startsWith("color:")) {
+    return chooseColor(model, id);
   }
 
   if (Schema.is(openingScreen)(id)) {
@@ -501,10 +569,75 @@ export const keyboardHighlight = (
   keyboard: { ...model.keyboard, highlighted: moveHighlight(model, direction) },
 });
 
+const finishColorOpening = (
+  before: AppModel,
+  after: AppModel,
+  intent: typeof ColorOpening.Type
+): KeyboardResult => {
+  const cleared = {
+    ...after,
+    keyboard: {
+      ...after.keyboard,
+      focus:
+        intent.value === null ? "event-color" : `event-color-${intent.value}`,
+      opening: "none",
+    },
+  } satisfies AppModel;
+
+  const event = selectedEvent(after);
+
+  if (
+    !Option.contains(after.person, intent.person) ||
+    Option.exists(after.editing.owner, (owner) => owner !== intent.person) ||
+    after.calendar.selected.length !== 1 ||
+    after.calendar.selected[0] !== intent.selection ||
+    event === undefined ||
+    eventKey(event.source) !== intent.event ||
+    !calendarWritable(after) ||
+    (intent.value !== null &&
+      !availableEventColors(after).some(
+        (color) => color.google === intent.value
+      ))
+  ) {
+    return { model: cleared };
+  }
+
+  if (EditorView.guards.Editing(after.editing.view)) {
+    return selectedColorEvent(after) === undefined ||
+      !Option.exists(
+        after.editing.view.original,
+        (original) => eventKey(original) === intent.event
+      )
+      ? { model: cleared }
+      : editAction(
+          cleared,
+          EditorAction.cases.ColorSelected.make({ value: intent.value })
+        );
+  }
+
+  return EditorView.guards.Loading(after.editing.view) ||
+    (EditorView.guards.Closed(after.editing.view) &&
+      EditorView.guards.Closed(before.editing.view))
+    ? { model: after }
+    : { model: cleared };
+};
+
 export const finishKeyboardOpening = (
   before: AppModel,
   after: AppModel
 ): KeyboardResult => {
+  if (before.error !== after.error && Option.isSome(after.error)) {
+    return {
+      model: { ...after, keyboard: { ...after.keyboard, opening: "none" } },
+    };
+  }
+
+  const intent = after.keyboard.opening;
+
+  if (Schema.is(ColorOpening)(intent)) {
+    return finishColorOpening(before, after, intent);
+  }
+
   if (
     after.keyboard.opening !== "toggleAllDay" ||
     !EditorView.guards.Editing(after.editing.view) ||
