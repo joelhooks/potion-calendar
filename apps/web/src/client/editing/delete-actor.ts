@@ -13,7 +13,7 @@ export const DeleteIntent = Schema.Struct({
   event: CalendarEvent,
   id: Schema.String,
   intent: Schema.optionalKey(
-    Schema.Literals(["ordinary", "noEmailOccurrence"])
+    Schema.Literals(["ordinary", "emailOccurrence", "noEmailOccurrence"])
   ),
   navigation: NavigationState,
   request: DeleteEventInput,

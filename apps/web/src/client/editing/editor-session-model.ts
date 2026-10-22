@@ -25,7 +25,12 @@ const openingFields = {
   calendars: Schema.Array(Calendar),
   conferencingContext: Schema.optional(EditorConferencingContext),
   intent: Schema.optionalKey(
-    Schema.Literals(["ordinary", "noEmailOccurrence", "noEmailGesture"])
+    Schema.Literals([
+      "ordinary",
+      "emailOccurrence",
+      "noEmailOccurrence",
+      "noEmailGesture",
+    ])
   ),
   navigation: NavigationState,
   primaryZone: Schema.String,
@@ -62,7 +67,12 @@ export const LoadedEditor = Schema.Struct({
   draft: EventDraft,
   id: Schema.String,
   intent: Schema.optionalKey(
-    Schema.Literals(["ordinary", "noEmailOccurrence", "noEmailGesture"])
+    Schema.Literals([
+      "ordinary",
+      "emailOccurrence",
+      "noEmailOccurrence",
+      "noEmailGesture",
+    ])
   ),
   kind: Schema.Literals(["create", "edit", "duplicate"]),
   master: Schema.Option(CalendarEvent),

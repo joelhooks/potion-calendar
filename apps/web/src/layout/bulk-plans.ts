@@ -162,7 +162,11 @@ export const bindBulkWrite = Effect.fn("bindBulkWrite")(function* bindBulkWrite(
     fields,
     prompt: "none",
     scope: "single",
-    sendUpdates: "none",
+    sendUpdates:
+      step.request.mode === "delete" &&
+      step.request.intent === "emailOccurrence"
+        ? "all"
+        : "none",
   });
 });
 

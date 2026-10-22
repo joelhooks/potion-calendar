@@ -198,6 +198,7 @@ const applyInstantIntent = Effect.fn("applyInstantIntent")(
 
     if (
       session.intent !== "noEmailOccurrence" &&
+      session.intent !== "emailOccurrence" &&
       session.intent !== "noEmailGesture"
     ) {
       return plan;
@@ -239,7 +240,7 @@ const applyInstantIntent = Effect.fn("applyInstantIntent")(
           emailNeeded: false,
           prompt: "none",
           scope: "single",
-          sendUpdates: "none",
+          sendUpdates: session.intent === "emailOccurrence" ? "all" : "none",
         })
       : WritePlan.make({
           ...plan,

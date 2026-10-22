@@ -23,7 +23,7 @@ import { BulkView } from "./model.js";
 export const bulkPlanFor = (
   model: AppModel,
   operation: "delete" | "duplicate",
-  intent: "ordinary" | "noEmailOccurrence" = "ordinary"
+  intent: "ordinary" | "emailOccurrence" | "noEmailOccurrence" = "ordinary"
 ) =>
   planBulk(
     operation,
@@ -32,7 +32,7 @@ export const bulkPlanFor = (
       event: item.source,
       key: item.key,
       permission:
-        (intent !== "noEmailOccurrence" ||
+        (intent === "ordinary" ||
           instantEventEligible(item.source, item.calendar)) &&
         (operation === "delete"
           ? writableCalendar(item.calendar)
@@ -40,9 +40,9 @@ export const bulkPlanFor = (
           ? BulkPermission.cases.Allowed.make({})
           : BulkPermission.cases.Blocked.make({
               reason:
-                intent === "noEmailOccurrence"
-                  ? "This event does not permit an instant change."
-                  : "Google does not permit writing to this calendar.",
+                intent === "ordinary"
+                  ? "Google does not permit writing to this calendar."
+                  : "This event does not permit an instant change.",
             }),
     })),
     {

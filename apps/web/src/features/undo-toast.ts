@@ -4,16 +4,35 @@ import type { DeleteIntentValue } from "../client/editing/delete-actor.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 
 const deleteNoticeText = (intent: DeleteIntentValue): string => {
-  if (intent.intent !== "noEmailOccurrence") {
+  if (
+    intent.intent !== "noEmailOccurrence" &&
+    intent.intent !== "emailOccurrence"
+  ) {
     return `${intent.title} removed from this calendar.`;
   }
 
   const occurrence =
     intent.event.recurringEventId === undefined ? "" : "this occurrence of ";
 
-  return intent.event.organizer?.self === true
-    ? `Cancelled ${occurrence}"${intent.title}". No email sent.`
-    : `Removed ${occurrence}"${intent.title}" from your calendar. No email sent.`;
+  const hasOtherGuests =
+    intent.event.organizer?.self === false ||
+    (intent.event.attendees ?? []).some((person) => person.self !== true);
+
+  const emailEnabled = intent.intent === "emailOccurrence" && hasOtherGuests;
+
+  if (intent.event.organizer?.self === true) {
+    const outcome = emailEnabled
+      ? "Guests will be notified."
+      : "No email sent.";
+
+    return `Cancelled ${occurrence}"${intent.title}". ${outcome}`;
+  }
+
+  const outcome = emailEnabled
+    ? "Google may email the organizer."
+    : "No email sent.";
+
+  return `Removed ${occurrence}"${intent.title}" from your calendar. ${outcome}`;
 };
 
 export const undoToast = <Message>(

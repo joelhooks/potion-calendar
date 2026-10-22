@@ -36,8 +36,9 @@ const stageDelete = Effect.fn("stageEditorDelete")(function* stageDelete(
     event,
     id: plan.session.id,
     intent:
-      plan.session.intent === "noEmailOccurrence"
-        ? "noEmailOccurrence"
+      plan.session.intent === "noEmailOccurrence" ||
+      plan.session.intent === "emailOccurrence"
+        ? plan.session.intent
         : "ordinary",
     navigation: plan.session.navigation,
     request: {

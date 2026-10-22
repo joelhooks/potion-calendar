@@ -202,7 +202,7 @@ const openCreate = (model: AppModel): Result => {
 const openSelected = (
   model: AppModel,
   mode: "edit" | "duplicate" | "delete",
-  intent: "ordinary" | "noEmailOccurrence" = "ordinary"
+  intent: "ordinary" | "emailOccurrence" | "noEmailOccurrence" = "ordinary"
 ): Result => {
   const selected = visibleEvents(model).find((item) =>
     Option.contains(primarySelection(model.calendar.selected), item.key)
@@ -268,7 +268,8 @@ export const editAction = (
   }
 
   if (
-    (EditorAction.guards.DeleteNoEmail(action) &&
+    ((EditorAction.guards.DeleteNoEmail(action) ||
+      EditorAction.guards.DeleteInstantly(action)) &&
       !instantDeleteEligible(model)) ||
     (EditorAction.guards.SaveNoEmail(action) && !instantSaveEligible(model))
   ) {
@@ -278,15 +279,23 @@ export const editAction = (
   if (
     model.calendar.selected.length > 1 &&
     (EditorAction.guards.DeleteNoEmail(action) ||
+      EditorAction.guards.DeleteInstantly(action) ||
       EditorAction.guards.DeleteSelected(action) ||
       EditorAction.guards.DuplicateSelected(action))
   ) {
+    let intent: "ordinary" | "emailOccurrence" | "noEmailOccurrence" =
+      "ordinary";
+
+    if (EditorAction.guards.DeleteInstantly(action)) {
+      intent = "emailOccurrence";
+    } else if (EditorAction.guards.DeleteNoEmail(action)) {
+      intent = "noEmailOccurrence";
+    }
+
     const plan = bulkPlanFor(
       model,
       EditorAction.guards.DuplicateSelected(action) ? "duplicate" : "delete",
-      EditorAction.guards.DeleteNoEmail(action)
-        ? "noEmailOccurrence"
-        : "ordinary"
+      intent
     );
 
     return dispatch(
@@ -301,6 +310,7 @@ export const editAction = (
   return EditorAction.matchOrElse(
     action,
     {
+      DeleteInstantly: () => openSelected(model, "delete", "emailOccurrence"),
       DeleteNoEmail: () => openSelected(model, "delete", "noEmailOccurrence"),
       DeleteSelected: () => openSelected(model, "delete"),
       DismissConferencingNotice: ({ id }) => ({

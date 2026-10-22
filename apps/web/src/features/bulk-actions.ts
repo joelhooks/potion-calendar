@@ -4,12 +4,14 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
 import { BulkView } from "../client/bulk/model.js";
+import type { BulkExecution } from "../client/bulk/model.js";
 import {
   bulkSummary,
   settledBulk,
   bulkConferenceNotices,
 } from "../client/bulk/selection.js";
 import { EditorAction } from "../client/editing/editor-action.js";
+import { EditorMutation } from "../client/editing/editor-session-model.js";
 import { selectionContext } from "../layout/selection-set.js";
 import { conferencingNoticeText } from "./conferencing-save-notice.js";
 
@@ -72,6 +74,43 @@ export const bulkDetail = (
   ];
 };
 
+const bulkEmailCopy = (
+  execution: typeof BulkExecution.Type,
+  succeeded: readonly string[],
+  undoing: boolean
+): readonly string[] => {
+  if (undoing) {
+    return [];
+  }
+
+  const events = execution.mutations
+    .filter(EditorMutation.guards.DeletedStaged)
+    .map((mutation) => mutation.intent)
+    .filter(
+      (intent) =>
+        intent.intent === "emailOccurrence" &&
+        Option.isSome(intent.selection) &&
+        succeeded.includes(intent.selection.value)
+    )
+    .map((intent) => intent.event);
+
+  const organizer = events.some(
+    (event) =>
+      event.organizer?.self === true &&
+      (event.attendees ?? []).some((person) => person.self !== true)
+  );
+
+  const invitation = events.some((event) => event.organizer?.self === false);
+
+  return [
+    ...(organizer ? ["Guests will be notified."] : []),
+    ...(invitation ? ["Google may email the organizer."] : []),
+    ...(events.length > 0 && !organizer && !invitation
+      ? ["No email sent."]
+      : []),
+  ];
+};
+
 export const bulkNotice = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>
@@ -110,6 +149,8 @@ export const bulkNotice = (
   const issues = [...summary.failed, ...summary.skipped];
   const conferences = bulkConferenceNotices(model);
 
+  const emailCopy = bulkEmailCopy(execution, summary.succeeded, undoing);
+
   return [
     h.section(
       [
@@ -142,6 +183,7 @@ export const bulkNotice = (
                 )
               ),
             ]),
+        ...emailCopy.map((copy) => h.p([], [copy])),
         ...conferences.map((notice) =>
           h.p([], [`${notice.title}: ${conferencingNoticeText(notice.status)}`])
         ),

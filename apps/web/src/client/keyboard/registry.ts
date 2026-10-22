@@ -542,6 +542,18 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     }
   ),
   row(
+    "delete-instantly",
+    "Delete instantly",
+    ["Mod+Delete", "Mod+Backspace", "Mod+Del"],
+    "Editing",
+    "Event",
+    editing(EditorAction.cases.DeleteInstantly.make({})),
+    {
+      availability: (model) =>
+        selectedAvailability(model, instantDeleteEligible(model)),
+    }
+  ),
+  row(
     "delete-no-email",
     "Delete occurrence without email",
     ["Shift+Mod+Delete", "Shift+Mod+Backspace", "Shift+Mod+Del"],

@@ -212,14 +212,6 @@ it.effect(
           Option.none()
         );
       }
-
-      expect(
-        keyboardRegistry.some((row) =>
-          row.keys.some((key) =>
-            ["Mod+Delete", "Mod+Backspace", "Mod+Del"].includes(key)
-          )
-        )
-      ).toBe(false);
     })
 );
 

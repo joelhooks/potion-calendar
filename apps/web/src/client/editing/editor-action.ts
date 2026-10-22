@@ -36,6 +36,7 @@ export const EditorAction = Schema.TaggedUnion({
   ConfirmConferencing: {},
   ConfirmRemoval: {},
   ConfirmScope: {},
+  DeleteInstantly: {},
   DeleteNoEmail: {},
   DeleteSelected: {},
   DismissConferencingNotice: { id: Schema.String },

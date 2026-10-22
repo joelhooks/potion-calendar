@@ -96,6 +96,48 @@ const fixtureEventFlags = (
   return { eventType: input.eventType ?? "default", ...flags };
 };
 
+type FixtureParticipant = Readonly<{
+  displayName: string;
+  email: string;
+  organizer: boolean;
+  responseStatus: "accepted";
+  self: boolean;
+}>;
+
+const fixtureAttendees = (
+  attendees: readonly FixtureParticipant[],
+  noGuests: boolean
+) => (noGuests ? attendees.filter((person) => person.self) : attendees);
+
+const fixtureParticipants = (
+  organizer: boolean
+): readonly FixtureParticipant[] => [
+  {
+    displayName: "Calendar owner",
+    email: "owner@example.test",
+    organizer,
+    responseStatus: "accepted",
+    self: true,
+  },
+  {
+    displayName: "Alex",
+    email: organizer ? "guest@example.test" : "host@example.test",
+    organizer: !organizer,
+    responseStatus: "accepted",
+    self: false,
+  },
+];
+
+const fixtureOrganizer = (self: boolean) => ({
+  email: self ? "owner@example.test" : "host@example.test",
+  self,
+});
+
+const providerNoGuests = (input: {
+  readonly noGuests?: boolean;
+  readonly authoritativeNoGuests?: boolean;
+}) => input.authoritativeNoGuests ?? input.noGuests ?? false;
+
 const EditingArgs = Schema.Struct({
   command: EditingCommand,
   personId: Schema.String,
@@ -111,32 +153,36 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
       readonly bulk?: boolean;
       readonly saveTimes?: Readonly<{ start: string; end: string }>;
       readonly readOnly?: boolean;
+      readonly noGuests?: boolean;
+      readonly mixedGuests?: boolean;
+      readonly authoritativeNoGuests?: boolean;
+      readonly authoritativeOrganizer?: boolean;
     } & InstantEventFlags
   ) {
     const start = { dateTime: "2026-10-21T09:00:00-07:00" };
     const end = { dateTime: "2026-10-21T10:00:00-07:00" };
 
-    const attendees = [
-      {
-        displayName: "Calendar owner",
-        email: "owner@example.test",
-        organizer: input.organizer,
-        responseStatus: "accepted" as const,
-        self: true,
-      },
-      {
-        displayName: "Alex",
-        email: input.organizer ? "guest@example.test" : "host@example.test",
-        organizer: !input.organizer,
-        responseStatus: "accepted" as const,
-        self: false,
-      },
-    ];
+    const participants = fixtureParticipants(input.organizer);
 
-    const organizer = {
-      email: input.organizer ? "owner@example.test" : "host@example.test",
-      self: input.organizer,
-    };
+    const attendees = fixtureAttendees(participants, input.noGuests === true);
+
+    const secondAttendees = fixtureAttendees(
+      attendees,
+      input.mixedGuests === true
+    );
+
+    const organizer = fixtureOrganizer(input.organizer);
+    const actualOrganizer = input.authoritativeOrganizer ?? input.organizer;
+
+    const providerAttendees = fixtureAttendees(
+      fixtureParticipants(actualOrganizer),
+      providerNoGuests(input)
+    );
+
+    const providerSecondAttendees = fixtureAttendees(
+      providerAttendees,
+      input.mixedGuests === true
+    );
 
     const original = CalendarEvent.make({
       ...ref,
@@ -159,10 +205,10 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
       : original;
 
     const providerBase = timedEvent(source.eventId, source.title ?? "Meeting", {
-      attendees,
+      attendees: providerAttendees,
       end,
       ...fixtureEventFlags(input, true),
-      organizer,
+      organizer: fixtureOrganizer(actualOrganizer),
       start,
     });
 
@@ -194,6 +240,7 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
       reads.push(
         response(200, {
           ...provider,
+          attendees: providerSecondAttendees,
           id: "instant-second",
           summary: "Second meeting",
         })
@@ -276,6 +323,7 @@ export const instantRuntimeFixture = Effect.fn("instantRuntimeFixture")(
             source,
             CalendarEvent.make({
               ...source,
+              attendees: secondAttendees,
               eventId: "instant-second",
               title: "Second meeting",
             }),
