@@ -3,6 +3,7 @@ import { AsyncData } from "foldkit";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppModel } from "../src/client/app.js";
+import { RemoteEvents } from "../src/client/calendar-state.js";
 import { TimeZoneAction } from "../src/client/time-zones/model.js";
 import { displayZone } from "../src/layout/time-zones.js";
 import { fixtureSelection } from "./fixture.js";
@@ -53,5 +54,18 @@ export const timeZonesFixture = (
   return {
     ...model,
     settings: { ...model.settings, theme: dark ? "dark" : "light" },
+  };
+};
+
+export const timeZonesOverviewFixture = (viewportWidth: number): AppModel => {
+  const base = timeZonesFixture(true, true, viewportWidth);
+
+  return {
+    ...base,
+    calendar: { ...base.calendar, selected: [] },
+    upcoming: {
+      ...base.upcoming,
+      data: RemoteEvents.Success({ data: { events: [], versions: [] } }),
+    },
   };
 };

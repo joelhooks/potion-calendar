@@ -484,6 +484,10 @@ h3 {
 .timed-content-stacked .event-time {
   overflow: hidden;
 }
+.gesture-preview.timed-content-stacked > strong {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .timed-readout {
   display: flex;
   align-items: center;

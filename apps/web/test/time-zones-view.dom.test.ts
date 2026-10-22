@@ -9,7 +9,12 @@ import { hourHeight, timeColumns } from "../src/layout/geometry.js";
 import { dayInZone } from "../src/layout/navigation.js";
 import { allDaySection } from "../src/layout/presentation.js";
 import { SettingsRoute } from "../src/layout/route.js";
-import { timeZonesFixture } from "./time-zones-fixture.js";
+import {
+  timeZonesFixture,
+  timeZonesOverviewFixture,
+} from "./time-zones-fixture.js";
+import { verifyTimeZonesExport } from "./time-zones-proof-check.js";
+import { timeZonesProofScript } from "./time-zones-proof.js";
 
 it.effect(
   "secondary gutters have 46px columns, formatted labels and no copied event chips",
@@ -245,22 +250,13 @@ it.effect(
           }
 
           const sidebar = width <= 1000 ? 185 : 220;
-          const fullDetails = width <= 1000 ? 260 : 300;
-          const details = name === "no-details" ? 0 : fullDetails;
-
-          const base = timeZonesFixture(
-            travel,
-            dark,
-            width - sidebar - details
-          );
+          const contextWidth = width <= 1000 ? 260 : 300;
+          const viewportWidth = width - sidebar - contextWidth;
 
           const model =
             name === "no-details"
-              ? {
-                  ...base,
-                  calendar: { ...base.calendar, selected: [] },
-                }
-              : base;
+              ? timeZonesOverviewFixture(viewportWidth)
+              : timeZonesFixture(travel, dark, viewportWidth);
 
           const minimum = timeColumns(model.calendar.viewportWidth, 7).day;
 
@@ -269,12 +265,12 @@ it.effect(
             { isHydratable: false }
           );
 
-          const proof = `const frame=document.querySelector('#time-viewport');const panel=document.querySelector('.detail-panel');if(document.documentElement.scrollWidth!==innerWidth)throw Error('Page widened');if(!frame)throw Error('Missing grid viewport');if(Math.abs(frame.getBoundingClientRect().right-(panel?.getBoundingClientRect().left??innerWidth))>1)throw Error('Grid leaves blank strip');for(const day of document.querySelectorAll('.day-column'))if(day.getBoundingClientRect().width<${minimum}-0.5)throw Error('Crushed day column');const oldLeft=frame.scrollLeft;frame.scrollLeft=Math.min(120,frame.scrollWidth-frame.clientWidth);const left=frame.getBoundingClientRect().left;for(const selector of ['.zone-header','.time-labels'])[...document.querySelectorAll(selector)].forEach((node,index)=>{if(Math.abs(node.getBoundingClientRect().left-left-index*46)>1)throw Error('Zone gutter moved');});if(Math.abs(document.querySelector('.all-day-gutter').getBoundingClientRect().left-left)>1)throw Error('All-day gutter moved');frame.scrollTop=80;if(Math.abs(document.querySelector('.day-headers').getBoundingClientRect().top-frame.getBoundingClientRect().top)>1)throw Error('Day header moved');frame.scrollTop=0;frame.scrollLeft=oldLeft;document.documentElement.dataset.zoneLayoutProof='pass';`;
+          const proof = timeZonesProofScript(minimum);
           const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x900"><title>Time zones fixture</title><style>${css}</style></head><body>${rendered.html}<script>${proof}</script></body></html>`;
-          yield* fs.writeFileString(
-            `../../.git/time-zones-${name}-${width}-fixture.html`,
-            html
-          );
+          const path = `../../.git/time-zones-${name}-${width}-fixture.html`;
+          yield* fs.writeFileString(path, html);
+          const exported = yield* fs.readFileString(path);
+          yield* Effect.scoped(verifyTimeZonesExport(exported, width, minimum));
         }
       }
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))

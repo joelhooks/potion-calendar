@@ -10,7 +10,11 @@ import { displayZone } from "../src/layout/time-zones.js";
 import { editorOriginal } from "./editor-fixture.js";
 import { fixtureModel } from "./fixture.js";
 
-export type EdgeScene = "timed-move" | "all-day-resize" | "wide-no-overflow";
+export type EdgeScene =
+  | "timed-move"
+  | "all-day-resize"
+  | "wide-no-overflow"
+  | "narrow-preview";
 
 export const edgeFirstDay = dayFromIso("2026-10-19");
 
@@ -27,6 +31,14 @@ export const edgeSceneModel = (
   const startDate = isoFromDay(edgeFirstDay + Math.max(0, from));
   const allDay = scene === "all-day-resize";
 
+  const titles: Record<EdgeScene, string> = {
+    "all-day-resize": "Edge scroll all-day planning",
+    "narrow-preview":
+      "Edge scroll preview title exceeding a narrow date column",
+    "timed-move": "Edge scroll review",
+    "wide-no-overflow": "Edge scroll review",
+  };
+
   const event = CalendarEvent.make({
     ...editorOriginal,
     end: allDay
@@ -37,7 +49,7 @@ export const edgeSceneModel = (
     start: allDay
       ? { date: startDate }
       : { dateTime: `${startDate}T09:00:00-07:00` },
-    title: allDay ? "Edge scroll all-day planning" : "Edge scroll review",
+    title: titles[scene],
   });
 
   let model: AppModel = {

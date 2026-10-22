@@ -55,6 +55,19 @@ for (const segment of segments) {
   check(segment.scrollWidth <= segment.clientWidth, 'preview content stays horizontally inside every chip');
   check(segment.scrollHeight <= segment.clientHeight, 'preview content stays vertically inside every chip');
 }
+let titleProof;
+if (e.scene === 'narrow-preview') {
+  check(window.innerWidth === 900 && e.dayCount === 14 && !e.allDay && preview.classList.contains('timed-content-stacked'), 'narrow fourteen-day stacked timed preview');
+  const title = preview.querySelector(':scope > strong');
+  check(title, 'actual preview title');
+  const style = getComputedStyle(title);
+  check(style.whiteSpace === 'nowrap' && style.textOverflow === 'ellipsis', 'single-line ellipsis title');
+  check(title.clientWidth > 0 && title.scrollWidth > title.clientWidth, 'title exceeds its narrow available width');
+  const height = title.getBoundingClientRect().height;
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  check(height > 0 && height <= lineHeight + 1, 'title occupies one actual line');
+  titleProof = { whiteSpace: style.whiteSpace, textOverflow: style.textOverflow, width: title.clientWidth, scrollWidth: title.scrollWidth, height, lineHeight };
+}
 const gutterProof = (element, region) => {
   const b = element.getBoundingClientRect();
   const y = region === 'body' ? Math.min(frame.bottom - 4, frame.top + 200) : b.top + b.height / 2;
@@ -77,7 +90,7 @@ document.documentElement.dataset.edgeProof = JSON.stringify({
   before, after, maximum, nativeStandInAfter: e.after, initialClipped: clipped, underPointer: Number(under.dataset.day),
   columnDate: e.columnDate, previewDate: e.previewDate,
   clientWidth: viewport.clientWidth, scrollWidth: viewport.scrollWidth,
-  frozen: true, steps: e.steps.length, previewSegments: segments.length
+  frozen: true, steps: e.steps.length, previewSegments: segments.length, title: titleProof
 });
 document.documentElement.dataset.fixtureReady = 'edge-scroll';
 })();`;
@@ -101,7 +114,10 @@ export const edgeStandInStyle = (element: Element) => {
         ? color.style.backgroundColor
         : style.backgroundColor,
     isolation: style.isolation,
+    lineHeight: "12px",
     overflowX: style.overflowX || style.overflow,
+    textOverflow: style.textOverflow,
+    whiteSpace: style.whiteSpace,
   };
 };
 
@@ -179,6 +195,19 @@ export const edgeProofStandIns = (document: Document, e: EdgeProof): void => {
     for (const preview of element.querySelectorAll<HTMLElement>(
       ".gesture-preview"
     )) {
+      if (e.scene === "narrow-preview") {
+        const title = preview.querySelector<HTMLElement>(":scope > strong");
+
+        if (title !== null) {
+          Object.defineProperties(title, {
+            clientWidth: { configurable: true, value: e.columnWidth - 18 },
+            scrollWidth: { configurable: true, value: 300 },
+          });
+          title.getBoundingClientRect = () =>
+            new DOMRect(0, 0, e.columnWidth - 18, 12);
+        }
+      }
+
       preview.getBoundingClientRect = () => {
         const cell = element.getBoundingClientRect();
 

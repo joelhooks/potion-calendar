@@ -48,6 +48,22 @@ const verifyExport = Effect.fn("verifyFrozenEdgeExport")(
       "JSDOM stand-in"
     );
 
+    if (proof.scene === "narrow-preview") {
+      const title = yield* Effect.fromNullishOr(
+        container.querySelector<HTMLElement>(".gesture-preview > strong")
+      );
+
+      title.style.whiteSpace = "normal";
+      expect(() => {
+        runInNewContext(exactScript ?? "", {
+          document,
+          getComputedStyle: edgeStandInStyle,
+          window: { innerWidth: width },
+        });
+      }).toThrow(/single-line ellipsis title/u);
+      title.style.removeProperty("white-space");
+    }
+
     const corrupt = script.replace(
       '"actorPhase":"dragging"',
       '"actorPhase":"idle"'
@@ -64,23 +80,25 @@ const verifyExport = Effect.fn("verifyFrozenEdgeExport")(
   }
 );
 
-const scenes: readonly EdgeScene[] = [
-  "timed-move",
-  "all-day-resize",
-  "wide-no-overflow",
+const scenes: readonly {
+  readonly scene: EdgeScene;
+  readonly widths: readonly number[];
+}[] = [
+  { scene: "timed-move", widths: [900, 1440] },
+  { scene: "all-day-resize", widths: [900, 1440] },
+  { scene: "wide-no-overflow", widths: [1440] },
+  { scene: "narrow-preview", widths: [900] },
 ];
 
 it.effect(
-  "exports ten frozen native edge-scroll previews with exact step-driven scripts",
+  "exports twelve frozen native edge-scroll previews with exact step-driven scripts",
   () =>
     Effect.gen(function* edgeScrollExports() {
       const fs = yield* FileSystem.FileSystem;
       const css = yield* fs.readFileString("src/client/style.css");
 
-      for (const scene of scenes) {
-        for (const width of scene === "wide-no-overflow"
-          ? [1440]
-          : [900, 1440]) {
+      for (const { scene, widths } of scenes) {
+        for (const width of widths) {
           for (const theme of ["light", "dark"] as const) {
             const result = yield* Effect.scoped(
               nativeEdgeScene({ scene, theme, width })
