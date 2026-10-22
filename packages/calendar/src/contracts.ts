@@ -22,6 +22,7 @@ import {
   ResponseStatus,
   SendUpdates,
 } from "./model.js";
+import { ReadNeighborOccurrenceInput } from "./occurrence-model.js";
 import { SearchEventsInput, SearchEventsOutput } from "./search-model.js";
 import { SeriesMoveRetimeFailure } from "./series-move-result.js";
 import {
@@ -29,6 +30,13 @@ import {
   setCalendarAppearanceContract,
 } from "./settings-contracts.js";
 import { SyncResult } from "./sync-result.js";
+
+export {
+  OccurrenceDirection,
+  ReadNeighborOccurrenceInput,
+} from "./occurrence-model.js";
+
+export type { ReadNeighborOccurrenceInputValue } from "./occurrence-model.js";
 
 export {
   getAccountConferencingDefaultContract,
@@ -243,6 +251,18 @@ export const syncNowContract = defineContract("syncNow", {
   output: SyncResult,
 });
 
+export const readNeighborOccurrenceContract = defineContract(
+  "readNeighborOccurrence",
+  {
+    annotations: { idempotent: true, readOnly: true },
+    description:
+      "Read the nearest uncancelled instance in one owned recurring series; incomplete scans fail rather than report absence",
+    failure: CalendarReadFailure,
+    input: ReadNeighborOccurrenceInput,
+    output: Schema.NullOr(CalendarEvent),
+  }
+);
+
 export const calendarContracts = [
   getAccountConferencingDefaultContract,
   setAccountConferencingDefaultContract,
@@ -252,6 +272,7 @@ export const calendarContracts = [
   listEventsContract,
   searchEventsContract,
   getEventContract,
+  readNeighborOccurrenceContract,
   createEventContract,
   updateEventContract,
   moveEventContract,

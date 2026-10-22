@@ -56,6 +56,7 @@ export {
   createEvent,
   deleteEvent,
   getEvent,
+  readNeighborOccurrence,
   listCalendars,
   listEvents,
   searchEvents,

@@ -131,6 +131,39 @@ export const selectedReadEvent = (
   );
 };
 
+export const selectedNavigationEvent = (
+  model: AppModel
+): DisplayEvent | undefined => {
+  if (active(model) !== "enabled" || model.calendar.selected.length === 0) {
+    return undefined;
+  }
+
+  const keys = new Set(model.calendar.selected);
+
+  return keyboardEvents({
+    ...model,
+    calendar: { ...model.calendar, hidden: [] },
+  })
+    .filter((event) => keys.has(event.key))
+    .toSorted(
+      (left, right) =>
+        left.startDay - right.startDay ||
+        left.startMinute - right.startMinute ||
+        left.key.localeCompare(right.key)
+    )[0];
+};
+
+export const selectedRecurringReadEvent = (
+  model: AppModel
+): DisplayEvent | undefined => {
+  const event = selectedReadEvent(model);
+
+  return event?.source.recurringEventId !== undefined &&
+    event.source.recurringEventId !== ""
+    ? event
+    : undefined;
+};
+
 export const selectedProviderOriginal = (
   model: AppModel
 ): string | undefined => {
@@ -331,20 +364,36 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     special("go-to-selection"),
     {
       availability: (model) =>
-        selectedReadEvent(model) === undefined ? "disabled" : "enabled",
+        selectedNavigationEvent(model) === undefined ? "hidden" : "enabled",
     }
   ),
   row(
     "open-in-provider",
-    "Open in provider",
+    "Open in Google Calendar",
     [],
     "Workflows",
     "Event",
     special("open-in-provider"),
     {
       availability: (model) =>
-        selectedProviderOriginal(model) === undefined ? "disabled" : "enabled",
+        selectedProviderOriginal(model) === undefined ? "hidden" : "enabled",
     }
+  ),
+  ...["next", "previous"].map((direction) =>
+    row(
+      `${direction}-occurrence`,
+      direction === "next" ? "Next occurrence" : "Previous occurrence",
+      [],
+      "Calendar navigation",
+      "Event",
+      special(`${direction}-occurrence`),
+      {
+        availability: (model) =>
+          selectedRecurringReadEvent(model) === undefined
+            ? "hidden"
+            : "enabled",
+      }
+    )
   ),
   row(
     "email-participants",

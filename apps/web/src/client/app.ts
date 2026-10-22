@@ -158,6 +158,11 @@ import {
   selectSearchResult,
   syncSearchRoute,
 } from "./search/update.js";
+import {
+  SelectionCommands,
+  initialSelectionCommands,
+} from "./selection-commands/model.js";
+import { receiveOccurrence } from "./selection-commands/update.js";
 import { acceptsSelection, selectionHostKey } from "./selection/host.js";
 import {
   manageSettings,
@@ -235,6 +240,7 @@ export const Model = Schema.Struct({
   reminders: ReminderState,
   route: Route,
   search: SearchUi,
+  selectionCommands: SelectionCommands,
   session: RemoteSession.schema,
   settings: SettingsUi,
   settingsManagement: SettingsManagement,
@@ -310,6 +316,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   reminders: initialReminderState(),
   route: CalendarRoute.make({}),
   search: initialSearch(),
+  selectionCommands: initialSelectionCommands(),
   session: RemoteSession.Loading(),
   settings: initialSettings(),
   settingsManagement: initialSettingsManagement(),
@@ -926,7 +933,7 @@ const updateCore = (
       model.keyboard.screen === "closed"
         ? { commands: [BackRoute()], model: closeKeyboard(model) }
         : { model: closeKeyboard(model) },
-    KeyboardDate: ({ day, flash }) =>
+    KeyboardDate: ({ day, flash, revealSelection }) =>
       changeNavigation(
         flash === true
           ? {
@@ -938,7 +945,7 @@ const updateCore = (
               },
             }
           : model,
-        { day, type: "date" }
+        { day, type: revealSelection === true ? "selection" : "date" }
       ),
     KeyboardHighlight: ({ id }) => ({
       model: { ...model, keyboard: { ...model.keyboard, highlighted: id } },
@@ -1261,6 +1268,8 @@ const updateCore = (
     },
     ReceivedMonth: ({ notice }) =>
       receiveMonthNotice(model, notice, reloadRange),
+    ReceivedOccurrence: ({ notice }) =>
+      receiveOccurrence(model, notice, dispatch),
     ReceivedPreferences: ({ person, preferences }) => {
       if (!Option.contains(model.person, person)) {
         return { model };

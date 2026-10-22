@@ -1,10 +1,13 @@
 import { implement } from "@calendar/capability/implement";
+import { Effect } from "effect";
 
+import { CalendarReadFailure } from "./calendar-read-failure.js";
 import { CalendarService } from "./calendar.js";
 import {
   createEventContract,
   deleteEventContract,
   getEventContract,
+  readNeighborOccurrenceContract,
   listCalendarsContract,
   listEventsContract,
   searchEventsContract,
@@ -14,6 +17,7 @@ import {
   syncNowContract,
   updateEventContract,
 } from "./contracts.js";
+import { readNeighbor } from "./occurrence.js";
 import { syncCalendar } from "./sync.js";
 
 export const listCalendars = implement(listCalendarsContract, () =>
@@ -30,6 +34,21 @@ export const searchEvents = implement(searchEventsContract, (input) =>
 
 export const getEvent = implement(getEventContract, (input) =>
   CalendarService.use((calendar) => calendar.getEvent(input))
+);
+
+export const readNeighborOccurrence = implement(
+  readNeighborOccurrenceContract,
+  (input) =>
+    readNeighbor(input).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CalendarReadFailure({
+            accountId: input.accountId,
+            calendarId: input.calendarId,
+            cause,
+          })
+      )
+    )
 );
 
 export const createEvent = implement(createEventContract, (input) =>
@@ -65,6 +84,7 @@ export const calendarCapabilities = [
   listEvents,
   searchEvents,
   getEvent,
+  readNeighborOccurrence,
   createEvent,
   updateEvent,
   moveEvent,

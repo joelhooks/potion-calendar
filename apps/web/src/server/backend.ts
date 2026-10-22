@@ -10,6 +10,7 @@ import {
   setAccountConferencingDefault,
   setCalendarAppearance,
   getEvent,
+  readNeighborOccurrence,
   listCalendars,
   listEvents,
   moveAndRetimeSeries,
@@ -164,6 +165,16 @@ export const createBackend = (
         options,
         [input],
         getEvent.handler(input)
+      ).pipe(Effect.mapError(readFailureFor.bind(undefined, [input])))
+    ),
+    implement(readNeighborOccurrence.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [input],
+        readNeighborOccurrence.handler(input)
       ).pipe(Effect.mapError(readFailureFor.bind(undefined, [input])))
     ),
     implement(createEvent.contract, (input) =>

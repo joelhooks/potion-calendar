@@ -12,7 +12,7 @@ import type { AppModel } from "../app.js";
 import { bulkSummary } from "../bulk/selection.js";
 import { eventKey } from "../calendar-state.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
-import { SavePreferences } from "../commands.js";
+import { SavePreferences, ScrollToSelection } from "../commands.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
 import type { EditingRuntime } from "../editing/runtime.js";
@@ -21,9 +21,15 @@ import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import type { MonthRuntime } from "../month/runtime.js";
 import type { CalendarSearchClient } from "../search/client.js";
+import {
+  OccurrenceNotice,
+  OccurrenceTask,
+} from "../selection-commands/model.js";
+import { occurrenceContext } from "../selection-commands/source.js";
 import { selectionRangeDays } from "../selection/range.js";
 import { preferenceSnapshot } from "../settings/update.js";
 import { calendarVisible, chooseVisibility } from "../settings/visibility.js";
+import { timeGridGeometry } from "../time-blocks/grid.js";
 import { FocusShortcutSearch, OpenProviderOriginal } from "./browser.js";
 import { commandChoices, enterChoice, moveHighlight } from "./choices.js";
 import { resolveBinding } from "./input.js";
@@ -36,7 +42,8 @@ import {
   selectedColorEvent,
   selectedEvent,
   selectedProviderOriginal,
-  selectedReadEvent,
+  selectedNavigationEvent,
+  selectedRecurringReadEvent,
 } from "./registry.js";
 import { ColorOpening } from "./state.js";
 
@@ -284,8 +291,11 @@ const selectionAction = (
   }
 };
 
-const goToSelection = (model: AppModel, apply: Apply): KeyboardResult => {
-  const event = selectedReadEvent(model);
+export const goToSelection = (
+  model: AppModel,
+  apply: Apply
+): KeyboardResult => {
+  const event = selectedNavigationEvent(model);
   const person = Option.getOrUndefined(model.person);
 
   if (event === undefined || person === undefined) {
@@ -313,7 +323,10 @@ const goToSelection = (model: AppModel, apply: Apply): KeyboardResult => {
     calendar: { ...model.calendar, ...visibility },
   };
 
-  const navigated = apply(shown, Message.KeyboardDate({ day: event.startDay }));
+  const navigated = apply(
+    shown,
+    Message.KeyboardDate({ day: event.startDay, revealSelection: true })
+  );
 
   const routed: KeyboardResult = Predicate.isTagged(
     navigated.model.route,
@@ -335,10 +348,60 @@ const goToSelection = (model: AppModel, apply: Apply): KeyboardResult => {
         : []),
       ...(navigated.commands ?? []),
       ...(routed.commands ?? []),
+      ...(routed.model.calendar.navigation.mode === "month"
+        ? []
+        : [
+            ScrollToSelection({
+              allDay: event.allDay,
+              hidden: timeGridGeometry(routed.model).grid.hidden,
+              key: event.key,
+              minute: event.startMinute,
+              scale: timeGridGeometry(routed.model).scale,
+            }),
+          ]),
     ],
     model: {
       ...routed.model,
       calendar: { ...routed.model.calendar, selected: model.calendar.selected },
+    },
+  };
+};
+
+const beginOccurrence = (
+  model: AppModel,
+  direction: "next" | "previous"
+): KeyboardResult => {
+  const event = selectedRecurringReadEvent(model);
+  const personId = Option.getOrUndefined(model.person);
+
+  if (event === undefined || personId === undefined) {
+    return { model };
+  }
+
+  const revision = model.selectionCommands.revision + 1;
+
+  const task = OccurrenceTask.make({
+    anchor: event.source,
+    context: occurrenceContext(model),
+    personId,
+    request: {
+      accountId: event.source.accountId,
+      calendarId: event.source.calendarId,
+      direction,
+      eventId: event.source.eventId,
+    },
+    revision,
+    selection: event.key,
+  });
+
+  return {
+    model: {
+      ...closeKeyboard(model),
+      selectionCommands: {
+        notice: Option.some(OccurrenceNotice.cases.Loading.make({ task })),
+        revision,
+        task: Option.some(task),
+      },
     },
   };
 };
@@ -387,6 +450,48 @@ const chooseColor = (model: AppModel, id: string): KeyboardResult => {
     },
     EditorAction.cases.OpenEdit.make({})
   );
+};
+
+const ReadAction = Schema.Literals([
+  "go-to-selection",
+  "next-occurrence",
+  "previous-occurrence",
+  "open-in-provider",
+]);
+
+const selectedReadAction = (
+  model: AppModel,
+  id: typeof ReadAction.Type,
+  apply: Apply
+): KeyboardResult => {
+  switch (id) {
+    case "go-to-selection": {
+      return goToSelection(model, apply);
+    }
+
+    case "next-occurrence": {
+      return beginOccurrence(model, "next");
+    }
+
+    case "previous-occurrence": {
+      return beginOccurrence(model, "previous");
+    }
+
+    case "open-in-provider": {
+      const href = selectedProviderOriginal(model);
+
+      return href === undefined
+        ? { model }
+        : {
+            commands: [OpenProviderOriginal({ href })],
+            model: closeKeyboard(model),
+          };
+    }
+
+    default: {
+      return { model };
+    }
+  }
 };
 
 export const keyboardAction = (
@@ -438,22 +543,11 @@ export const keyboardAction = (
     );
   }
 
+  if (Schema.is(ReadAction)(id)) {
+    return selectedReadAction(model, id, apply);
+  }
+
   switch (id) {
-    case "go-to-selection": {
-      return goToSelection(model, apply);
-    }
-
-    case "open-in-provider": {
-      const href = selectedProviderOriginal(model);
-
-      return href === undefined
-        ? { model }
-        : {
-            commands: [OpenProviderOriginal({ href })],
-            model: closeKeyboard(model),
-          };
-    }
-
     case "join": {
       return apply(model, Message.RequestedJoinMeeting({ key: Option.none() }));
     }

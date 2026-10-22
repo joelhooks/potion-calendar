@@ -86,7 +86,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "catalog and stale dispatch refuse zero or multiple selections without inventing an event",
+  "catalog and stale dispatch refuse invalid read selections without inventing an event",
   {
     id: Schema.Literals(["go-to-selection", "open-in-provider"]),
     multiple: Schema.Boolean,
@@ -103,8 +103,17 @@ it.effect.prop(
       ).model;
 
       const row = commandChoices(open).find((choice) => choice.id === id);
-      expect(row).toBeDefined();
-      expect(row?.disabled).toBe(true);
+
+      if (multiple && id === "go-to-selection") {
+        expect(row?.disabled).toBe(false);
+        expect(
+          update(open, Message.KeyboardPick({ id })).model.calendar.selected
+        ).toEqual(current.calendar.selected);
+
+        return;
+      }
+
+      expect(row).toBeUndefined();
       expect(update(open, Message.KeyboardPick({ id })).model).toBe(open);
       const bypass = update(open, Message.KeyboardAction({ id }));
       expect(bypass.model).toBe(open);
@@ -130,7 +139,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "missing or unsafe provider originals disable only the provider command",
+  "missing or unsafe provider originals hide only the provider command",
   { unsafe: Schema.Boolean },
   ({ unsafe }) =>
     Effect.sync(() => {
@@ -146,8 +155,8 @@ it.effect.prop(
         rows.find((choice) => choice.id === "go-to-selection")?.disabled
       ).toBe(false);
       expect(
-        rows.find((choice) => choice.id === "open-in-provider")?.disabled
-      ).toBe(true);
+        rows.find((choice) => choice.id === "open-in-provider")
+      ).toBeUndefined();
       expect(
         update(model, Message.KeyboardAction({ id: "open-in-provider" }))
           .commands ?? []

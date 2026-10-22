@@ -13,7 +13,7 @@ import { monthWeekLayout } from "../layout/month-week.js";
 import type { MonthWindowFrame } from "../layout/month-window.js";
 import { monthWindowWeeks } from "../layout/month-window.js";
 import { monthGeometry, monthMetrics, monthWeeks } from "../layout/month.js";
-import { dayInZone } from "../layout/navigation.js";
+import { dayInZone, monthHidesWeekends } from "../layout/navigation.js";
 import { dayLabel, visibleEvents } from "../layout/presentation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { chip } from "./calendar.js";
@@ -35,7 +35,7 @@ export const monthGrid = (
     model.settings.showWeekNumbers
   );
 
-  const columns = model.calendar.navigation.hideWeekends ? 5 : 7;
+  const columns = monthHidesWeekends(model.calendar.navigation) ? 5 : 7;
   const template = `${geometry.columnsPrefix}repeat(${columns}, minmax(0, 1fr))`;
   const today = dayInZone(model.calendar.now, model.calendar.zone);
 

@@ -32,6 +32,7 @@ import {
   ReminderCardAction,
 } from "./reminders/model.js";
 import { SearchNotice, SearchProblem } from "./search/model.js";
+import { OccurrenceNotice } from "./selection-commands/model.js";
 import { ManagementChange } from "./settings-management/model.js";
 import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
@@ -125,7 +126,11 @@ export const Message = defineMessageUnion({
   FinishedJoinMeeting: { outcome: MeetingJoinOutcome, personId: Schema.String },
   KeyboardAction: { id: Schema.String },
   KeyboardClose: {},
-  KeyboardDate: { day: Schema.Int, flash: Schema.optional(Schema.Boolean) },
+  KeyboardDate: {
+    day: Schema.Int,
+    flash: Schema.optional(Schema.Boolean),
+    revealSelection: Schema.optional(Schema.Boolean),
+  },
   KeyboardHighlight: { id: Schema.String },
   KeyboardMove: { direction: Schema.Literals([-1, 1]) },
   KeyboardPick: { id: Schema.String },
@@ -183,6 +188,7 @@ export const Message = defineMessageUnion({
   },
   ReceivedLive: { notice: LiveNotice, personId: Schema.String },
   ReceivedMonth: { notice: MonthNotice },
+  ReceivedOccurrence: { notice: OccurrenceNotice },
   ReceivedPreferences: { person: Schema.String, preferences: SavedPreferences },
   ReceivedSearch: { notice: SearchNotice },
   ReceivedSession: { snapshot: SessionSnapshot },

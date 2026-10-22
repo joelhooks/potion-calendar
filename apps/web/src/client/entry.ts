@@ -26,6 +26,9 @@ import { monthViewRegistry } from "./month/view-state.js";
 import { monthViewportMountFor } from "./month/viewport.js";
 import { CalendarSearchClient } from "./search/client.js";
 import { SearchRuntime } from "./search/runtime.js";
+import { OccurrenceClient } from "./selection-commands/client.js";
+import { OccurrenceRuntime } from "./selection-commands/runtime.js";
+import { occurrenceSubscriptions } from "./selection-commands/subscription.js";
 import { subscriptions } from "./subscriptions.js";
 
 import "./style.css";
@@ -41,7 +44,8 @@ const resources = Layer.mergeAll(
   EditingRuntime.layer.pipe(
     Layer.provide(Layer.merge(BrowserCrypto.layer, editingServices))
   ),
-  SearchRuntime.layer.pipe(Layer.provideMerge(CalendarSearchClient.layer))
+  SearchRuntime.layer.pipe(Layer.provideMerge(CalendarSearchClient.layer)),
+  OccurrenceRuntime.layer.pipe(Layer.provide(OccurrenceClient.layer))
 );
 
 interface DesktopProofOptions {
@@ -78,6 +82,7 @@ const browserApplication = () => {
     ...diagnostics,
     subscriptions: Subscription.aggregate(
       subscriptions,
+      occurrenceSubscriptions,
       gestureSubscriptions(registry)
     ),
     update,

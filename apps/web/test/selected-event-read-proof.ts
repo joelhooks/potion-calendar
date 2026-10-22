@@ -9,13 +9,15 @@ dialog.showModal();
 requireFact(dialog.open && dialog.matches(':modal'), 'Command dialog is not modal');
 const go = document.querySelector('#command-go-to-selection');
 const provider = document.querySelector('#command-open-in-provider');
-requireFact(go && provider, 'Missing selected-event catalog entries');
+const selected = evidence.scene !== 'no-selection';
 const single = evidence.scene !== 'no-selection' && evidence.scene !== 'multiple';
 const safe = single && evidence.scene !== 'no-url' && evidence.scene !== 'unsafe-url';
-requireFact(go.disabled === !single && provider.disabled === !safe, 'Wrong selected-event availability');
-requireFact(go.textContent.includes('Go to selection') && provider.textContent.includes('Open in provider'), 'Wrong read-action labels');
+requireFact(selected ? go && !go.disabled : go === null, 'Wrong selection navigation availability');
+requireFact(safe ? provider && !provider.disabled : provider === null, 'Wrong provider availability');
+requireFact(!go || go.textContent.includes('Go to selection'), 'Wrong navigation label');
+requireFact(!provider || provider.textContent.includes('Open in Google Calendar'), 'Wrong provider label');
 requireFact(evidence.selected.length === (evidence.scene === 'no-selection' ? 0 : evidence.scene === 'multiple' ? 2 : 1), 'Wrong selection precondition');
-if (single) {
+if (selected) {
   requireFact(JSON.stringify(evidence.afterGo.selected) === JSON.stringify(evidence.selected), 'Go to selection lost selection');
   requireFact(evidence.afterGo.day === evidence.sourceDay && evidence.afterGo.mode === evidence.beforeMode, 'Go to selection changed view or missed event date');
   requireFact(evidence.afterGo.visible === true, 'Selected calendar remains hidden');
@@ -27,7 +29,7 @@ if (safe) {
   requireFact(evidence.provider.href === 'https://calendar.google.com/calendar/event?eid=fixture-original', 'Wrong provider original');
   requireFact(evidence.provider.closed && evidence.provider.unchangedCalendar, 'Provider action mutated calendar or left menu open');
 } else requireFact(evidence.provider.commands.length === 0, 'Disabled provider action ran');
-for (const button of [go, provider]) {
+for (const button of [go, provider].filter(Boolean)) {
   const box = button.getBoundingClientRect();
   requireFact(box.width > 0 && box.height > 0 && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, 'Selected-event action is clipped');
 }

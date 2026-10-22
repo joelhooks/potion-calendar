@@ -7,7 +7,7 @@ import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppModel, AppMessage } from "../src/client/app.js";
-import { ReadEvents } from "../src/client/commands.js";
+import { ReadEvents, ScrollToSelection } from "../src/client/commands.js";
 import { OpenProviderOriginal } from "../src/client/keyboard/browser.js";
 import { commandMenu } from "../src/features/command-menu.js";
 import {
@@ -46,7 +46,7 @@ it.effect(
       Scene.scene(
         { update, view },
         Scene.given(opened),
-        Scene.click(Scene.role("option", { name: "Open in provider" })),
+        Scene.click(Scene.role("option", { name: "Open in Google Calendar" })),
         Scene.Command.expectHas(OpenProviderOriginal),
         Scene.Command.resolve(OpenProviderOriginal, Message.Navigated())
       );
@@ -79,7 +79,8 @@ it.effect(
               request: opened.calendar.rangeRequest + 1,
               result: { events: [], versions: [] },
             }),
-          ]
+          ],
+          [ScrollToSelection, Message.CompletedGridScroll()]
         )
       );
     })

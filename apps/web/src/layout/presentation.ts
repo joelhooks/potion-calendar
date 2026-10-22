@@ -12,6 +12,7 @@ import {
   eventKey,
   readFailure,
 } from "../client/calendar-state.js";
+import { selectedOccurrenceEvent } from "../client/selection-commands/projection.js";
 import { allDayHeight, packAllDay } from "./all-day.js";
 import { eventColor } from "./colors.js";
 import { projectEditingEvents } from "./editing-events.js";
@@ -250,10 +251,18 @@ const unmergedEvents = (model: AppModel): readonly DisplayEvent[] => {
       ? [...raw, selected.event]
       : raw;
 
-  const rangeKeys = new Set(events.map(eventKey));
+  const occurrence = selectedOccurrenceEvent(model);
+
+  const withOccurrence =
+    occurrence !== undefined &&
+    !events.some((event) => eventKey(event) === eventKey(occurrence))
+      ? [...events, occurrence]
+      : events;
+
+  const rangeKeys = new Set(withOccurrence.map(eventKey));
 
   const projected = [
-    ...events,
+    ...withOccurrence,
     ...selectedUpcomingCopies(model).filter(
       (event) => !rangeKeys.has(eventKey(event))
     ),
@@ -290,7 +299,8 @@ const unmergedEvents = (model: AppModel): readonly DisplayEvent[] => {
     return item === undefined ||
       (model.calendar.hideDeclined &&
         item.status === "declined" &&
-        !selectedSearchCopy)
+        !selectedSearchCopy &&
+        (occurrence === undefined || eventKey(occurrence) !== eventKey(event)))
       ? []
       : [item];
   });

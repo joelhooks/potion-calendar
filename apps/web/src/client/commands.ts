@@ -150,6 +150,58 @@ export const ScrollToNow = Command.define("ScrollToNow", {
   messages: [Message.CompletedGridScroll],
 });
 
+export const ScrollSelectionArgs = Schema.Struct({
+  allDay: Schema.Boolean,
+  hidden: Schema.Array(MinuteRange),
+  key: Schema.String,
+  minute: Schema.Finite,
+  scale: Schema.Finite,
+});
+
+export const ScrollToSelection = Command.define("ScrollToSelection", {
+  args: ScrollSelectionArgs.fields,
+  execute: ({ allDay, hidden, key, minute, scale }) =>
+    Render.afterCommit.pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          const viewport =
+            document.querySelector<HTMLElement>("#time-viewport");
+
+          const target = [
+            ...document.querySelectorAll<HTMLElement>("[data-event-key]"),
+          ].find(
+            (element) =>
+              element.dataset.eventKey === key &&
+              element.classList.contains("selected")
+          );
+
+          if (viewport !== null && target !== undefined) {
+            if (!allDay) {
+              viewport.scrollTop = initialScroll(
+                minute,
+                scale,
+                timeAreaHeight(viewport),
+                gridGeometry(scale, hidden)
+              );
+            }
+
+            const area = viewport.getBoundingClientRect();
+            const event = target.getBoundingClientRect();
+
+            if (event.left < area.left) {
+              viewport.scrollLeft += event.left - area.left;
+            } else if (event.right > area.right) {
+              viewport.scrollLeft += event.right - area.right;
+            }
+          }
+
+          return Message.CompletedGridScroll();
+        })
+      )
+    ),
+  messages: [Message.CompletedGridScroll],
+});
+
 export const PreserveTimePosition = Command.define("PreserveTimePosition", {
   args: { offset: Schema.Finite },
   execute: ({ offset }) =>

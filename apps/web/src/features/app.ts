@@ -30,6 +30,7 @@ import { gestureRefusalNotice } from "./gesture-refusal.js";
 import { instantSaveNotice } from "./instant-save-notice.js";
 import { reminderCards } from "./reminder-cards.js";
 import { searchPanel } from "./search.js";
+import { selectionCommandStatus } from "./selection-command-status.js";
 import { settingsPage } from "./settings.js";
 import { shortcutsPage } from "./shortcuts-page.js";
 import { monthGrid, timeGrid } from "./time-grid.js";
@@ -351,6 +352,7 @@ export const view = (
                   : []),
                 routedPage(model, h, prepare, prepareMonth),
                 ...systemZonePrompt(model, h),
+                ...selectionCommandStatus(model, h),
               ],
       }),
       h.div(

@@ -27,6 +27,7 @@ export const monthHostKey = (model: AppModel): Option.Option<string> => {
             days: model.calendar.navigation.days,
             hideWeekends: model.calendar.navigation.hideWeekends,
             mode: model.calendar.navigation.mode,
+            revealedDay: model.calendar.navigation.revealedDay,
             weekStartsOn: model.calendar.navigation.weekStartsOn,
           },
           model.calendar.zone,

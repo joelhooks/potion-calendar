@@ -3,7 +3,12 @@ import { Option } from "effect";
 import { monthMetrics } from "./month-metrics.js";
 import { monthWindowWeeks } from "./month-window.js";
 import type { MonthWindowFrame } from "./month-window.js";
-import { isDisplayDay, partsFromDay, periodStart } from "./navigation.js";
+import {
+  isDisplayDay,
+  monthHidesWeekends,
+  partsFromDay,
+  periodStart,
+} from "./navigation.js";
 import type { Navigation } from "./navigation.js";
 import { weekNumber } from "./settings-week.js";
 
@@ -47,7 +52,7 @@ export const monthWeeks = (
     days: Array.from({ length: 7 }, (_, offset) => first + offset)
       .filter(
         (day) =>
-          !navigation.hideWeekends ||
+          !monthHidesWeekends(navigation) ||
           (partsFromDay(day).weekDay !== 0 && partsFromDay(day).weekDay !== 6)
       )
       .map((day) => ({ day, enabled: isDisplayDay(day) })),

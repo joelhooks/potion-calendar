@@ -35,6 +35,7 @@ export const NavigationState = Schema.Struct({
   hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideWeekends: Schema.Boolean,
   mode: Schema.Literals(["day", "week", "days", "month"]),
+  revealedDay: Schema.optional(Schema.Int),
   weekStartsOn: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ maximum: 6, minimum: 0 }))
   ),
@@ -50,6 +51,7 @@ export type NavigationAction =
   | { readonly type: "today" }
   | { readonly type: "align" }
   | { readonly type: "date"; readonly day: number }
+  | { readonly type: "selection"; readonly day: number }
   | { readonly type: "weekends" }
   | {
       readonly type: "view";
@@ -86,7 +88,16 @@ export const periodStart = (nav: Navigation): number => {
     : nav.anchor;
 };
 
+export const monthHidesWeekends = (nav: Navigation): boolean =>
+  nav.hideWeekends &&
+  (nav.revealedDay !== nav.anchor ||
+    ![0, 6].includes(partsFromDay(nav.anchor).weekDay));
+
 export const visibleDays = (nav: Navigation): readonly number[] => {
+  if (nav.mode === "day" && nav.revealedDay === nav.anchor) {
+    return [nav.anchor];
+  }
+
   if (nav.mode !== "month") {
     return displayedTimeDays(
       { anchor: nav.anchor, days: nav.days, mode: nav.mode },
@@ -102,16 +113,37 @@ export const visibleDays = (nav: Navigation): readonly number[] => {
     (day) =>
       day >= displayDayBounds.start &&
       day < displayDayBounds.end &&
-      (!nav.hideWeekends || ![0, 6].includes(partsFromDay(day).weekDay))
+      (!monthHidesWeekends(nav) || ![0, 6].includes(partsFromDay(day).weekDay))
   );
 };
 
-export const navigate = (
+const selectionNavigation = (
   nav: Navigation,
+  selectedDay: number
+): Navigation => {
+  const day = clampDisplayDay(selectedDay);
+  const hidden = hiddenTimeWeekdays(nav).includes(partsFromDay(day).weekDay);
+
+  return {
+    ...nav,
+    anchor: day,
+    mode: nav.mode !== "month" && hidden ? "day" : nav.mode,
+    revealedDay: day,
+  };
+};
+
+export const navigate = (
+  previous: Navigation,
   action: NavigationAction,
   today: number
 ): Navigation => {
+  const nav = { ...previous, revealedDay: undefined };
+
   switch (action.type) {
+    case "selection": {
+      return selectionNavigation(nav, action.day);
+    }
+
     case "date": {
       return { ...nav, anchor: clampDisplayDay(action.day) };
     }

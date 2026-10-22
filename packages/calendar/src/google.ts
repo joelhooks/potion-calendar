@@ -234,6 +234,7 @@ export interface ListPageInput {
   readonly ref: CalendarRefValue;
   readonly singleEvents: boolean;
   readonly q?: string | undefined;
+  readonly iCalUID?: string | undefined;
   readonly maxResults?: number | undefined;
   readonly orderBy?: "startTime" | "updated" | undefined;
   readonly pageToken?: string | undefined;
@@ -266,7 +267,8 @@ export class GoogleCalendarClient extends Context.Service<
     ) => Effect.Effect<ListedEvents, CalendarFailureValue>;
     readonly instancesPage: (
       ref: EventRefValue,
-      pageToken?: string
+      pageToken?: string,
+      bounds?: Pick<ListPageInput, "timeMin" | "timeMax">
     ) => Effect.Effect<ListedEvents, CalendarFailureValue>;
     readonly calendarsPage: (
       accountId: string,
@@ -501,7 +503,7 @@ export class GoogleCalendarClient extends Context.Service<
           }).pipe(
             Effect.map((calendar) => mapCalendar(ref.accountId, calendar))
           ),
-        instancesPage: (ref, pageToken) => {
+        instancesPage: (ref, pageToken, bounds) => {
           const query = new URLSearchParams({
             maxResults: "2500",
             showDeleted: "true",
@@ -509,6 +511,14 @@ export class GoogleCalendarClient extends Context.Service<
 
           if (pageToken !== undefined) {
             query.set("pageToken", pageToken);
+          }
+
+          if (bounds?.timeMin !== undefined) {
+            query.set("timeMin", bounds.timeMin);
+          }
+
+          if (bounds?.timeMax !== undefined) {
+            query.set("timeMax", bounds.timeMax);
           }
 
           return decode(EventPage, {
@@ -530,6 +540,7 @@ export class GoogleCalendarClient extends Context.Service<
               (input.timeMin !== undefined ||
                 input.timeMax !== undefined ||
                 input.q !== undefined ||
+                input.iCalUID !== undefined ||
                 input.orderBy !== undefined)
             ) {
               return yield* new Provider({
@@ -564,6 +575,10 @@ export class GoogleCalendarClient extends Context.Service<
 
             if (input.q !== undefined) {
               query.set("q", input.q);
+            }
+
+            if (input.iCalUID !== undefined) {
+              query.set("iCalUID", input.iCalUID);
             }
 
             if (input.orderBy !== undefined) {
