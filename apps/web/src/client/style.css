@@ -1423,6 +1423,57 @@ h3 {
 .settings-section h2 {
   margin-bottom: 12px;
 }
+.settings-conferencing-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.settings-conferencing-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings-conferencing-entry {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-conferencing-entry a {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.settings-conferencing-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.settings-conferencing-form {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.settings-conferencing-form input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: inherit;
+}
+.settings-conferencing-error {
+  color: var(--error);
+  line-height: 1.5;
+}
 .settings-row,
 .settings-calendar-row,
 .settings-account-link {

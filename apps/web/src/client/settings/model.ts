@@ -10,6 +10,7 @@ import {
   ZonePreferences,
   normalizeZonePreferences,
 } from "../../layout/time-zones.js";
+import { CustomVideoLinks } from "./conferencing/model.js";
 import { VisibilityChoices, VisibilityMigration } from "./visibility-model.js";
 
 export const TimeFormat = Schema.Literals(["system", "12", "24"]);
@@ -71,6 +72,7 @@ export const initialSettings = (): typeof SettingsUi.Type => ({
 });
 
 export const SavedPreferences = Schema.Struct({
+  customVideoLinks: Schema.optionalKey(CustomVideoLinks),
   defaultCalendar: Schema.optionalKey(CalendarRef),
   eventInvites: Schema.Boolean,
   hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
@@ -92,6 +94,7 @@ export const SavedPreferences = Schema.Struct({
 });
 
 const StoredCommon = {
+  customVideoLinks: Schema.optionalKey(CustomVideoLinks),
   defaultCalendar: Schema.optionalKey(CalendarRef),
   eventInvites: Schema.optionalKey(Schema.Boolean),
   hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
@@ -123,13 +126,16 @@ export const StoredPreferences = Schema.Union([
   }),
 ]);
 
+const preferredHiddenWeekdays = (stored: typeof StoredPreferences.Type) =>
+  stored.hiddenWeekdays ?? ((stored.hideWeekends ?? false) ? [0, 6] : []);
+
 export const normalizePreferences = (
   stored: typeof StoredPreferences.Type
 ): typeof SavedPreferences.Type => {
   const preferences: typeof SavedPreferences.Type = {
+    customVideoLinks: stored.customVideoLinks ?? [],
     eventInvites: stored.eventInvites ?? true,
-    hiddenWeekdays:
-      stored.hiddenWeekdays ?? ((stored.hideWeekends ?? false) ? [0, 6] : []),
+    hiddenWeekdays: preferredHiddenWeekdays(stored),
     hideContextPanel: stored.hideContextPanel ?? false,
     hideDeclined: stored.hideDeclined ?? false,
     hideWeekends: stored.hideWeekends ?? false,

@@ -164,6 +164,11 @@ import {
   initialSettingsManagement,
 } from "./settings-management/model.js";
 import {
+  ConferencingSettings,
+  initialConferencingSettings,
+} from "./settings/conferencing/model.js";
+import { updateConferencingSettings } from "./settings/conferencing/update.js";
+import {
   SettingsUi,
   SettingsChange,
   initialSettings,
@@ -212,6 +217,7 @@ export const Model = Schema.Struct({
   calendar: CalendarUi,
   clipboard: ClipboardUi,
   conferencing: ConferencingState,
+  conferencingSettings: ConferencingSettings,
   desktop: DesktopUi,
   editing: EditingUi,
   error: Schema.Option(Schema.String),
@@ -264,6 +270,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   },
   clipboard: initialClipboard,
   conferencing: initialConferencing(),
+  conferencingSettings: initialConferencingSettings(),
   desktop: initialDesktop(),
   editing: {
     bulk: BulkView.cases.Idle.make({}),
@@ -571,6 +578,8 @@ const updateCore = (
         : { model },
     CalendarChanged: () => reloadRange(model),
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
+    ChangedConferencingSettings: ({ change, personId }) =>
+      updateConferencingSettings(model, personId, change),
     ChangedSettings: ({ change }) => {
       const next = preserveMonthDisplay(model, changeSettings(model, change));
 
@@ -1254,6 +1263,9 @@ const updateCore = (
           rangeRequest: model.calendar.rangeRequest,
         },
         conferencing: clearConferencing(model.conferencing),
+        conferencingSettings: initialConferencingSettings(
+          model.conferencingSettings.requestId + 1
+        ),
         desktop: {
           availability: model.desktop.availability,
           error: Option.none(),

@@ -161,14 +161,17 @@ it.effect(
             expect(document.body.textContent).toContain(name);
           }
 
-          for (const excluded of [
-            "Notion",
-            "Remove account",
-            "Menu bar",
-            "Conferencing",
-          ]) {
+          for (const excluded of ["Notion", "Remove account", "Menu bar"]) {
             expect(document.body.textContent).not.toContain(excluded);
           }
+
+          const content = document.querySelector(".settings-content");
+
+          expect(content).not.toBeNull();
+          expect(content?.textContent).not.toContain("Conferencing");
+          expect(
+            document.querySelector('a[href="/settings/conferencing"]')
+          ).not.toBeNull();
         }
 
         if (fixture.id === "account") {

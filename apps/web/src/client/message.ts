@@ -31,6 +31,7 @@ import {
 } from "./reminders/model.js";
 import { SearchNotice, SearchProblem } from "./search/model.js";
 import { ManagementChange } from "./settings-management/model.js";
+import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
 import { TimeZoneAction } from "./time-zones/model.js";
 
@@ -43,6 +44,10 @@ export const Message = defineMessageUnion({
   },
   CalendarChanged: {},
   ChangedConferencing: { change: ConferencingChange },
+  ChangedConferencingSettings: {
+    change: ConferencingSettingsChange,
+    personId: Schema.String,
+  },
   ChangedSettings: { change: SettingsChange },
   ChangedSettingsManagement: { change: ManagementChange },
   ClickedAddGoogle: {},

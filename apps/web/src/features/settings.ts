@@ -13,13 +13,20 @@ import {
 import { desktopSettingsView } from "./desktop-settings-actions.js";
 import { desktopMenuRows } from "./desktop-settings-menu.js";
 import { settingsCalendars } from "./settings-calendars.js";
+import { settingsConferencing } from "./settings-conferencing.js";
 import { settingsGeneral } from "./settings-general.js";
 import { settingsNotifications } from "./settings-notifications.js";
 
 export const settingsPage = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  page: "general" | "calendars" | "calendar" | "notifications" | "menu-bar",
+  page:
+    | "general"
+    | "calendars"
+    | "calendar"
+    | "notifications"
+    | "menu-bar"
+    | "conferencing",
   accountId?: string
 ): Html => {
   const accounts =
@@ -28,6 +35,7 @@ export const settingsPage = (
   const label = {
     calendar: "Calendar settings",
     calendars: "Calendar settings",
+    conferencing: "Conferencing settings",
     general: "General settings",
     "menu-bar": "Menu bar settings",
     notifications: "Notification settings",
@@ -40,6 +48,10 @@ export const settingsPage = (
 
     if (page === "general") {
       return settingsGeneral(model, h);
+    }
+
+    if (page === "conferencing") {
+      return settingsConferencing(model, h);
     }
 
     if (page === "notifications") {
@@ -92,6 +104,13 @@ export const settingsPage = (
               h.AriaCurrent(page === "notifications" ? "page" : "false"),
             ],
             ["Notifications"]
+          ),
+          h.a(
+            [
+              h.Href(printRoute(SettingsRoute.make({ page: "conferencing" }))),
+              h.AriaCurrent(page === "conferencing" ? "page" : "false"),
+            ],
+            ["Conferencing"]
           ),
           ...(model.desktop.availability === "available"
             ? [

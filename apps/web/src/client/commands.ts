@@ -14,11 +14,11 @@ import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
 import { readFailure } from "./calendar-state.js";
 import { Message } from "./message.js";
 import { browserGroup, protocol } from "./rpc.js";
+import { SavedPreferences } from "./settings/model.js";
 import {
-  StoredPreferences,
-  SavedPreferences,
-  normalizePreferences,
-} from "./settings/model.js";
+  readPreferences,
+  writeGeneralPreferences,
+} from "./settings/preference-storage.js";
 
 export { browserGroup } from "./rpc.js";
 
@@ -89,25 +89,12 @@ export const ReadEvents = Command.define("ReadEvents", {
   messages: [Message.ReceivedEvents, Message.FailedEvents],
 });
 
-const preferenceKey = (person: string): string =>
-  `calendar.visibility.${person}`;
-
 export const ReadPreferences = Command.define("ReadPreferences", {
   args: { person: Schema.String },
   execute: ({ person }) =>
-    Effect.try(
-      () =>
-        localStorage.getItem(preferenceKey(person)) ??
-        '{"version":2,"visibility":{}}'
-    ).pipe(
-      Effect.flatMap(
-        Schema.decodeEffect(Schema.fromJsonString(StoredPreferences))
-      ),
-      Effect.map((stored) =>
-        Message.ReceivedPreferences({
-          person,
-          preferences: normalizePreferences(stored),
-        })
+    readPreferences(person).pipe(
+      Effect.map((preferences) =>
+        Message.ReceivedPreferences({ person, preferences })
       ),
       Effect.orElseSucceed(() => Message.FailedPreferences({ person }))
     ),
@@ -117,14 +104,7 @@ export const ReadPreferences = Command.define("ReadPreferences", {
 export const SavePreferences = Command.define("SavePreferences", {
   args: { ...SavedPreferences.fields, person: Schema.String },
   execute: ({ person, ...preferences }) =>
-    Schema.encodeEffect(Schema.fromJsonString(SavedPreferences))(
-      preferences
-    ).pipe(
-      Effect.flatMap((encoded) =>
-        Effect.try(() => {
-          localStorage.setItem(preferenceKey(person), encoded);
-        })
-      ),
+    writeGeneralPreferences(person, preferences).pipe(
       Effect.as(Message.SavedPreferences()),
       Effect.orElseSucceed(() => Message.FailedPreferenceSave({ person }))
     ),

@@ -78,8 +78,8 @@ it.effect(
               : 0
           );
           expect(
-            document.querySelector('a[href="/settings/conferencing"]')
-          ).toBeNull();
+            document.querySelectorAll('a[href="/settings/conferencing"]')
+          ).toHaveLength(path === "/" ? 0 : 1);
           expect(
             [...document.querySelectorAll("button")].map((button) =>
               button.textContent?.trim()
@@ -125,7 +125,7 @@ it.effect(
         editorDocument.querySelector("#event-meet-availability")?.textContent
       ).toContain("can't add Google Meet");
 
-      expect(isDocumentRoute("/settings/conferencing")).toBe(false);
+      expect(isDocumentRoute("/settings/conferencing")).toBe(true);
     })
 );
 
