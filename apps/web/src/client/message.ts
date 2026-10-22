@@ -38,6 +38,7 @@ import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
 import { TimeBlockAction } from "./time-blocks/model.js";
 import { TimeZoneAction } from "./time-zones/model.js";
+import { ZoneDragPreview } from "./zone-drag/model.js";
 
 export const Message = defineMessageUnion({
   BrowserUrlChanged: { url: Url },
@@ -155,6 +156,7 @@ export const Message = defineMessageUnion({
   PreparedGestureHost: { hostKey: Schema.String },
   PreparedGestureTargets: {},
   PreparedSelection: {},
+  PreparedZoneDragHost: { hostKey: Schema.String },
   PressedCalendarKey: {
     alt: Schema.Boolean,
     key: Schema.String,
@@ -172,6 +174,10 @@ export const Message = defineMessageUnion({
     box: Schema.Option(SelectionBox),
     hostKey: Schema.String,
     personId: Schema.String,
+  },
+  PreviewedZoneDrag: {
+    hostKey: Schema.String,
+    preview: Schema.Option(ZoneDragPreview),
   },
   ReceivedCalendars: {
     personId: Schema.optionalKey(Schema.String),

@@ -14,6 +14,9 @@ export const canResumeHost = (
     host.dataset.gesturePhase !== "armed" &&
     host.dataset.gesturePhase !== "dragging" &&
     host.dataset.selectionPhase !== "armed" &&
-    host.dataset.selectionPhase !== "dragging"
+    host.dataset.selectionPhase !== "dragging" &&
+    host.querySelector(
+      '[data-zone-drag-phase="pressed"], [data-zone-drag-phase="dragging"]'
+    ) === null
   );
 };

@@ -21,6 +21,7 @@ import { PrepareKeyboard } from "../src/client/keyboard/mount.js";
 import { keyboardRegistry } from "../src/client/keyboard/registry.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { PrepareSelection } from "../src/client/selection/mount.js";
+import { PrepareZoneDrag } from "../src/client/zone-drag/mount.js";
 import { view } from "../src/features/app.js";
 import { zoneCatalog } from "../src/layout/time-zones-display.js";
 import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
@@ -62,6 +63,10 @@ it.effect(
         Scene.given(closed),
         Scene.Mount.resolve(PrepareKeyboard, Message.KeyboardClose()),
         Scene.Mount.resolve(PrepareSelection, Message.PreparedSelection()),
+        Scene.Mount.resolve(
+          PrepareZoneDrag,
+          Message.PreparedZoneDragHost({ hostKey: "" })
+        ),
         Scene.Mount.resolve(
           PrepareTimeGrid,
           Message.MeasuredViewport({ gutter: 0, height: 844, width: 1220 })

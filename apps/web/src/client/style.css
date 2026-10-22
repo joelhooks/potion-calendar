@@ -363,6 +363,21 @@ h3 {
   text-align: center;
   overflow: hidden;
 }
+.zone-header button[data-zone-drag-id] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.zone-insert-marker {
+  background: var(--text);
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 2px;
+  z-index: 71;
+}
 .day-header {
   border-left: 1px solid var(--line);
   text-align: center;

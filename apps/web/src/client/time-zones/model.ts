@@ -7,6 +7,7 @@ import {
   displayZone,
   initialZonePreferences,
 } from "../../layout/time-zones.js";
+import { ZoneDragPreview } from "../zone-drag/model.js";
 
 export const ZoneChooser = Schema.TaggedUnion({
   Add: {},
@@ -27,6 +28,7 @@ export const TimeZoneAction = Schema.TaggedUnion({
   Hide: { id: ZoneId },
   Home: {},
   Move: { direction: Schema.Literals([-1, 1]), id: ZoneId },
+  MoveTo: { hostKey: Schema.String, id: ZoneId, index: Schema.Int },
   Open: { chooser: ZoneChooser },
   Primary: { id: ZoneId },
   Rename: { id: ZoneId, label: Schema.String },
@@ -35,6 +37,7 @@ export const TimeZoneAction = Schema.TaggedUnion({
 
 export const TimeZonesUi = Schema.Struct({
   chooser: ZoneChooser,
+  drag: Schema.Option(ZoneDragPreview),
   preferences: ZonePreferences,
   system: ZoneId,
   systemPrompt: Schema.Option(ZoneId),
@@ -45,6 +48,7 @@ export type TimeZonesValue = typeof TimeZonesUi.Type;
 
 export const initialTimeZones = (system: string): TimeZonesValue => ({
   chooser: ZoneChooser.cases.Travel.make({}),
+  drag: Option.none(),
   preferences: initialZonePreferences(system),
   system: displayZone(system).id,
   systemPrompt: Option.none(),

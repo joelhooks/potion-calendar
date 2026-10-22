@@ -207,6 +207,7 @@ import {
   receiveUpcoming,
   withUpcoming,
 } from "./upcoming/update.js";
+import { zoneDragHostKey } from "./zone-drag/host.js";
 
 export { Message } from "./message.js";
 
@@ -1008,6 +1009,7 @@ const updateCore = (
     PreparedGestureHost: () => ({ model }),
     PreparedGestureTargets: () => ({ model }),
     PreparedSelection: () => ({ model }),
+    PreparedZoneDragHost: () => ({ model }),
     PressedCalendarKey: ({ key, mod, shift, alt, now }) =>
       pressedKeyboard(
         model,
@@ -1030,6 +1032,21 @@ const updateCore = (
             model: {
               ...model,
               calendar: { ...model.calendar, rectangle: box },
+            },
+          }
+        : { model },
+    PreviewedZoneDrag: ({ hostKey, preview }) =>
+      Option.contains(zoneDragHostKey(model), hostKey) &&
+      (Option.isNone(preview) ||
+        (model.timeZones.preferences.secondary.some(
+          (zone) => zone.id === preview.value.id
+        ) &&
+          preview.value.index >= 0 &&
+          preview.value.index < model.timeZones.preferences.secondary.length))
+        ? {
+            model: {
+              ...model,
+              timeZones: { ...model.timeZones, drag: preview },
             },
           }
         : { model },
@@ -1498,7 +1515,30 @@ const updateCore = (
       model: { ...model, calendar: { ...model.calendar, now } },
     }),
     TimeZoneAction: ({ action }) => {
-      const timeZones = changeTimeZones(model.timeZones, action);
+      if (
+        TimeZoneAction.guards.MoveTo(action) &&
+        (!Option.contains(zoneDragHostKey(model), action.hostKey) ||
+          !model.timeZones.preferences.secondary.some(
+            (zone) => zone.id === action.id
+          ) ||
+          action.index < 0 ||
+          action.index >= model.timeZones.preferences.secondary.length)
+      ) {
+        return { model };
+      }
+
+      const timeZones = {
+        ...changeTimeZones(model.timeZones, action),
+        drag: Option.none(),
+      };
+
+      if (
+        TimeZoneAction.guards.MoveTo(action) &&
+        timeZones.preferences === model.timeZones.preferences
+      ) {
+        return { model: { ...model, timeZones } };
+      }
+
       const zone = activeZone(timeZones);
 
       const changed = {
@@ -1558,10 +1598,23 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     return { model };
   }
 
-  const updated = withReminders(
+  const received = withReminders(
     model,
     withUpcoming(model, updateCore(model, message, update), message)
   );
+
+  const updated =
+    Option.isSome(received.model.timeZones.drag) &&
+    Option.getOrUndefined(zoneDragHostKey(model)) !==
+      Option.getOrUndefined(zoneDragHostKey(received.model))
+      ? {
+          ...received,
+          model: {
+            ...received.model,
+            timeZones: { ...received.model.timeZones, drag: Option.none() },
+          },
+        }
+      : received;
 
   const result =
     Option.isSome(updated.model.calendar.rectangle) &&

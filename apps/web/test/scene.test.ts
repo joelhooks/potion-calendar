@@ -10,6 +10,7 @@ import { PrepareGestures } from "../src/client/editing/gesture-mount.js";
 import { PrepareTimeGrid } from "../src/client/grid-mount.js";
 import { PrepareKeyboard } from "../src/client/keyboard/mount.js";
 import { PrepareSelection } from "../src/client/selection/mount.js";
+import { PrepareZoneDrag } from "../src/client/zone-drag/mount.js";
 import { view } from "../src/features/app.js";
 import { fixtureModel } from "./fixture.js";
 
@@ -22,6 +23,10 @@ it.effect(
         Scene.given(fixtureModel()),
         Scene.Mount.resolve(PrepareKeyboard, Message.KeyboardClose()),
         Scene.Mount.resolve(PrepareSelection, Message.PreparedSelection()),
+        Scene.Mount.resolve(
+          PrepareZoneDrag,
+          Message.PreparedZoneDragHost({ hostKey: "" })
+        ),
         Scene.Mount.resolve(
           PrepareTimeGrid,
           Message.MeasuredViewport({ gutter: 0, height: 844, width: 1220 })

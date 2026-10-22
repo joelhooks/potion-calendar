@@ -181,3 +181,29 @@ export const moveSecondary = (
     }),
   };
 };
+
+export const moveSecondaryTo = (
+  value: ZonePreferencesValue,
+  id: string,
+  destination: number
+): ZonePreferencesValue => {
+  const origin = value.secondary.findIndex((zone) => zone.id === id);
+
+  if (
+    origin === -1 ||
+    !Number.isInteger(destination) ||
+    destination < 0 ||
+    destination >= value.secondary.length
+  ) {
+    return value;
+  }
+
+  const direction = origin < destination ? 1 : -1;
+  let moved = value;
+
+  for (let index = origin; index !== destination; index += direction) {
+    moved = moveSecondary(moved, id, direction);
+  }
+
+  return moved;
+};

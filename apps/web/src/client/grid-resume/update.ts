@@ -23,6 +23,7 @@ export const resumeTimeGrid = (previous: AppModel, now: number) => {
     model.keyboard.screen !== "closed" ||
     ClipboardView.guards.Guests(model.clipboard.view) ||
     Option.isSome(model.editing.gesture) ||
+    Option.isSome(model.timeZones.drag) ||
     Option.isSome(model.calendar.rectangle)
   ) {
     return { model };

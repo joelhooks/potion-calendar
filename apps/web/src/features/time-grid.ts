@@ -15,6 +15,8 @@ import {
   ZoneChooser,
   displayedZones,
 } from "../client/time-zones/model.js";
+import { zoneDragHostKey, zoneDragScopeKey } from "../client/zone-drag/host.js";
+import { PrepareZoneDrag } from "../client/zone-drag/mount.js";
 import { allDayCounts } from "../layout/all-day.js";
 import {
   minuteInZone,
@@ -61,6 +63,19 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const counts = allDayCounts(packed, days);
   const zones = displayedZones(model.timeZones);
   const zoneCount = zones.length;
+  const dragKey = zoneDragHostKey(model);
+  const { secondary } = model.timeZones.preferences;
+  const preview = model.timeZones.drag;
+
+  const origin = Option.isSome(preview)
+    ? secondary.findIndex((zone) => zone.id === preview.value.id)
+    : -1;
+
+  const insertBoundary =
+    Option.isSome(preview) && origin !== -1
+      ? preview.value.index + (preview.value.index > origin ? 1 : 0)
+      : -1;
+
   const reference = gutterReferenceDay(days, today);
 
   const column = zoneColumns(
@@ -97,6 +112,13 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
           h.div(
             [
               h.Class("day-headers"),
+              h.DataAttribute(
+                "zone-drag-host-key",
+                Option.getOrElse(dragKey, () => "")
+              ),
+              ...Option.toArray(zoneDragScopeKey(model)).map((scopeKey) =>
+                h.OnMount(PrepareZoneDrag({ scopeKey }))
+              ),
               h.Style({
                 background: "var(--surface)",
                 "grid-template-columns": columns,
@@ -128,6 +150,9 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                     h.button(
                       [
                         h.AriaLabel(`Time zone ${zoneLabel(zone)}`),
+                        ...(index < secondary.length
+                          ? [h.DataAttribute("zone-drag-id", zone.id)]
+                          : []),
                         h.OnClick(
                           Message.TimeZoneAction({
                             action: TimeZoneAction.cases.Open.make({
@@ -167,6 +192,18 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                               `W${weekNumber((days[0] ?? today) + (model.calendar.navigation.mode === "week" ? 3 : 0))}`,
                             ]
                           ),
+                        ]
+                      : []),
+                    ...(index === insertBoundary
+                      ? [
+                          h.span([
+                            h.Class("zone-insert-marker"),
+                            h.DataAttribute(
+                              "zone-insert-index",
+                              String(Option.getOrUndefined(preview)?.index)
+                            ),
+                            h.AriaHidden(true),
+                          ]),
                         ]
                       : []),
                   ]

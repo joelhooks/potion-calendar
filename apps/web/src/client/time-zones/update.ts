@@ -6,6 +6,7 @@ import {
   hideSecondary,
   promoteZone,
   moveSecondary,
+  moveSecondaryTo,
   normalizeZonePreferences,
   persistentZones,
   rememberZone,
@@ -73,6 +74,10 @@ export const changeTimeZones = (
     Move: ({ id, direction }) => ({
       ...zones,
       preferences: moveSecondary(zones.preferences, id, direction),
+    }),
+    MoveTo: ({ id, index }) => ({
+      ...zones,
+      preferences: moveSecondaryTo(zones.preferences, id, index),
     }),
     Open: ({ chooser }) => ({ ...zones, chooser }),
     Primary: ({ id }) => {
