@@ -78,7 +78,7 @@ const blockEditor = (
       h.label(
         [h.For("time-block-color"), h.Class("time-block-field")],
         [
-          h.span([], ["Colour"]),
+          h.span([], ["Color"]),
           h.input([
             h.Id("time-block-color"),
             h.Type("color"),
@@ -232,7 +232,7 @@ export const settingsTimeBlocks = (
                   h.p(
                     [h.Class("time-block-empty")],
                     [
-                      "No time blocks yet. Add one to colour or hide part of your day.",
+                      "No time blocks yet. Add one to color or hide part of your day.",
                     ]
                   ),
                 ]
@@ -257,7 +257,7 @@ export const settingsTimeBlocks = (
                       h.p(
                         [h.Class("muted")],
                         [
-                          `${block.hidden ? "Hidden" : "Coloured"} · ${block.ranges.map((range) => `${blockClock(range.startMinute)}–${blockClock(range.endMinute)}`).join(", ")}`,
+                          `${block.hidden ? "Hidden" : "Colored"} · ${block.ranges.map((range) => `${blockClock(range.startMinute)}–${blockClock(range.endMinute)}`).join(", ")}`,
                         ]
                       ),
                     ]

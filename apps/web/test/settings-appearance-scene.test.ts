@@ -44,19 +44,19 @@ it.effect(
       Scene.scene(
         { update, view: page },
         Scene.given(base),
-        Scene.click(Scene.role("button", { name: "Choose colour for Work" })),
+        Scene.click(Scene.role("button", { name: "Choose color for Work" })),
         Scene.Mount.resolve(PrepareColourPicker, Message.Navigated()),
         Scene.expect(
-          Scene.role("group", { name: "Calendar colours for Work" })
+          Scene.role("group", { name: "Calendar colors for Work" })
         ).toExist(),
-        Scene.click(Scene.role("button", { name: "Colour 2" })),
+        Scene.click(Scene.role("button", { name: "Color 2" })),
         Scene.Mount.expectEnded(PrepareColourPicker),
         Scene.expect(Scene.selector(swatch)).toHaveStyle(
           "--event-color",
           chipColors("#225522", "light").accent
         ),
         Scene.expect(
-          Scene.role("button", { name: "Choose colour for Work" })
+          Scene.role("button", { name: "Choose color for Work" })
         ).toBeDisabled(),
         Scene.Command.resolve(
           ManageSettings,
@@ -66,7 +66,7 @@ it.effect(
                 problem: {
                   kind: "refused",
                   message:
-                    "This colour change was refused. The saved colour is shown.",
+                    "This color change was refused. The saved color is shown.",
                 },
                 task,
               }),
@@ -78,10 +78,10 @@ it.effect(
           chipColors("#4986E8", "light").accent
         ),
         Scene.expect(
-          Scene.role("button", { name: "Choose colour for Work" })
+          Scene.role("button", { name: "Choose color for Work" })
         ).toBeEnabled(),
         Scene.expect(
-          Scene.role("group", { name: "Calendar colours for Work" })
+          Scene.role("group", { name: "Calendar colors for Work" })
         ).toBeAbsent()
       );
     })

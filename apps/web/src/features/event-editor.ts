@@ -125,7 +125,7 @@ const editorForm = <Message>(
               [h.Class("editor-hint")],
               [
                 props.model.permissions.calendarWritable
-                  ? "You can manage your copy's colour and reminders. Other fields are read-only."
+                  ? "You can manage your copy's color and reminders. Other fields are read-only."
                   : "This calendar is read-only.",
               ]
             ),

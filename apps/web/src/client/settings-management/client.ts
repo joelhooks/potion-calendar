@@ -73,7 +73,7 @@ const perform = Effect.fn("SettingsManagementClient.perform")(
       if (Predicate.isTagged(known.value, "CalendarAppearanceRefused")) {
         return {
           kind: "refused",
-          message: "This colour change was refused. The saved colour is shown.",
+          message: "This color change was refused. The saved color is shown.",
         };
       }
     }

@@ -68,7 +68,7 @@ it.effect(
       expect(
         document.querySelector("[role=radiogroup] [aria-checked=true]")
           ?.textContent
-      ).toBe("Use calendar colour");
+      ).toBe("Use calendar color");
     })
 );
 

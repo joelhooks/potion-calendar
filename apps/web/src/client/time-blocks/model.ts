@@ -54,7 +54,7 @@ export const blockDraftError = (draft: typeof TimeBlockDraft.Type): string => {
 
   return draft.ranges.some((range) => Option.isSome(blockRangeIssue(range)))
     ? "Check the highlighted range."
-    : "Choose a colour.";
+    : "Choose a color.";
 };
 
 export const TimeBlockEditorContext = Schema.Struct({

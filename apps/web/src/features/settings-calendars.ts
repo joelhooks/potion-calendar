@@ -97,7 +97,7 @@ export const settingsCalendars = (
       h.p(
         [h.Class("settings-intro")],
         [
-          "Choose which calendars appear here and change their colours. Open an account to set its default calendar or remove the account.",
+          "Choose which calendars appear here and change their colors. Open an account to set its default calendar or remove the account.",
         ]
       ),
       ...accounts.map((account) =>

@@ -318,11 +318,11 @@ export const colourField = <Message>(
     [
       h.Class("editor-section"),
       h.Role("radiogroup"),
-      h.AriaLabel("Event colour"),
+      h.AriaLabel("Event color"),
       h.Disabled(disabled),
     ],
     [
-      h.legend([], ["Event colour"]),
+      h.legend([], ["Event color"]),
       h.button(
         [
           h.Type("button"),
@@ -335,7 +335,7 @@ export const colourField = <Message>(
             props.send(EditorAction.cases.ColorSelected.make({ value: null }))
           ),
         ],
-        ["Use calendar colour"]
+        ["Use calendar color"]
       ),
       h.div(
         [h.Class("editor-colours")],

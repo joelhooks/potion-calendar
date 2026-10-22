@@ -16,7 +16,7 @@ if (staged) {
   requireFact(blue && blue.getAttribute('aria-checked') === 'true', 'Staged Blue choice is not selected');
   requireFact(dialog.querySelector('#event-color')?.getAttribute('aria-checked') === 'false', 'Calendar color stayed selected');
   requireFact(document.activeElement === blue, 'Staged color focus is not Blue');
-  const legend = dialog.querySelector('[aria-label="Event colour"] legend');
+  const legend = dialog.querySelector('[aria-label="Event color"] legend');
   requireFact(legend && blue.getBoundingClientRect().top - legend.getBoundingClientRect().bottom >= 4, 'Staged color ring touches its label');
   targets = [blue];
 } else {

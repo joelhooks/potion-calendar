@@ -60,7 +60,7 @@ const removalFeedback = (
     ? [
         h.p(
           [h.Role("status")],
-          ["Wait for the calendar colour change to finish."]
+          ["Wait for the calendar color change to finish."]
         ),
       ]
     : []),
@@ -266,7 +266,7 @@ export const calendarAppearance = (
         h.button(
           [
             h.Class("settings-colour-trigger"),
-            h.AriaLabel(`Choose colour for ${calendar.title}`),
+            h.AriaLabel(`Choose color for ${calendar.title}`),
             h.Disabled(busy || Object.keys(palette).length === 0),
             h.AriaExpanded(open),
             h.OnClick(
@@ -277,9 +277,9 @@ export const calendarAppearance = (
               })
             ),
           ],
-          ["Colour"]
+          ["Color"]
         ),
-        ...(busy ? [h.span([h.Role("status")], ["Saving colour…"])] : []),
+        ...(busy ? [h.span([h.Role("status")], ["Saving color…"])] : []),
         ...(open
           ? [
               h.keyed("div")(
@@ -288,16 +288,16 @@ export const calendarAppearance = (
                   h.Class("settings-colour-picker"),
                   h.OnMount(PrepareColourPicker(ref)),
                   h.Role("group"),
-                  h.AriaLabel(`Calendar colours for ${calendar.title}`),
+                  h.AriaLabel(`Calendar colors for ${calendar.title}`),
                 ],
                 [
                   ...Object.entries(palette).map(([colorId, colour]) =>
                     h.keyed("button")(
                       colorId,
                       [
-                        h.AriaLabel(`Colour ${colorId}`),
+                        h.AriaLabel(`Color ${colorId}`),
                         h.AriaPressed(String(calendar.colorId === colorId)),
-                        h.Title(`Colour ${colorId}: ${colour.background}`),
+                        h.Title(`Color ${colorId}: ${colour.background}`),
                         h.Style({
                           background: colour.background,
                           color: colour.foreground,

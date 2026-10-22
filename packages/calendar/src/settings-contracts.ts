@@ -59,7 +59,7 @@ export const setCalendarAppearanceContract = defineContract(
   {
     annotations: { idempotent: true, readOnly: false },
     description:
-      "Patch an owned Google calendarList entry using calendar-palette colours and provider visibility",
+      "Patch an owned Google calendarList entry using calendar-palette colors and provider visibility",
     failure: SetCalendarAppearanceFailure,
     input: SetCalendarAppearanceInput,
     output: Calendar,
