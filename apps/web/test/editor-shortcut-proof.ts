@@ -21,21 +21,14 @@ if (eligible) {
 if (document.documentElement.scrollWidth > innerWidth) throw Error('Page widened');
 document.documentElement.dataset.editorShortcutProof = 'pass';`;
 
-export const executeShortcutProofWithStandInBoxes = (
+const executeShortcutDocumentProof = (
+  document: Document,
   html: string,
   width: number
 ) => {
-  const frame = globalThis.document.createElement("iframe");
-  globalThis.document.body.append(frame);
-  const document = frame.contentDocument;
-
-  if (document === null) {
-    frame.remove();
-    throw new Error("Missing fixture document");
-  }
-
-  const parsed = new DOMParser().parseFromString(html, "text/html");
-  document.documentElement.innerHTML = parsed.documentElement.innerHTML;
+  const root = document.createElement("html");
+  root.innerHTML = html;
+  document.documentElement.replaceWith(root);
   const dialog = document.querySelector("dialog");
 
   if (dialog !== null) {
@@ -46,7 +39,9 @@ export const executeShortcutProofWithStandInBoxes = (
     });
   }
 
-  for (const element of document.querySelectorAll("*")) {
+  for (const element of document.querySelectorAll(
+    "#event-editor-dialog,#event-add-meet"
+  )) {
     Object.defineProperty(element, "getBoundingClientRect", {
       value: () =>
         element.id === "event-add-meet"
@@ -64,15 +59,43 @@ export const executeShortcutProofWithStandInBoxes = (
     throw new Error("Missing exported proof script");
   }
 
-  try {
-    runInNewContext(script, { document, innerHeight: 900, innerWidth: width });
-  } finally {
-    frame.remove();
-  }
+  runInNewContext(script, { document, innerHeight: 900, innerWidth: width });
 
   if (document.documentElement.dataset.editorShortcutProof !== "pass") {
     throw new Error("Exported proof did not finish");
   }
 
   return document;
+};
+
+export const prepareShortcutProofWithStandInBoxes = () => {
+  const frame = globalThis.document.createElement("iframe");
+  globalThis.document.body.append(frame);
+  const document = frame.contentDocument;
+
+  if (document === null) {
+    frame.remove();
+    throw new Error("Missing fixture document");
+  }
+
+  return {
+    dispose: () => {
+      frame.remove();
+    },
+    execute: (html: string, width: number) =>
+      executeShortcutDocumentProof(document, html, width),
+  };
+};
+
+export const executeShortcutProofWithStandInBoxes = (
+  html: string,
+  width: number
+) => {
+  const proof = prepareShortcutProofWithStandInBoxes();
+
+  try {
+    return proof.execute(html, width);
+  } finally {
+    proof.dispose();
+  }
 };

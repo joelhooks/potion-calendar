@@ -12,6 +12,7 @@ import {
   executeInstantProofWithStandInBoxes,
   instantProofScript,
 } from "./instant-proof.js";
+import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
 
 it.effect(
   "exports sixteen actual-root instant-key scenes and executes each exact emitted proof with explicit stand-in geometry",
@@ -52,7 +53,7 @@ it.effect(
 
             const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x960"><title>${scenario} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script type="application/json" id="instant-evidence">${evidence}</script><script data-instant-proof>${instantProofScript}</script></body></html>`;
             const path = `../../.git/instant-${scenario}-${theme}-${width}-fixture.html`;
-            yield* fs.writeFileString(path, html);
+            yield* publishFixtureArtifact(path, html);
             const exported = yield* fs.readFileString(path);
 
             const document = executeInstantProofWithStandInBoxes(

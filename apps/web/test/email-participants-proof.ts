@@ -58,28 +58,22 @@ export const hiddenParticipantProofScript = participantProofScript
     "const rows = [...root.querySelectorAll('li')]; requireFact(rows.length === 2 && rows.every(row => row.textContent.includes(' · You') || row.textContent.includes(' · Organizer')), 'Hidden scene rendered an undisclosed guest'); document.documentElement.dataset.participantEmailProof = 'pass';"
   );
 
-export const executeParticipantProofWithStandInBoxes = (
+export const prepareParticipantProofWithStandInBoxes = (
   html: string,
-  width: number,
-  clipped?: "button" | "reason"
-): Document => {
+  width: number
+): ((clipped?: "button" | "reason") => Document) => {
   const document = new DOMParser().parseFromString(html, "text/html");
+  let clippedSelector = "[data-no-stand-in-target]";
 
-  const clippedSelector =
-    clipped === undefined
-      ? "[data-no-stand-in-target]"
-      : {
-          button: ".email-participants button",
-          reason: ".email-participants p",
-        }[clipped];
+  const boundsFor = (element: Element) => () =>
+    element.matches(clippedSelector)
+      ? new DOMRect(width - 10, 200, 5, 32)
+      : new DOMRect(width - 250, 200, 220, 32);
 
   for (const element of document.querySelectorAll("*")) {
     Object.defineProperty(element, "scrollIntoView", { value: () => false });
     Object.defineProperty(element, "getBoundingClientRect", {
-      value: () =>
-        element.matches(clippedSelector)
-          ? new DOMRect(width - 10, 200, 5, 32)
-          : new DOMRect(width - 250, 200, 220, 32),
+      value: boundsFor(element),
     });
   }
 
@@ -87,24 +81,43 @@ export const executeParticipantProofWithStandInBoxes = (
     value: width,
   });
 
-  const script = document.querySelector(
-    "script[data-participant-proof]"
-  )?.textContent;
+  return (clipped?: "button" | "reason") => {
+    clippedSelector =
+      clipped === undefined
+        ? "[data-no-stand-in-target]"
+        : {
+            button: ".email-participants button",
+            reason: ".email-participants p",
+          }[clipped];
+    const markers: Partial<DOMStringMap> = document.documentElement.dataset;
+    delete markers.participantEmailProof;
+    delete markers.fixtureReady;
 
-  if (script === undefined || script === null) {
-    throw new Error("Missing exact participant proof");
-  }
+    const script = document.querySelector(
+      "script[data-participant-proof]"
+    )?.textContent;
 
-  runInNewContext(script, {
-    URL,
-    document,
-    innerHeight: 960,
-    innerWidth: width,
-  });
+    if (script === undefined || script === null) {
+      throw new Error("Missing exact participant proof");
+    }
 
-  if (document.documentElement.dataset.participantEmailProof !== "pass") {
-    throw new Error("Participant proof did not finish");
-  }
+    runInNewContext(script, {
+      URL,
+      document,
+      innerHeight: 960,
+      innerWidth: width,
+    });
 
-  return document;
+    if (document.documentElement.dataset.participantEmailProof !== "pass") {
+      throw new Error("Participant proof did not finish");
+    }
+
+    return document;
+  };
 };
+
+export const executeParticipantProofWithStandInBoxes = (
+  html: string,
+  width: number,
+  clipped?: "button" | "reason"
+): Document => prepareParticipantProofWithStandInBoxes(html, width)(clipped);

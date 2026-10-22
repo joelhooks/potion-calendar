@@ -23,34 +23,43 @@ it.effect.prop(
   },
   ({ gap }) =>
     Effect.sync(() => {
+      const base = keyboardFixture();
+
+      const model = {
+        ...base,
+        calendar: {
+          ...base.calendar,
+          calendars: base.calendar.calendars.map((calendar) => ({
+            ...calendar,
+            allowedConferenceSolutionTypes: ["hangoutsMeet"],
+          })),
+        },
+      };
+
+      const startedPrefixes = new Map<
+        string,
+        ReturnType<typeof update>["model"]
+      >();
+
       for (const binding of keyboardRegistry.flatMap((action) =>
         action.keys.filter((key) => key.includes(" "))
       )) {
         const [prefix = "", key = ""] = binding.split(" ");
-        const base = keyboardFixture();
 
-        const model = {
-          ...base,
-          calendar: {
-            ...base.calendar,
-            calendars: base.calendar.calendars.map((calendar) => ({
-              ...calendar,
-              allowedConferenceSolutionTypes: ["hangoutsMeet"],
-            })),
-          },
-        };
+        const first =
+          startedPrefixes.get(prefix) ??
+          update(
+            model,
+            Message.PressedCalendarKey({
+              alt: false,
+              key: prefix,
+              mod: false,
+              now: 100,
+              shift: false,
+            })
+          ).model;
 
-        const first = update(
-          model,
-          Message.PressedCalendarKey({
-            alt: false,
-            key: prefix,
-            mod: false,
-            now: 100,
-            shift: false,
-          })
-        ).model;
-
+        startedPrefixes.set(prefix, first);
         expect(first.keyboard.prefix).toBe(prefix);
 
         const resolved = resolveBinding(

@@ -7,6 +7,7 @@ import { view } from "../src/features/app.js";
 import { dayFromIso } from "../src/layout/navigation.js";
 import { visibleEvents } from "../src/layout/presentation.js";
 import {
+  executeHeldModDocumentProof,
   executeHeldModProofWithStandInBoxes,
   heldModProofScript,
 } from "./held-mod-proof.js";
@@ -114,12 +115,7 @@ it.effect(
               JSON.stringify({ passed: true, scenario })
             );
 
-            const wrong = new DOMParser().parseFromString(
-              exported,
-              "text/html"
-            );
-
-            const precondition = wrong.querySelector("#held-mod-evidence");
+            const precondition = document.querySelector("#held-mod-evidence");
 
             if (precondition === null) {
               throw new Error("Missing exported gesture precondition");
@@ -129,12 +125,17 @@ it.effect(
               '"loaded":true',
               '"loaded":false'
             );
-            expect(() =>
-              executeHeldModProofWithStandInBoxes(
-                wrong.documentElement.outerHTML,
-                width
-              )
-            ).toThrow("Missing loaded source precondition");
+
+            try {
+              expect(() =>
+                executeHeldModDocumentProof(document, width)
+              ).toThrow("Missing loaded source precondition");
+              expect(
+                document.documentElement.dataset.heldModifierProof
+              ).toBeUndefined();
+            } finally {
+              precondition.textContent = evidence;
+            }
           }
         }
       }

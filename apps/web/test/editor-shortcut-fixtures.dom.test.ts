@@ -12,7 +12,7 @@ import {
   shortcutScenes,
 } from "./editor-shortcut-fixture.js";
 import {
-  executeShortcutProofWithStandInBoxes,
+  prepareShortcutProofWithStandInBoxes,
   shortcutProofScript,
 } from "./editor-shortcut-proof.js";
 
@@ -26,6 +26,19 @@ it.effect(
       const crypto = yield* Crypto.Crypto;
       const css = yield* fs.readFileString("src/client/style.css");
 
+      const fixtureProof = yield* Effect.acquireRelease(
+        Effect.sync(prepareShortcutProofWithStandInBoxes),
+        (ready) =>
+          Effect.sync(() => {
+            ready.dispose();
+          })
+      );
+
+      const scenarios = shortcutScenes.map((scene) => ({
+        base: shortcutFixture(scene),
+        scene,
+      }));
+
       const fixtures: {
         path: string;
         sha256: string;
@@ -36,11 +49,9 @@ it.effect(
 
       for (const width of [1440, 900]) {
         for (const theme of ["light", "dark"] as const) {
-          for (const scene of shortcutScenes) {
+          for (const { base, scene } of scenarios) {
             const eligible =
               scene === "with-conferencing" || scene === "without-conferencing";
-
-            const base = shortcutFixture(scene);
 
             const result = pressEditorShortcut(
               {
@@ -121,7 +132,7 @@ it.effect(
 
             const rendered = yield* renderShortcutRoot(model);
             const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="fixture-viewport" content="${width}x900"><title>Editor shortcut ${scene} ${theme}</title><style>${css}</style></head><body>${rendered.html}<script>${refusalProof}${shortcutProofScript(eligible)}</script></body></html>`;
-            const proof = executeShortcutProofWithStandInBoxes(html, width);
+            const proof = fixtureProof.execute(html, width);
             expect(proof.documentElement.dataset.editorShortcutProof).toBe(
               "pass"
             );

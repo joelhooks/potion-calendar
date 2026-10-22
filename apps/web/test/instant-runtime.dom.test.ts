@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Effect, Option, Ref, Schema } from "effect";
+import { Effect, Option, Ref } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Message } from "../src/client/app.js";
@@ -43,235 +43,269 @@ const saved = (notice: typeof EditingNotice.Type) =>
   Option.isSome(notice.mutation) &&
   EditorMutation.guards.Saved(notice.mutation.value);
 
-it.effect.prop(
-  "every instant alias and save reaches fake Google with no email and single occurrence; staged delete writes only at commit and never after Undo",
-  {
-    alias: Schema.Literals(["Delete", "Backspace", "Del"]),
-    operation: Schema.Literals(["delete", "save"]),
-    organizer: Schema.Boolean,
-    recurring: Schema.Boolean,
-    undo: Schema.Boolean,
-  },
-  ({ alias, ...input }) =>
-    Effect.gen(function* instantProviderHistory() {
-      const h = yield* instantRuntimeFixture(input);
+const instantProviderHistory = Effect.fn("instantProviderHistory")(
+  function* instantProviderHistory({
+    alias,
+    ...input
+  }: {
+    readonly alias: string;
+    readonly operation: "delete" | "save";
+    readonly organizer: boolean;
+    readonly recurring: boolean;
+    readonly undo: boolean;
+  }) {
+    const h = yield* instantRuntimeFixture(input);
 
-      if (input.operation === "save") {
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: EditorAction.cases.OpenEdit.make({}),
-          })
-        );
-        yield* nextInstantNotice(h.queue, editingView);
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: EditorAction.cases.TextEdited.make({
-              field: "endTime",
-              value: "12:00",
-            }),
-          })
-        );
-        yield* nextInstantNotice(
-          h.queue,
-          (notice) =>
-            editingView(notice) &&
-            EditingNotice.guards.Editor(notice) &&
-            EditorView.guards.Editing(notice.view) &&
-            notice.view.draft.endTime === "12:00"
-        );
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: EditorAction.cases.TextEdited.make({
-              field: "startTime",
-              value: "11:00",
-            }),
-          })
-        );
-        yield* nextInstantNotice(
-          h.queue,
-          (notice) =>
-            EditingNotice.guards.Editor(notice) &&
-            EditorView.guards.Editing(notice.view) &&
-            notice.view.draft.startTime === "11:00"
-        );
-      }
-
+    if (input.operation === "save") {
       yield* h.dispatch(
-        Message.PressedCalendarKey({
-          alt: false,
-          key: input.operation === "save" ? "Enter" : alias,
-          mod: true,
-          shift: true,
+        Message.EditingAction({
+          action: EditorAction.cases.OpenEdit.make({}),
         })
       );
-      yield* nextInstantNotice(
-        h.queue,
-        input.operation === "save" ? saved : staged
-      );
-      let requests = yield* Ref.get(h.api.fake.requests);
-
-      if (input.operation === "delete") {
-        expect(requests.every((request) => request.method === "GET")).toBe(
-          true
-        );
-        const count = requests.length;
-
-        const mark = (yield* Ref.get(h.state)).editing.deletes.find(
-          (item) => item.phase === "pending"
-        );
-
-        if (mark === undefined) {
-          return yield* Effect.die(
-            "Instant delete did not stage an Undo intent"
-          );
-        }
-
-        expect(mark.intent.request.scope).toBe("single");
-        expect(mark.intent.request.sendUpdates).toBe("none");
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: input.undo
-              ? EditorAction.cases.Undo.make({ id: mark.intent.id })
-              : EditorAction.cases.DismissUndo.make({ id: mark.intent.id }),
-          })
-        );
-        yield* nextInstantNotice(
-          h.queue,
-          (notice) =>
-            EditingNotice.guards.Delete(notice) &&
-            DeleteNotice.guards.Settled(notice.notice) &&
-            (input.undo
-              ? DeleteOutcome.guards.Undone(notice.notice.outcome)
-              : DeleteOutcome.guards.Committed(notice.notice.outcome))
-        );
-
-        if (input.undo) {
-          yield* TestClock.adjust(undoWindowMilliseconds + 1);
-          requests = yield* Ref.get(h.api.fake.requests);
-          expect(requests).toHaveLength(count);
-        } else {
-          requests = yield* Ref.get(h.api.fake.requests);
-        }
-      }
-
-      const writes = requests.filter((request) => request.method !== "GET");
-      expect(writes).toHaveLength(
-        input.operation === "delete" && input.undo ? 0 : 1
-      );
-
-      for (const write of writes) {
-        expect(
-          new URL(write.path, "https://fixture.invalid").searchParams.get(
-            "sendUpdates"
-          )
-        ).toBe("none");
-        expect(write.path).toContain("/events/instant-instance");
-        expect(write.path).not.toContain("/events/instant-series");
-      }
-
-      if (input.operation === "save") {
-        const notice = Option.getOrThrow(
-          (yield* Ref.get(h.state)).editing.instantSaved
-        );
-
-        expect(notice.sendUpdates).toBe("none");
-        expect(notice.title).toBe(h.source.title);
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: EditorAction.cases.DismissInstantSave.make({
-              id: notice.id,
-            }),
-          })
-        );
-        expect((yield* Ref.get(h.state)).editing.instantSaved).toEqual(
-          Option.none()
-        );
-      }
-
-      expect(h.views).not.toContain("Email");
-      expect(h.views).not.toContain("Scope");
-      expect(h.views).not.toContain("RemoveRecurrence");
-
-      return yield* Effect.void;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
-);
-
-it.effect.prop(
-  "mixed instant selection uses the bulk writer, skips unsupported types and commits each eligible event without email",
-  {
-    alias: Schema.Literals(["Delete", "Backspace", "Del"]),
-    organizer: Schema.Boolean,
-  },
-  ({ alias, organizer }) =>
-    Effect.gen(function* mixedInstantDelete() {
-      const h = yield* instantRuntimeFixture({
-        bulk: true,
-        operation: "delete",
-        organizer,
-        recurring: false,
-        undo: false,
-      });
-
+      yield* nextInstantNotice(h.queue, editingView);
       yield* h.dispatch(
-        Message.PressedCalendarKey({
-          alt: false,
-          key: alias,
-          mod: true,
-          shift: true,
+        Message.EditingAction({
+          action: EditorAction.cases.TextEdited.make({
+            field: "endTime",
+            value: "12:00",
+          }),
         })
       );
       yield* nextInstantNotice(
         h.queue,
         (notice) =>
-          EditingNotice.guards.Bulk(notice) &&
-          BulkView.guards.Settled(notice.view)
+          editingView(notice) &&
+          EditingNotice.guards.Editor(notice) &&
+          EditorView.guards.Editing(notice.view) &&
+          notice.view.draft.endTime === "12:00"
       );
-      const model = yield* Ref.get(h.state);
-      expect(bulkSummary(model)?.succeeded).toHaveLength(2);
-      expect(bulkSummary(model)?.skipped).toHaveLength(1);
+      yield* h.dispatch(
+        Message.EditingAction({
+          action: EditorAction.cases.TextEdited.make({
+            field: "startTime",
+            value: "11:00",
+          }),
+        })
+      );
+      yield* nextInstantNotice(
+        h.queue,
+        (notice) =>
+          EditingNotice.guards.Editor(notice) &&
+          EditorView.guards.Editing(notice.view) &&
+          notice.view.draft.startTime === "11:00"
+      );
+    }
+
+    yield* h.dispatch(
+      Message.PressedCalendarKey({
+        alt: false,
+        key: input.operation === "save" ? "Enter" : alias,
+        mod: true,
+        shift: true,
+      })
+    );
+    yield* nextInstantNotice(
+      h.queue,
+      input.operation === "save" ? saved : staged
+    );
+    let requests = yield* Ref.get(h.api.fake.requests);
+
+    if (input.operation === "delete") {
+      expect(requests.every((request) => request.method === "GET")).toBe(true);
+      const count = requests.length;
+
+      const mark = (yield* Ref.get(h.state)).editing.deletes.find(
+        (item) => item.phase === "pending"
+      );
+
+      if (mark === undefined) {
+        return yield* Effect.die("Instant delete did not stage an Undo intent");
+      }
+
+      expect(mark.intent.request.scope).toBe("single");
+      expect(mark.intent.request.sendUpdates).toBe("none");
+      yield* h.dispatch(
+        Message.EditingAction({
+          action: input.undo
+            ? EditorAction.cases.Undo.make({ id: mark.intent.id })
+            : EditorAction.cases.DismissUndo.make({ id: mark.intent.id }),
+        })
+      );
+      yield* nextInstantNotice(
+        h.queue,
+        (notice) =>
+          EditingNotice.guards.Delete(notice) &&
+          DeleteNotice.guards.Settled(notice.notice) &&
+          (input.undo
+            ? DeleteOutcome.guards.Undone(notice.notice.outcome)
+            : DeleteOutcome.guards.Committed(notice.notice.outcome))
+      );
+
+      if (input.undo) {
+        yield* TestClock.adjust(undoWindowMilliseconds + 1);
+        requests = yield* Ref.get(h.api.fake.requests);
+        expect(requests).toHaveLength(count);
+      } else {
+        requests = yield* Ref.get(h.api.fake.requests);
+      }
+    }
+
+    const writes = requests.filter((request) => request.method !== "GET");
+    expect(writes).toHaveLength(
+      input.operation === "delete" && input.undo ? 0 : 1
+    );
+
+    for (const write of writes) {
       expect(
-        (yield* Ref.get(h.api.fake.requests)).every(
-          (request) => request.method === "GET"
+        new URL(write.path, "https://fixture.invalid").searchParams.get(
+          "sendUpdates"
         )
-      ).toBe(true);
+      ).toBe("none");
+      expect(write.path).toContain("/events/instant-instance");
+      expect(write.path).not.toContain("/events/instant-series");
+    }
 
-      const pending = model.editing.deletes.filter(
-        (mark) => mark.phase === "pending"
+    if (input.operation === "save") {
+      const notice = Option.getOrThrow(
+        (yield* Ref.get(h.state)).editing.instantSaved
       );
 
-      expect(pending).toHaveLength(2);
-
-      for (const mark of pending) {
-        yield* h.dispatch(
-          Message.EditingAction({
-            action: EditorAction.cases.DismissUndo.make({ id: mark.intent.id }),
-          })
-        );
-        yield* nextInstantNotice(
-          h.queue,
-          (notice) =>
-            EditingNotice.guards.Delete(notice) &&
-            DeleteNotice.guards.Settled(notice.notice) &&
-            DeleteOutcome.guards.Committed(notice.notice.outcome) &&
-            notice.notice.outcome.id === mark.intent.id
-        );
-      }
-
-      const writes = (yield* Ref.get(h.api.fake.requests)).filter(
-        (request) => request.method !== "GET"
+      expect(notice.sendUpdates).toBe("none");
+      expect(notice.title).toBe(h.source.title);
+      yield* h.dispatch(
+        Message.EditingAction({
+          action: EditorAction.cases.DismissInstantSave.make({
+            id: notice.id,
+          }),
+        })
       );
+      expect((yield* Ref.get(h.state)).editing.instantSaved).toEqual(
+        Option.none()
+      );
+    }
 
-      expect(writes).toHaveLength(2);
+    expect(h.views).not.toContain("Email");
+    expect(h.views).not.toContain("Scope");
+    expect(h.views).not.toContain("RemoveRecurrence");
 
-      for (const write of writes) {
-        expect(
-          new URL(write.path, "https://fixture.invalid").searchParams.get(
-            "sendUpdates"
-          )
-        ).toBe("none");
-        expect(write.path).not.toContain("instant-blocked");
+    return yield* Effect.void;
+  }
+);
+
+it.effect(
+  "every instant alias and save reaches fake Google with no email and single occurrence; staged delete writes only at commit and never after Undo",
+  () =>
+    Effect.gen(function* instantProviderMatrix() {
+      const operations: readonly ("delete" | "save")[] = ["delete", "save"];
+
+      for (const alias of ["Delete", "Backspace", "Del"]) {
+        for (const operation of operations) {
+          for (const organizer of [false, true]) {
+            for (const recurring of [false, true]) {
+              for (const undo of [false, true]) {
+                yield* instantProviderHistory({
+                  alias,
+                  operation,
+                  organizer,
+                  recurring,
+                  undo,
+                }).pipe(Effect.scoped);
+              }
+            }
+          }
+        }
       }
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+const mixedInstantDelete = Effect.fn("mixedInstantDelete")(
+  function* mixedInstantDelete({
+    alias,
+    organizer,
+  }: {
+    readonly alias: string;
+    readonly organizer: boolean;
+  }) {
+    const h = yield* instantRuntimeFixture({
+      bulk: true,
+      operation: "delete",
+      organizer,
+      recurring: false,
+      undo: false,
+    });
+
+    yield* h.dispatch(
+      Message.PressedCalendarKey({
+        alt: false,
+        key: alias,
+        mod: true,
+        shift: true,
+      })
+    );
+    yield* nextInstantNotice(
+      h.queue,
+      (notice) =>
+        EditingNotice.guards.Bulk(notice) &&
+        BulkView.guards.Settled(notice.view)
+    );
+    const model = yield* Ref.get(h.state);
+    expect(bulkSummary(model)?.succeeded).toHaveLength(2);
+    expect(bulkSummary(model)?.skipped).toHaveLength(1);
+    expect(
+      (yield* Ref.get(h.api.fake.requests)).every(
+        (request) => request.method === "GET"
+      )
+    ).toBe(true);
+
+    const pending = model.editing.deletes.filter(
+      (mark) => mark.phase === "pending"
+    );
+
+    expect(pending).toHaveLength(2);
+
+    for (const mark of pending) {
+      yield* h.dispatch(
+        Message.EditingAction({
+          action: EditorAction.cases.DismissUndo.make({ id: mark.intent.id }),
+        })
+      );
+      yield* nextInstantNotice(
+        h.queue,
+        (notice) =>
+          EditingNotice.guards.Delete(notice) &&
+          DeleteNotice.guards.Settled(notice.notice) &&
+          DeleteOutcome.guards.Committed(notice.notice.outcome) &&
+          notice.notice.outcome.id === mark.intent.id
+      );
+    }
+
+    const writes = (yield* Ref.get(h.api.fake.requests)).filter(
+      (request) => request.method !== "GET"
+    );
+
+    expect(writes).toHaveLength(2);
+
+    for (const write of writes) {
+      expect(
+        new URL(write.path, "https://fixture.invalid").searchParams.get(
+          "sendUpdates"
+        )
+      ).toBe("none");
+      expect(write.path).not.toContain("instant-blocked");
+    }
+  }
+);
+
+it.effect(
+  "mixed instant selection uses the bulk writer, skips unsupported types and commits each eligible event without email",
+  () =>
+    Effect.gen(function* mixedInstantMatrix() {
+      for (const alias of ["Delete", "Backspace", "Del"]) {
+        for (const organizer of [false, true]) {
+          yield* mixedInstantDelete({ alias, organizer }).pipe(Effect.scoped);
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
 );
 
 it.effect(

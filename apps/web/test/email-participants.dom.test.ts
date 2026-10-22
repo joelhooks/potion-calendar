@@ -17,9 +17,9 @@ import { view } from "../src/features/app.js";
 import { detailPanel } from "../src/features/calendar.js";
 import { emailFixture, emailScenes } from "./email-participants-fixture.js";
 import {
-  executeParticipantProofWithStandInBoxes,
   hiddenParticipantProofScript,
   participantProofScript,
+  prepareParticipantProofWithStandInBoxes,
 } from "./email-participants-proof.js";
 
 const detailsView = (model: AppModel, h: HtmlBuilder<AppMessage>) =>
@@ -159,29 +159,55 @@ it.effect(
             const path = `../../.git/email-participants-${scene}-${theme}-${width}-fixture.html`;
             yield* fs.writeFileString(path, html);
             const exported = yield* fs.readFileString(path);
-            expect(
-              executeParticipantProofWithStandInBoxes(exported, width)
-                .documentElement.dataset.participantEmailProof
-            ).toBe("pass");
-            expect(() =>
-              executeParticipantProofWithStandInBoxes(
-                exported.replace('"loaded":true', '"loaded":false'),
-                width
-              )
-            ).toThrow("Missing identity and loaded source preconditions");
-            expect(() =>
-              executeParticipantProofWithStandInBoxes(exported, width, "button")
-            ).toThrow("Participant button is clipped");
+
+            const prove = prepareParticipantProofWithStandInBoxes(
+              exported,
+              width
+            );
+
+            const document = prove();
+            expect(document.documentElement.dataset.participantEmailProof).toBe(
+              "pass"
+            );
+
+            const precondition = document.querySelector(
+              "#participant-evidence"
+            );
+
+            if (precondition === null || precondition.textContent === null) {
+              throw new Error("Missing exported participant precondition");
+            }
+
+            const original = precondition.textContent;
+            precondition.textContent = original.replace(
+              '"loaded":true',
+              '"loaded":false'
+            );
+
+            try {
+              expect(() => prove()).toThrow(
+                "Missing identity and loaded source preconditions"
+              );
+              expect(
+                document.documentElement.dataset.participantEmailProof
+              ).toBeUndefined();
+            } finally {
+              precondition.textContent = original;
+            }
+
+            expect(() => prove("button")).toThrow(
+              "Participant button is clipped"
+            );
 
             if (scene === "hidden" || scene === "omitted") {
-              expect(() =>
-                executeParticipantProofWithStandInBoxes(
-                  exported,
-                  width,
-                  "reason"
-                )
-              ).toThrow("Participant refusal reason is clipped");
+              expect(() => prove("reason")).toThrow(
+                "Participant refusal reason is clipped"
+              );
             }
+
+            expect(
+              document.documentElement.dataset.participantEmailProof
+            ).toBeUndefined();
           }
         }
       }

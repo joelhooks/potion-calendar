@@ -86,6 +86,32 @@ assert(document.documentElement.scrollWidth<=innerWidth,'Page widened');
 document.documentElement.dataset.heldModifierProof=JSON.stringify({passed:true,scenario:e.scenario});
 document.documentElement.dataset.fixtureReady='true';`;
 
+export const executeHeldModDocumentProof = (
+  document: Document,
+  width: number
+): Document => {
+  const markers: Partial<DOMStringMap> = document.documentElement.dataset;
+  delete markers.heldModifierProof;
+  delete markers.fixtureReady;
+
+  const script = document.querySelector(
+    "script[data-held-mod-proof]"
+  )?.textContent;
+
+  if (script === undefined || script === null) {
+    throw new Error("Missing exact exported held-mod proof");
+  }
+
+  runInNewContext(script, {
+    URL,
+    document,
+    innerHeight: 960,
+    innerWidth: width,
+  });
+
+  return document;
+};
+
 export const executeHeldModProofWithStandInBoxes = (
   html: string,
   width: number
@@ -135,20 +161,5 @@ export const executeHeldModProofWithStandInBoxes = (
     value: width,
   });
 
-  const script = document.querySelector(
-    "script[data-held-mod-proof]"
-  )?.textContent;
-
-  if (script === undefined || script === null) {
-    throw new Error("Missing exact exported held-mod proof");
-  }
-
-  runInNewContext(script, {
-    URL,
-    document,
-    innerHeight: 960,
-    innerWidth: width,
-  });
-
-  return document;
+  return executeHeldModDocumentProof(document, width);
 };
