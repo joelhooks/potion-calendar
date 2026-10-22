@@ -9,13 +9,19 @@ import { gestureHostKey } from "../client/editing/gesture-targets.js";
 import { PrepareTimeGrid } from "../client/grid-mount.js";
 import { selectionHostKey } from "../client/selection/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
+import { timeGridGeometry } from "../client/time-blocks/grid.js";
 import {
   TimeZoneAction,
   ZoneChooser,
   displayedZones,
 } from "../client/time-zones/model.js";
 import { allDayCounts } from "../layout/all-day.js";
-import { hourHeight, minuteInZone, timeTop } from "../layout/geometry.js";
+import {
+  minuteInZone,
+  minuteToY,
+  rangePixels,
+  visibleTicks,
+} from "../layout/geometry.js";
 import { dayInZone, visibleDays } from "../layout/navigation.js";
 import { layoutTimed } from "../layout/overlap.js";
 import {
@@ -35,6 +41,7 @@ import { timedContent } from "../layout/timed-content.js";
 import { chip } from "./calendar.js";
 import { gesturePreview } from "./gesture-preview.js";
 import { selectionSurface } from "./selection-surface.js";
+import { timeBlockBackground, timeGridTicks } from "./time-block-background.js";
 
 const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const days = visibleDays(model.calendar.navigation);
@@ -47,11 +54,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
     shown,
   } = allDaySection(model);
 
-  const scale = hourHeight(
-    model.calendar.zoom,
-    model.calendar.viewport,
-    allDaySize
-  );
+  const { blocks, grid, scale } = timeGridGeometry(model);
 
   const nowMinute = minuteInZone(model.calendar.now, model.calendar.zone);
   const today = dayInZone(model.calendar.now, model.calendar.zone);
@@ -76,7 +79,11 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
       h.Style({ "overflow-x": "hidden" }),
       h.AriaLabel("Time grid"),
       h.OnMount(
-        PrepareTimeGrid({ initialMinute: nowMinute, initialScale: scale })
+        PrepareTimeGrid({
+          hidden: grid.hidden,
+          initialMinute: nowMinute,
+          initialScale: scale,
+        })
       ),
     ],
     [
@@ -347,7 +354,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
               h.Style({
                 "--hour-height": `${scale}px`,
                 "grid-template-columns": columns,
-                height: `${24 * scale}px`,
+                height: `${grid.height}px`,
                 width: `${column.total}px`,
                 "z-index": "0",
               }),
@@ -369,13 +376,20 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                       "z-index": "30",
                     }),
                   ],
-                  Array.from({ length: 24 }, (_, hour) =>
+                  visibleTicks(grid).map((minute) =>
                     h.span(
-                      [h.Style({ top: `${hour * scale}px` })],
+                      [
+                        h.DataAttribute("minute", String(minute)),
+                        h.Style({
+                          "padding-top": minute === 0 ? "3px" : "0",
+                          top: `${minuteToY(grid, minute)}px`,
+                          transform: minute === 0 ? "none" : "translateY(-50%)",
+                        }),
+                      ],
                       [
                         gutterClock(
                           reference,
-                          hour,
+                          minute / 60,
                           model.calendar.zone,
                           zone.id,
                           resolvedTimeFormat(model)
@@ -416,7 +430,13 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                         h.DataAttribute("day", String(day)),
                       ],
                       [
-                        ...gesturePreview(model, h, day, scale, false),
+                        ...timeBlockBackground(
+                          h,
+                          blocks,
+                          grid,
+                          resolvedTimeFormat(model)
+                        ),
+                        ...gesturePreview(model, h, day, scale, false, grid),
                         ...placements.flatMap((placement) => {
                           const event = timed.find(
                             (item) => item.key === placement.id
@@ -426,13 +446,13 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                             return [];
                           }
 
-                          const height = Math.max(
-                            16,
-                            timeTop(
-                              event.endMinute - event.startMinute,
-                              scale
-                            ) - 2
+                          const pixels = rangePixels(
+                            grid,
+                            event.startMinute,
+                            event.endMinute
                           );
+
+                          const height = Math.max(16, pixels.height - 2);
 
                           return [
                             chip(
@@ -442,7 +462,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                                 height: `${height}px`,
                                 left: `calc(${placement.left * 100}% + 1px)`,
                                 position: "absolute",
-                                top: `${timeTop(event.startMinute, scale)}px`,
+                                top: `${pixels.top}px`,
                                 width: `calc(${placement.width * 100}% - 3px)`,
                                 "z-index": String(placement.paint + 1),
                               },
@@ -459,7 +479,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                               h.div([
                                 h.Class("now-today"),
                                 h.Style({
-                                  top: `${timeTop(nowMinute, scale)}px`,
+                                  top: `${minuteToY(grid, nowMinute)}px`,
                                 }),
                                 h.AriaHidden(true),
                               ]),
@@ -468,11 +488,12 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                       ]
                     );
                   }),
+                  ...timeGridTicks(h, grid),
                   ...(days.includes(today)
                     ? [
                         h.div([
                           h.Class("now-line"),
-                          h.Style({ top: `${timeTop(nowMinute, scale)}px` }),
+                          h.Style({ top: `${minuteToY(grid, nowMinute)}px` }),
                           h.AriaHidden(true),
                         ]),
                       ]
@@ -492,16 +513,13 @@ export const timeGrid = (
   h: HtmlBuilder<AppMessage>,
   prepare: typeof PrepareGestures = PrepareGestures
 ): Html => {
-  const scale = hourHeight(
-    model.calendar.zoom,
-    model.calendar.viewport,
-    allDaySection(model).height
-  );
+  const { grid, scale } = timeGridGeometry(model);
 
   const hostKey = gestureHostKey(
     Option.getOrElse(model.person, () => ""),
     model.calendar.zone,
-    scale
+    scale,
+    grid.hidden
   );
 
   return h.keyed("div")(
@@ -517,7 +535,16 @@ export const timeGrid = (
       h.Style({ display: "contents" }),
       ...(Option.isSome(model.person) &&
       EditorView.guards.Closed(model.editing.view)
-        ? [h.OnMount(prepare({ hostKey, personId: model.person.value, scale }))]
+        ? [
+            h.OnMount(
+              prepare({
+                hidden: grid.hidden,
+                hostKey,
+                personId: model.person.value,
+                scale,
+              })
+            ),
+          ]
         : []),
     ],
     [

@@ -1,6 +1,11 @@
 import { DateTime, Option, Schema } from "effect";
 
-import { minuteInZone } from "../../layout/geometry.js";
+import {
+  minuteInZone,
+  gridGeometry,
+  yToMinute,
+} from "../../layout/geometry.js";
+import type { TimeGridGeometry } from "../../layout/geometry.js";
 import { dayInZone, dayFromIso } from "../../layout/navigation.js";
 import type { DisplayEvent } from "../../layout/presentation.js";
 import { platformModifier } from "../keyboard/modifier.js";
@@ -48,7 +53,8 @@ export const pointerPoint = (
   root: Element,
   event: PointerEvent,
   scale: number,
-  allDay: boolean
+  allDay: boolean,
+  grid: TimeGridGeometry = gridGeometry(scale)
 ): Option.Option<typeof GesturePoint.Type> => {
   if (root.classList.contains("month-view")) {
     return monthPointerPoint(root, event);
@@ -84,14 +90,7 @@ export const pointerPoint = (
         day: value,
         minute: allDay
           ? 0
-          : Math.max(
-              0,
-              Math.min(
-                1440,
-                ((event.clientY - column.getBoundingClientRect().top) * 60) /
-                  scale
-              )
-            ),
+          : yToMinute(grid, event.clientY - column.getBoundingClientRect().top),
         mod: platformModifier(event),
         pointerId: event.pointerId,
         shift: event.shiftKey,

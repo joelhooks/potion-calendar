@@ -455,13 +455,6 @@ h3 {
   overflow-x: clip;
   overflow-y: clip;
   position: relative;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--hour-height) - 1px),
-    var(--line) calc(var(--hour-height) - 1px),
-    var(--line) var(--hour-height)
-  );
 }
 .day-column {
   position: relative;
@@ -470,6 +463,93 @@ h3 {
 }
 .today-column {
   background: rgb(86 130 97 / 2%);
+}
+.time-block-fill,
+.time-block-strip,
+.time-grid-tick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.time-grid-tick {
+  height: 1px;
+  background: var(--line);
+}
+.time-block-strip {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 22px;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time-block-settings p {
+  margin: 6px 0;
+}
+.time-block-item,
+.time-block-actions,
+.time-block-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.time-block-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.time-block-item > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.time-block-swatch {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.time-block-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.time-block-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.time-block-field input {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.time-block-field input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+.time-block-field input[type="color"] {
+  width: 60px;
+  height: 32px;
+  padding: 3px;
+}
+.time-block-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
 }
 .event-chip {
   position: relative;

@@ -1,6 +1,8 @@
 import type { EffectActor } from "@xstate/effect";
 import { Option, Result } from "effect";
 
+import { gridGeometry } from "../../layout/geometry.js";
+import type { TimeGridGeometry } from "../../layout/geometry.js";
 import { platformModifier } from "../keyboard/modifier.js";
 import { monthGestureStart } from "../month/gesture.js";
 import type { MonthGestureRefused } from "../month/gesture.js";
@@ -12,6 +14,7 @@ interface Input {
   readonly actor: EffectActor<typeof gestureMachine>;
   readonly root: HTMLElement;
   readonly scale: number;
+  readonly grid?: TimeGridGeometry;
   readonly getTargets: () => readonly (typeof GestureTarget.Type)[] | undefined;
   readonly refused?: (reason: MonthGestureRefused["reason"]) => void;
 }
@@ -97,6 +100,7 @@ export const bindGestureEvents = ({
   actor,
   root,
   scale,
+  grid = gridGeometry(scale),
   getTargets,
   refused,
 }: Input): (() => void) => {
@@ -123,7 +127,7 @@ export const bindGestureEvents = ({
       root.classList.contains("month-view") ||
       element.closest(".all-day") !== null;
 
-    const point = pointerPoint(root, event, scale, allDay);
+    const point = pointerPoint(root, event, scale, allDay, grid);
 
     if (Option.isNone(point)) {
       return;
@@ -189,7 +193,7 @@ export const bindGestureEvents = ({
       scrollEdge(root, event, start.allDay);
     }
 
-    const point = pointerPoint(root, event, scale, start.allDay);
+    const point = pointerPoint(root, event, scale, start.allDay, grid);
 
     if (Option.isSome(point)) {
       actor.send({ point: point.value, type: "MOVE" });
@@ -205,7 +209,7 @@ export const bindGestureEvents = ({
       return;
     }
 
-    const point = pointerPoint(root, event, scale, start.allDay);
+    const point = pointerPoint(root, event, scale, start.allDay, grid);
 
     if (Option.isSome(point)) {
       actor.send({ point: point.value, type: "UP" });

@@ -3,7 +3,8 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
 import type { GestureResult } from "../client/editing/gesture-model.js";
-import { timeTop } from "../layout/geometry.js";
+import { gridGeometry, rangePixels } from "../layout/geometry.js";
+import type { TimeGridGeometry } from "../layout/geometry.js";
 import { dayFromIso } from "../layout/navigation.js";
 import { clockLabel, resolvedTimeFormat } from "../layout/time-format.js";
 import type { ResolvedTimeFormat } from "../layout/time-format.js";
@@ -48,7 +49,8 @@ export const gesturePreview = (
   h: HtmlBuilder<AppMessage>,
   day: number,
   scale: number,
-  allDay: boolean
+  allDay: boolean,
+  grid: TimeGridGeometry = gridGeometry(scale)
 ): readonly Html[] => {
   if (Option.isNone(model.editing.gesture)) {
     return [];
@@ -75,7 +77,8 @@ export const gesturePreview = (
   const from = day === start ? clockMinute(range.startTime) : 0;
   const to = day === end ? clockMinute(range.endTime) : 1440;
 
-  const height = Math.max(16, timeTop(to - from, scale) - 2);
+  const pixels = rangePixels(grid, from, to);
+  const height = Math.max(16, pixels.height - 2);
   const content = allDay ? undefined : timedContent(height, "preview");
   const compact = content?.compact === true;
 
@@ -98,7 +101,7 @@ export const gesturePreview = (
             : {
                 ...content?.style,
                 height: `${height}px`,
-                top: `${timeTop(from, scale)}px`,
+                top: `${pixels.top}px`,
               }
         ),
       ],

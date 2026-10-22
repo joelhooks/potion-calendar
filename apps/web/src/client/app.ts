@@ -8,7 +8,7 @@ import type { UrlRequest } from "foldkit/navigation";
 import type { Url } from "foldkit/url";
 
 import { packAllDay } from "../layout/all-day.js";
-import { hourHeight, minuteInZone } from "../layout/geometry.js";
+import { minuteInZone } from "../layout/geometry.js";
 import { monthWindowRange } from "../layout/month-window.js";
 import {
   dayInZone,
@@ -181,6 +181,9 @@ import {
 } from "./settings/update.js";
 import { VisibilityMigration } from "./settings/visibility-model.js";
 import { chooseVisibility } from "./settings/visibility.js";
+import { timeGridGeometry } from "./time-blocks/grid.js";
+import { initialTimeBlockEditor } from "./time-blocks/model.js";
+import { changeTimeBlocks } from "./time-blocks/update.js";
 import {
   TimeZonesUi,
   TimeZoneAction,
@@ -495,19 +498,26 @@ const changeNavigation = (
     previous
   );
 
-  return (action.type === "today" || action.type === "align") &&
+  if (
+    (action.type === "today" || action.type === "align") &&
     result.model.calendar.navigation.mode !== "month"
-    ? {
-        ...result,
-        commands: [
-          ...(result.commands ?? []),
-          ScrollToNow({
-            minute: minuteInZone(model.calendar.now, model.calendar.zone),
-            scale: hourHeight(model.calendar.zoom, model.calendar.viewport),
-          }),
-        ],
-      }
-    : result;
+  ) {
+    const { grid, scale } = timeGridGeometry(result.model);
+
+    return {
+      ...result,
+      commands: [
+        ...(result.commands ?? []),
+        ScrollToNow({
+          hidden: grid.hidden,
+          minute: minuteInZone(model.calendar.now, model.calendar.zone),
+          scale,
+        }),
+      ],
+    };
+  }
+
+  return result;
 };
 
 const receivedEventRows = (model: AppModel): AppModel => {
@@ -606,6 +616,21 @@ const updateCore = (
         ],
         model: next.model,
       };
+    },
+    ChangedTimeBlocks: ({ action, personId }) => {
+      if (
+        !Option.contains(model.person, personId) ||
+        !Predicate.isTagged(model.route, "Settings") ||
+        model.route.page !== "general"
+      ) {
+        return { model };
+      }
+
+      const next = changeTimeBlocks(model, action);
+
+      return next.changed
+        ? persistPreferences({ model: next.model })
+        : { model: next.model };
     },
     ClickedAddGoogle: () => ({
       commands: [BeginGoogle({ linking: true })],
@@ -1540,6 +1565,10 @@ export const update = (model: AppModel, message: AppMessage): Result => {
         ...result.model,
         attachmentReads: initialAttachmentReads,
         clipboard: resetClipboardScope(model.clipboard),
+        settings: {
+          ...result.model.settings,
+          timeBlockEditor: initialTimeBlockEditor(),
+        },
       },
     };
   }

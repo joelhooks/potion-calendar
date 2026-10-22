@@ -9,8 +9,9 @@ import {
 import { RpcClient } from "effect/rpc";
 import { Command, Render } from "foldkit";
 
-import { initialScroll } from "../layout/geometry.js";
+import { gridGeometry, initialScroll } from "../layout/geometry.js";
 import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
+import { MinuteRange } from "../layout/time-blocks.js";
 import { readFailure } from "./calendar-state.js";
 import { Message } from "./message.js";
 import { browserGroup, protocol } from "./rpc.js";
@@ -112,8 +113,12 @@ export const SavePreferences = Command.define("SavePreferences", {
 });
 
 export const ScrollToNow = Command.define("ScrollToNow", {
-  args: { minute: Schema.Finite, scale: Schema.Finite },
-  execute: ({ minute, scale }) =>
+  args: {
+    hidden: Schema.optionalKey(Schema.Array(MinuteRange)),
+    minute: Schema.Finite,
+    scale: Schema.Finite,
+  },
+  execute: ({ hidden, minute, scale }) =>
     Render.afterCommit.pipe(
       Effect.andThen(
         Effect.sync(() => {
@@ -124,7 +129,8 @@ export const ScrollToNow = Command.define("ScrollToNow", {
             viewport.scrollTop = initialScroll(
               minute,
               scale,
-              timeAreaHeight(viewport)
+              timeAreaHeight(viewport),
+              gridGeometry(scale, hidden)
             );
             viewport.scrollLeft = todayScrollLeft(viewport);
           }

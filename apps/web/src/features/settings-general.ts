@@ -19,6 +19,7 @@ import { hiddenTimeWeekdays, viewLabel } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
 import { desktopSettingsView } from "./desktop-settings-actions.js";
 import { desktopGeneralRows } from "./desktop-settings.js";
+import { settingsTimeBlocks } from "./settings-time-blocks.js";
 
 const choice = <A extends string | number>(
   h: HtmlBuilder<AppMessage>,
@@ -143,6 +144,7 @@ export const settingsGeneral = (
   return [
     h.h1([], ["General"]),
     ...desktopSettingsView(model.desktop, h, desktopGeneralRows),
+    settingsTimeBlocks(model, h),
     h.section(
       [h.Class("settings-section")],
       [

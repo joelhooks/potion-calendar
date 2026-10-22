@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { emptyTimeBlocks } from "../../layout/time-blocks.js";
 import {
   SavedPreferences,
   StoredPreferences,
@@ -57,6 +58,8 @@ export const writeGeneralPreferences = Effect.fn("writeGeneralPreferences")(
     return yield* modifyPreferences(person, (current) => ({
       ...preferences,
       customVideoLinks: current.customVideoLinks ?? [],
+      timeBlocks:
+        preferences.timeBlocks ?? current.timeBlocks ?? emptyTimeBlocks(),
     }));
   }
 );

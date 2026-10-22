@@ -1,13 +1,18 @@
 import { Effect, Queue, Schema, Stream } from "effect";
 import { Mount } from "foldkit";
 
-import { initialScroll } from "../layout/geometry.js";
+import { gridGeometry, initialScroll } from "../layout/geometry.js";
 import { timeAreaHeight, todayScrollLeft } from "../layout/grid-geometry.js";
+import { MinuteRange } from "../layout/time-blocks.js";
 import { Message } from "./message.js";
 
 export const PrepareTimeGrid = Mount.defineStream("PrepareTimeGrid", {
-  args: { initialMinute: Schema.Finite, initialScale: Schema.Finite },
-  execute: ({ element, initialMinute, initialScale }) =>
+  args: {
+    hidden: Schema.optionalKey(Schema.Array(MinuteRange)),
+    initialMinute: Schema.Finite,
+    initialScale: Schema.Finite,
+  },
+  execute: ({ element, hidden, initialMinute, initialScale }) =>
     Stream.callback<ReturnType<typeof Message.MeasuredViewport>>((queue) =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -37,7 +42,8 @@ export const PrepareTimeGrid = Mount.defineStream("PrepareTimeGrid", {
             viewport.scrollTop = initialScroll(
               initialMinute,
               initialScale,
-              timeAreaHeight(viewport)
+              timeAreaHeight(viewport),
+              gridGeometry(initialScale, hidden)
             );
             viewport.scrollLeft = todayScrollLeft(viewport);
           }

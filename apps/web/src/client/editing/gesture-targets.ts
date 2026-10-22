@@ -1,10 +1,11 @@
 import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
 
-import { hourHeight } from "../../layout/geometry.js";
-import { allDaySection, visibleEvents } from "../../layout/presentation.js";
+import { visibleEvents } from "../../layout/presentation.js";
+import type { MinuteRange } from "../../layout/time-blocks.js";
 import type { AppModel } from "../app.js";
 import { monthHostKey } from "../month/host.js";
+import { timeGridGeometry } from "../time-blocks/grid.js";
 import { EditorView } from "./editor-model.js";
 import { gestureTarget } from "./gesture-input.js";
 import type { GestureTarget } from "./gesture-model.js";
@@ -56,24 +57,30 @@ export const gestureTargetRegistry = (): GestureTargetRegistry => {
 export const gestureHostKey = (
   person: string,
   zone: string,
-  scale: number
-): string => JSON.stringify([person, zone, scale]);
+  scale: number,
+  hidden: readonly (typeof MinuteRange.Type)[] = []
+): string =>
+  JSON.stringify([
+    person,
+    zone,
+    scale,
+    ...(hidden.length === 0 ? [] : [hidden]),
+  ]);
 
 export const modelGestureHostKey = (model: AppModel): Option.Option<string> =>
   model.calendar.navigation.mode === "month"
     ? monthHostKey(model)
     : model.person.pipe(
-        Option.map((person) =>
-          gestureHostKey(
+        Option.map((person) => {
+          const { grid, scale } = timeGridGeometry(model);
+
+          return gestureHostKey(
             person,
             model.calendar.zone,
-            hourHeight(
-              model.calendar.zoom,
-              model.calendar.viewport,
-              allDaySection(model).height
-            )
-          )
-        )
+            scale,
+            grid.hidden
+          );
+        })
       );
 
 const authenticated = (model: AppModel): boolean =>

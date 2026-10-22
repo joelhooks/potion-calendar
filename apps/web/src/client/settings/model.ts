@@ -7,9 +7,17 @@ import {
 } from "../../layout/location-maps.js";
 import { HiddenWeekdays } from "../../layout/navigation-refinements.js";
 import {
+  TimeBlockPreferences,
+  emptyTimeBlocks,
+} from "../../layout/time-blocks.js";
+import {
   ZonePreferences,
   normalizeZonePreferences,
 } from "../../layout/time-zones.js";
+import {
+  TimeBlockEditor,
+  initialTimeBlockEditor,
+} from "../time-blocks/model.js";
 import { CustomVideoLinks } from "./conferencing/model.js";
 import { VisibilityChoices, VisibilityMigration } from "./visibility-model.js";
 
@@ -52,6 +60,8 @@ export const SettingsUi = Schema.Struct({
   system24Hour: Schema.Boolean,
   systemDark: Schema.Boolean,
   theme: Theme,
+  timeBlockEditor: TimeBlockEditor,
+  timeBlocks: TimeBlockPreferences,
   timeFormat: TimeFormat,
   todayAction: TodayAction,
   upcomingMeetingMinutes: UpcomingMeetingMinutes,
@@ -66,6 +76,8 @@ export const initialSettings = (): typeof SettingsUi.Type => ({
   system24Hour: false,
   systemDark: false,
   theme: "auto",
+  timeBlockEditor: initialTimeBlockEditor(),
+  timeBlocks: emptyTimeBlocks(),
   timeFormat: "system",
   todayAction: "today",
   upcomingMeetingMinutes: 240,
@@ -83,6 +95,7 @@ export const SavedPreferences = Schema.Struct({
   mergeDuplicates: Schema.Boolean,
   showWeekNumbers: Schema.Boolean,
   theme: Theme,
+  timeBlocks: Schema.optionalKey(TimeBlockPreferences),
   timeFormat: TimeFormat,
   todayAction: TodayAction,
   upcomingMeetingMinutes: Schema.optionalKey(UpcomingMeetingMinutes),
@@ -105,6 +118,7 @@ const StoredCommon = {
   mergeDuplicates: Schema.optionalKey(Schema.Boolean),
   showWeekNumbers: Schema.optionalKey(Schema.Boolean),
   theme: Schema.optionalKey(Theme),
+  timeBlocks: Schema.optionalKey(TimeBlockPreferences),
   timeFormat: Schema.optionalKey(TimeFormat),
   todayAction: Schema.optionalKey(TodayAction),
   upcomingMeetingMinutes: Schema.optionalKey(UpcomingMeetingMinutes),
@@ -143,6 +157,7 @@ export const normalizePreferences = (
     mergeDuplicates: stored.mergeDuplicates ?? true,
     showWeekNumbers: stored.showWeekNumbers ?? false,
     theme: stored.theme ?? "auto",
+    timeBlocks: stored.timeBlocks ?? emptyTimeBlocks(),
     timeFormat: stored.timeFormat ?? "system",
     todayAction: stored.todayAction ?? "today",
     upcomingMeetingMinutes: stored.upcomingMeetingMinutes ?? 240,

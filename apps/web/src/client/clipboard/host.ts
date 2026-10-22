@@ -2,14 +2,14 @@ import type { SessionSnapshot } from "@calendar/core/contracts";
 import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
 
-import { hourHeight } from "../../layout/geometry.js";
-import { allDaySection, visibleEvents } from "../../layout/presentation.js";
+import { visibleEvents } from "../../layout/presentation.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { BulkView } from "../bulk/model.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
 import { EditorView } from "../editing/editor-model.js";
 import { defaultCreationCalendar } from "../settings/update.js";
+import { timeGridGeometry } from "../time-blocks/grid.js";
 import { homeZone } from "../time-zones/model.js";
 import type { ClipboardGridHost } from "./anchor.js";
 import { ClipboardPasteTarget } from "./model.js";
@@ -61,26 +61,26 @@ export const clipboardGridHost = (
     return undefined;
   }
 
-  const scale = month
-    ? 1
-    : hourHeight(
-        model.calendar.zoom,
-        model.calendar.viewport,
-        allDaySection(model).height
-      );
+  const projection = month ? undefined : timeGridGeometry(model);
+  const scale = projection?.scale ?? 1;
 
-  return {
+  const host: ClipboardGridHost = {
     key: JSON.stringify([
       session.user.id,
       model.calendar.navigation,
       model.calendar.zone,
       scale,
+      ...(projection === undefined || projection.grid.hidden.length === 0
+        ? []
+        : [projection.grid.hidden]),
     ]),
     mode: month ? "month" : "time",
     root,
     scale,
     zone: model.calendar.zone,
   };
+
+  return projection === undefined ? host : { ...host, grid: projection.grid };
 };
 
 export const clipboardNativeHost = (

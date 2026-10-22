@@ -3,6 +3,8 @@ import { createEffectActor } from "@xstate/effect";
 import { Effect, Option, Queue, Schema, Stream } from "effect";
 import { Mount } from "foldkit";
 
+import { gridGeometry } from "../../layout/geometry.js";
+import { MinuteRange } from "../../layout/time-blocks.js";
 import { Message } from "../message.js";
 import { bindGestureEvents } from "./gesture-events.js";
 import { gestureMachine } from "./gesture-machine.js";
@@ -17,11 +19,19 @@ type GestureMessage =
 export const gestureMountFor = (registry?: GestureTargetRegistry) =>
   Mount.defineStream("PrepareGestures", {
     args: {
+      hidden: Schema.optionalKey(Schema.Array(MinuteRange)),
       hostKey: Schema.String,
       personId: Schema.String,
       scale: Schema.Finite,
     },
-    execute: ({ element, hostKey, personId, scale, viewStateChanges }) =>
+    execute: ({
+      element,
+      hidden,
+      hostKey,
+      personId,
+      scale,
+      viewStateChanges,
+    }) =>
       viewStateChanges.pipe(
         Stream.changes,
         Stream.switchMap((state) =>
@@ -94,6 +104,7 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                       bindGestureEvents({
                         actor,
                         getTargets: () => registry?.read(hostKey, element),
+                        grid: gridGeometry(scale, hidden),
                         refused: (reason) => {
                           Queue.offerUnsafe(
                             queue,

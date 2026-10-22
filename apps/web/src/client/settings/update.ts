@@ -7,6 +7,7 @@ import {
   changeWeekdayVisibility,
 } from "../../layout/navigation-refinements.js";
 import { hiddenTimeWeekdays } from "../../layout/navigation.js";
+import { emptyTimeBlocks } from "../../layout/time-blocks.js";
 import type { AppModel } from "../app.js";
 import { writableCalendar } from "../editing/load-editor.js";
 import { activeZone } from "../time-zones/model.js";
@@ -46,6 +47,7 @@ export const preferenceSnapshot = (
     mergeDuplicates: model.calendar.mergeDuplicates,
     showWeekNumbers: model.settings.showWeekNumbers,
     theme: model.settings.theme,
+    timeBlocks: model.settings.timeBlocks,
     timeFormat: model.settings.timeFormat,
     todayAction: model.settings.todayAction,
     upcomingMeetingMinutes: model.settings.upcomingMeetingMinutes,
@@ -133,6 +135,7 @@ export const applyPreferences = (
       locationMaps: normalizeLocationMaps(preferences.locationMaps),
       showWeekNumbers: preferences.showWeekNumbers,
       theme: preferences.theme,
+      timeBlocks: preferences.timeBlocks ?? emptyTimeBlocks(),
       timeFormat: preferences.timeFormat,
       todayAction: preferences.todayAction,
       upcomingMeetingMinutes: preferences.upcomingMeetingMinutes ?? 240,

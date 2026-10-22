@@ -34,6 +34,7 @@ import { SearchNotice, SearchProblem } from "./search/model.js";
 import { ManagementChange } from "./settings-management/model.js";
 import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
+import { TimeBlockAction } from "./time-blocks/model.js";
 import { TimeZoneAction } from "./time-zones/model.js";
 
 export const Message = defineMessageUnion({
@@ -51,6 +52,7 @@ export const Message = defineMessageUnion({
   },
   ChangedSettings: { change: SettingsChange },
   ChangedSettingsManagement: { change: ManagementChange },
+  ChangedTimeBlocks: { action: TimeBlockAction, personId: Schema.String },
   ClickedAddGoogle: {},
   ClickedAlignToday: {},
   ClickedAllDay: {},

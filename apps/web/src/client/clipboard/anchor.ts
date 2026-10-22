@@ -2,6 +2,8 @@ import { DateTime, Effect, Option, Schema } from "effect";
 
 import { dragPrecision, snapMinute } from "../../layout/edit-time.js";
 import { editorDate, editorLocalTime } from "../../layout/editor-time.js";
+import { gridGeometry, yToMinute } from "../../layout/geometry.js";
+import type { TimeGridGeometry } from "../../layout/geometry.js";
 import { ClipboardAnchor } from "./model.js";
 
 export interface ClipboardGridHost {
@@ -9,6 +11,7 @@ export interface ClipboardGridHost {
   readonly mode: "month" | "time";
   readonly root: HTMLElement;
   readonly scale: number;
+  readonly grid?: TimeGridGeometry;
   readonly zone: string;
 }
 
@@ -109,7 +112,14 @@ export const clipboardAnchorAt = (
     return Option.none();
   }
 
-  const raw = ((point.y - cell.getBoundingClientRect().top) * 60) / host.scale;
+  const grid = host.grid ?? gridGeometry(host.scale);
+  const y = point.y - cell.getBoundingClientRect().top;
+
+  if (y < 0 || y >= grid.height) {
+    return Option.none();
+  }
+
+  const raw = yToMinute(grid, y);
 
   if (raw < 0 || raw >= 1440) {
     return Option.none();
