@@ -25,6 +25,7 @@ import { reminderNotificationStream } from "./reminders/subscription.js";
 import { searchInteractions } from "./search/browser.js";
 import { SearchTask } from "./search/model.js";
 import { SearchRuntime } from "./search/runtime.js";
+import { searchTask } from "./search/source.js";
 import { systemSettingsStream } from "./settings/system.js";
 import { UpcomingQuery } from "./upcoming/model.js";
 import { upcomingStream } from "./upcoming/read.js";
@@ -165,21 +166,7 @@ export const subscriptions = Subscription.make<
             ).pipe(Stream.map((notice) => Message.ReceivedSearch({ notice }))),
         }),
       modelToDependencies: (model) => ({
-        task:
-          Option.isSome(model.person) &&
-          Predicate.isTagged(model.route, "Search")
-            ? Option.some({
-                personId: model.person.value,
-                request: {
-                  query: model.search.text,
-                  timeZone: model.calendar.zone,
-                  weekStartsOn: Schema.decodeUnknownSync(
-                    SearchTask.fields.request.fields.weekStartsOn
-                  )(model.calendar.navigation.weekStartsOn ?? 0),
-                },
-                revision: model.search.revision,
-              })
-            : Option.none(),
+        task: searchTask(model),
       }),
     }
   ),

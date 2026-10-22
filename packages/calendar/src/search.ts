@@ -1,63 +1,145 @@
 import { DateTime, Effect, Option, Result } from "effect";
 
 import { CalendarReadFailure } from "./calendar-read-failure.js";
-import { Provider } from "./errors.js";
+import { NotFound, Provider } from "./errors.js";
 import { GoogleCalendarClient } from "./google.js";
 import type { ListPageInput } from "./google.js";
+import type { CalendarValue } from "./model.js";
 import { calendarReadConcurrency } from "./read-concurrency.js";
+import { SearchPageTarget } from "./search-model.js";
 import type {
   SearchEventsInputValue,
   SearchEventsOutputValue,
   SearchEventResultValue,
+  SearchWindow,
 } from "./search-model.js";
 import { orderSearchResults, searchEventResult } from "./search-results.js";
+
+const searchWindow = Effect.fn("searchWindow")(function* searchWindow(
+  input: SearchEventsInputValue
+) {
+  const now = yield* DateTime.now;
+  const local = DateTime.makeZoned(now, { timeZone: input.timeZone });
+
+  if (Option.isNone(local)) {
+    return yield* new Provider({
+      message: "Use a valid named primary time zone for event search",
+      operation: "searchEvents",
+      status: 0,
+    });
+  }
+
+  if (input.continuation !== undefined) {
+    return input.continuation.window;
+  }
+
+  const boundary = DateTime.startOf(
+    DateTime.subtract(local.value, { weeks: 4 }),
+    "week",
+    { weekStartsOn: input.weekStartsOn }
+  );
+
+  const endExclusive = DateTime.startOf(
+    DateTime.add(DateTime.add(boundary, { years: 3 }), { days: 1 }),
+    "day"
+  );
+
+  return {
+    boundary: DateTime.formatIso(boundary),
+    endExclusive: DateTime.formatIso(endExclusive),
+  };
+});
+
+const searchCalendarPage = Effect.fn("searchCalendarPage")(
+  function* searchCalendarPage(
+    target: typeof SearchPageTarget.Type,
+    calendars: readonly CalendarValue[],
+    input: SearchEventsInputValue,
+    window: typeof SearchWindow.Type
+  ) {
+    const calendar = calendars.find(
+      (item) =>
+        item.accountId === target.accountId &&
+        item.calendarId === target.calendarId
+    );
+
+    if (calendar === undefined || calendar.accessRole === "freeBusyReader") {
+      return yield* new NotFound({ operation: "searchEvents" });
+    }
+
+    const google = yield* GoogleCalendarClient;
+
+    const common = {
+      orderBy: "startTime",
+      q: input.query.trim(),
+      ref: calendar,
+      singleEvents: true,
+    } satisfies ListPageInput;
+
+    const forward = yield* google.listPage({
+      ...common,
+      maxResults: 100,
+      pageToken: SearchPageTarget.guards.Forward(target)
+        ? target.pageToken
+        : undefined,
+      timeMax: window.endExclusive,
+      timeMin: window.boundary,
+    });
+
+    const older = SearchPageTarget.guards.Initial(target)
+      ? yield* google.listPage({
+          ...common,
+          maxResults: 2500,
+          timeMax: window.boundary,
+        })
+      : undefined;
+
+    const token = forward.nextPageToken;
+    const hasMore = token !== undefined && token.length > 0;
+
+    return {
+      pageInfo: {
+        accountId: calendar.accountId,
+        calendarId: calendar.calendarId,
+        forwardHasMore: hasMore,
+        forwardNextPageToken: hasMore ? token : undefined,
+        olderHasMore:
+          older === undefined
+            ? undefined
+            : (older.nextPageToken?.length ?? 0) > 0,
+      },
+      results: [...forward.events, ...(older?.events ?? [])].flatMap((event) =>
+        Option.toArray(searchEventResult(calendar, event, input.timeZone))
+      ),
+    };
+  }
+);
 
 export const searchCalendarEvents = Effect.fn("searchCalendarEvents")(
   function* searchCalendarEvents(
     input: SearchEventsInputValue
   ): Effect.fn.Return<SearchEventsOutputValue, Provider, GoogleCalendarClient> {
-    const now = yield* DateTime.now;
-    const local = DateTime.makeZoned(now, { timeZone: input.timeZone });
+    const window = yield* searchWindow(input);
 
-    if (Option.isNone(local)) {
-      return yield* new Provider({
-        message: "Use a valid named primary time zone for event search",
-        operation: "searchEvents",
-        status: 0,
-      });
-    }
-
-    const boundary = DateTime.startOf(
-      DateTime.subtract(local.value, { weeks: 4 }),
-      "week",
-      { weekStartsOn: input.weekStartsOn }
-    );
-
-    const endExclusive = DateTime.startOf(
-      DateTime.add(DateTime.add(boundary, { years: 3 }), { days: 1 }),
-      "day"
-    );
-
-    const window = {
-      boundary: DateTime.formatIso(boundary),
-      endExclusive: DateTime.formatIso(endExclusive),
-    };
-
-    const query = input.query.trim();
-
-    if (query === "") {
+    if (input.query.trim() === "") {
       return { failures: [], pageInfo: [], results: [], window };
     }
 
-    const google = yield* GoogleCalendarClient;
+    const targets =
+      input.continuation?.pages ??
+      input.calendars
+        .filter((calendar) => calendar.accessRole !== "freeBusyReader")
+        .map((calendar) =>
+          SearchPageTarget.cases.Initial.make({
+            accountId: calendar.accountId,
+            calendarId: calendar.calendarId,
+          })
+        );
+
     const seen = new Set<string>();
 
-    const calendars = input.calendars.filter((calendar) => {
-      if (calendar.accessRole === "freeBusyReader") {
-        return false;
-      }
-
-      const key = JSON.stringify([calendar.accountId, calendar.calendarId]);
+    const unique = targets.filter((target) => {
+      const key = JSON.stringify([target.accountId, target.calendarId]);
 
       if (seen.has(key)) {
         return false;
@@ -69,46 +151,14 @@ export const searchCalendarEvents = Effect.fn("searchCalendarEvents")(
     });
 
     const outcomes = yield* Effect.forEach(
-      calendars,
-      (calendar) =>
-        Effect.gen(function* searchCalendar() {
-          const common = {
-            orderBy: "startTime",
-            q: query,
-            ref: calendar,
-            singleEvents: true,
-          } satisfies ListPageInput;
-
-          const forward = yield* google.listPage({
-            ...common,
-            maxResults: 100,
-            timeMax: window.endExclusive,
-            timeMin: window.boundary,
-          });
-
-          const older = yield* google.listPage({
-            ...common,
-            maxResults: 2500,
-            timeMax: window.boundary,
-          });
-
-          return {
-            pageInfo: {
-              accountId: calendar.accountId,
-              calendarId: calendar.calendarId,
-              forwardHasMore: (forward.nextPageToken?.length ?? 0) > 0,
-              olderHasMore: (older.nextPageToken?.length ?? 0) > 0,
-            },
-            results: [...forward.events, ...older.events].flatMap((event) =>
-              Option.toArray(searchEventResult(calendar, event, input.timeZone))
-            ),
-          };
-        }).pipe(
+      unique,
+      (target) =>
+        searchCalendarPage(target, input.calendars, input, window).pipe(
           Effect.mapError(
             (cause) =>
               new CalendarReadFailure({
-                accountId: calendar.accountId,
-                calendarId: calendar.calendarId,
+                accountId: target.accountId,
+                calendarId: target.calendarId,
                 cause,
               })
           ),

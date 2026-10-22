@@ -91,6 +91,7 @@ export const searchRpcFixture = Effect.fn("test.searchRpcFixture")(
     const failedInventories = yield* Ref.make<readonly string[]>([]);
     const emptyInventories = yield* Ref.make<readonly string[]>([]);
     const failedCalendars = yield* Ref.make<readonly string[]>([]);
+    const paginated = yield* Ref.make(false);
 
     const store = yield* CalendarStore.pipe(
       Effect.provide(memoryCalendarStore)
@@ -151,18 +152,24 @@ export const searchRpcFixture = Effect.fn("test.searchRpcFixture")(
             return response(403);
           }
 
-          return response(200, {
-            items: [
-              {
-                end: { dateTime: "2026-03-15T18:00:00Z" },
-                id: `event-${calendarId}`,
-                organizer: { displayName: "Owner" },
-                start: { dateTime: "2026-03-15T17:00:00Z" },
-                status: "confirmed",
-                summary: `Result ${calendarId}`,
-              },
-            ],
-          });
+          const page = url.searchParams.has("pageToken") ? "-page-2" : "";
+
+          const items = [
+            {
+              end: { dateTime: "2026-03-15T18:00:00Z" },
+              id: `event-${calendarId}${page}`,
+              organizer: { displayName: "Owner" },
+              start: { dateTime: "2026-03-15T17:00:00Z" },
+              status: "confirmed",
+              summary: `Result ${calendarId}`,
+            },
+          ];
+
+          return (yield* Ref.get(paginated)) &&
+            url.searchParams.has("timeMin") &&
+            !url.searchParams.has("pageToken")
+            ? response(200, { items, nextPageToken: "provider-page-2" })
+            : response(200, { items });
         }),
     });
 
@@ -217,6 +224,7 @@ export const searchRpcFixture = Effect.fn("test.searchRpcFixture")(
       fetcher,
       foreignAccountId: foreignAccounts[0].id,
       foreignPersonId: foreign.personId,
+      paginated,
       personId: person.personId,
       requests,
       send: (payload: Schema.Json = searchPayload) =>

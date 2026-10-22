@@ -1,8 +1,19 @@
 import { expect, it } from "@effect/vitest";
-import { Effect, Fiber, Layer, Predicate, Ref, Schema, Stream } from "effect";
+import {
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Predicate,
+  Queue,
+  Ref,
+  Schema,
+  Stream,
+} from "effect";
 import type { Fiber as FiberType } from "effect";
 import { TestClock } from "effect/testing";
 
+import { Message, update } from "../src/client/app.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import {
   SearchNotice,
@@ -10,7 +21,9 @@ import {
   SearchTask,
 } from "../src/client/search/model.js";
 import { SearchRuntime } from "../src/client/search/runtime.js";
+import { searchTask } from "../src/client/search/source.js";
 import { searchResponse, unexpectedSearchClient } from "./search-fixture.js";
+import { loadedSearch } from "./search-more-fixture.js";
 
 const task = (query: string, revision = 1) =>
   SearchTask.make({
@@ -121,6 +134,116 @@ it.effect(
         expect(notices.at(-1)).toEqual(
           SearchNotice.cases.Ready.make({ response, task: task("planning") })
         );
+      }).pipe(Effect.provide(runtimeLayer(client)));
+    })
+);
+
+it.effect.prop(
+  "repeated page triggers start one actor read immediately and settlement keeps the subscription task stable",
+  { repeats: Schema.Int.check(Schema.isBetween({ maximum: 30, minimum: 1 })) },
+  ({ repeats }) =>
+    Effect.gen(function* pageActor() {
+      const initial = loadedSearch();
+      let model = initial;
+
+      for (let index = 0; index < repeats; index += 1) {
+        ({ model } = update(model, Message.SearchMore()));
+      }
+
+      const input = Option.getOrThrow(searchTask(model));
+      const calls = yield* Ref.make<readonly (typeof input.request)[]>([]);
+
+      const response = {
+        ...searchResponse([]),
+        pageInfo: [
+          { accountId: "work", calendarId: "primary", forwardHasMore: false },
+        ],
+        window: Option.getOrThrow(initial.search.response).window,
+      };
+
+      const client = CalendarSearchClient.of({
+        prefetch: unexpectedSearchClient.prefetch,
+        search: (request) =>
+          Ref.update(calls, (values) => [...values, request]).pipe(
+            Effect.as(response)
+          ),
+      });
+
+      const notices = yield* observe(input).pipe(
+        Stream.runCollect,
+        Effect.provide(runtimeLayer(client))
+      );
+
+      expect(yield* Ref.get(calls)).toEqual([input.request]);
+      expect(
+        notices.some((notice) => SearchNotice.guards.LoadingMore(notice))
+      ).toBe(true);
+      expect(
+        notices.some((notice) => SearchNotice.guards.Debouncing(notice))
+      ).toBe(false);
+      expect(notices.at(-1)).toEqual(
+        SearchNotice.cases.Ready.make({ response, task: input })
+      );
+
+      for (const notice of notices) {
+        const next = update(model, Message.ReceivedSearch({ notice }));
+        expect(
+          next.commands?.some(
+            (command) => command.name === "RestoreSearchScroll"
+          ) ?? false
+        ).toBe(false);
+        ({ model } = next);
+      }
+
+      expect(searchTask(model)).toEqual(Option.some(input));
+      expect(Option.getOrThrow(model.search.response).results).toEqual(
+        Option.getOrThrow(initial.search.response).results
+      );
+      yield* TestClock.adjust(10_000);
+      expect(yield* Ref.get(calls)).toHaveLength(1);
+    })
+);
+
+it.effect(
+  "interrupting a continuation actor cancels its pending provider effect without emitting a ready page",
+  () =>
+    Effect.gen(function* cancelledPage() {
+      const { model } = update(loadedSearch(), Message.SearchMore());
+      const input = Option.getOrThrow(searchTask(model));
+      const called = yield* Queue.unbounded<typeof input.request>();
+      const interruptions = yield* Ref.make(0);
+
+      const notices = yield* Ref.make<readonly (typeof SearchNotice.Type)[]>(
+        []
+      );
+
+      const client = CalendarSearchClient.of({
+        prefetch: unexpectedSearchClient.prefetch,
+        search: (request) =>
+          Queue.offer(called, request).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() =>
+              Ref.update(interruptions, (count) => count + 1)
+            )
+          ),
+      });
+
+      yield* Effect.gen(function* pendingPage() {
+        const fiber = yield* observe(input).pipe(
+          Stream.runForEach((notice) =>
+            Ref.update(notices, (values) => [...values, notice])
+          ),
+          Effect.forkChild
+        );
+
+        expect(yield* Queue.take(called)).toEqual(input.request);
+        yield* Fiber.interrupt(fiber);
+        expect(yield* Ref.get(interruptions)).toBe(1);
+        expect(
+          (yield* Ref.get(notices)).some((notice) =>
+            SearchNotice.guards.Ready(notice)
+          )
+        ).toBe(false);
       }).pipe(Effect.provide(runtimeLayer(client)));
     })
 );

@@ -153,7 +153,7 @@ it.effect(
       const dom = yield* render(searchPartialFailureFixture());
 
       const lines = [...dom.querySelectorAll("[data-search-failure]")].map(
-        (line) => line.textContent
+        (line) => line.querySelector("span")?.textContent ?? line.textContent
       );
 
       expect(lines).toHaveLength(2);
@@ -213,7 +213,7 @@ it.effect(
         });
 
         const lines = [...dom.querySelectorAll("[data-search-failure]")].map(
-          (line) => line.textContent
+          (line) => line.querySelector("span")?.textContent ?? line.textContent
         );
 
         expect(lines).toEqual(entry.expected);

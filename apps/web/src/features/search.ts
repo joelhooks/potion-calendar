@@ -11,12 +11,15 @@ import { minuteInZone } from "../layout/geometry.js";
 import { clockLabel, dayLabel } from "../layout/presentation.js";
 import {
   searchDays,
-  searchFailureLines,
+  searchAccountFailureLines,
+  searchCalendarFailureNotices,
   searchProblemLines,
   searchSelectionKey,
 } from "../layout/search-results.js";
 import { primarySelection } from "../layout/selection-set.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
+import { calendarFailureNotice } from "./search-failures.js";
+import { searchPages } from "./search-pages.js";
 
 const searchRow = (
   model: AppModel,
@@ -148,21 +151,21 @@ export const searchPanel = (
     (model.search.phase === "Debouncing" || model.search.phase === "Searching");
 
   const failures =
-    response === undefined ? [] : searchFailureLines(response, model);
+    response === undefined ? [] : searchAccountFailureLines(response, model);
 
-  const problems = Option.isSome(model.search.problem)
-    ? searchProblemLines(model.search.problem.value, model)
-    : [];
+  const calendarFailures =
+    response === undefined ? [] : searchCalendarFailureNotices(response, model);
+
+  const problems =
+    model.search.phase !== "MoreFailed" && Option.isSome(model.search.problem)
+      ? searchProblemLines(model.search.problem.value, model)
+      : [];
 
   const empty =
     model.search.phase === "Ready" &&
     results.length === 0 &&
-    (response?.pageInfo.length !== 0 || failures.length === 0);
-
-  const more =
-    response?.pageInfo.some(
-      (page) => page.forwardHasMore || page.olderHasMore
-    ) ?? false;
+    (response?.pageInfo.length !== 0 ||
+      (failures.length === 0 && calendarFailures.length === 0));
 
   return h.section(
     [
@@ -247,6 +250,11 @@ export const searchPanel = (
           ...[...problems, ...failures].map((line) =>
             h.p([h.DataAttribute("search-failure", "true")], [line])
           ),
+          ...calendarFailures.flatMap((failure) =>
+            failure.continuation
+              ? []
+              : [calendarFailureNotice(model, failure, h)]
+          ),
           ...(searching ? [h.p([h.Role("status")], ["Searching"])] : []),
           ...(empty ? [h.p([h.Role("status")], ["No results"])] : []),
           ...groups.map((group) =>
@@ -274,20 +282,7 @@ export const searchPanel = (
               ]
             )
           ),
-          ...(more
-            ? [
-                h.p(
-                  [
-                    h.Style({
-                      "font-size": "12px",
-                      opacity: "0.65",
-                      padding: "12px 0",
-                    }),
-                  ],
-                  ["Showing the first results for some calendars"]
-                ),
-              ]
-            : []),
+          ...searchPages(model, h),
         ]
       ),
     ]

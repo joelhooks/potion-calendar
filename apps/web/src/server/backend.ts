@@ -228,9 +228,48 @@ export const createBackend = (
             });
           }
 
+          const unavailableAccounts = new Map(
+            accountFailures.map((failure) => [
+              failure.accountId,
+              failure.failure,
+            ])
+          );
+
+          const continuation =
+            input.continuation === undefined
+              ? undefined
+              : {
+                  ...input.continuation,
+                  pages: input.continuation.pages.filter(
+                    (page) => !unavailableAccounts.has(page.accountId)
+                  ),
+                };
+
+          const unavailablePages =
+            input.continuation?.pages.flatMap((page) => {
+              const cause = unavailableAccounts.get(page.accountId);
+
+              return cause === undefined
+                ? []
+                : [
+                    new CalendarReadFailure({
+                      accountId: page.accountId,
+                      calendarId: page.calendarId,
+                      cause,
+                    }),
+                  ];
+            }) ?? [];
+
+          const searched = yield* searchEvents.handler({
+            ...input,
+            calendars,
+            continuation,
+          });
+
           return {
-            ...(yield* searchEvents.handler({ ...input, calendars })),
+            ...searched,
             accountFailures,
+            failures: [...searched.failures, ...unavailablePages],
           };
         })
       )

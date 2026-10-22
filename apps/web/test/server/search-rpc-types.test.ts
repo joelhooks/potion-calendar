@@ -29,7 +29,7 @@ it("existing browser methods keep their exact input, output, and failure types",
 
 it("browser search infers the public request and account-aware response, never a client calendar set", () => {
   expectTypeOf<Parameters<CurrentClient["searchEvents"]>[0]>().toEqualTypeOf<
-    typeof SearchRequest.Type
+    (typeof SearchRequest)["~type.make.in"]
   >();
   expectTypeOf<
     NonNullable<Parameters<CurrentClient["searchEvents"]>[0]["calendars"]>

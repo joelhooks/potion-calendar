@@ -148,6 +148,9 @@ import { SearchUi, initialSearch } from "./search/model.js";
 import {
   blurSearch,
   clearSearch,
+  loadMoreSearch,
+  retryMoreSearch,
+  retrySearchCalendar,
   receiveSearch,
   refreshSearch,
   searchInput,
@@ -1430,6 +1433,7 @@ const updateCore = (
     }),
     SearchEscape: () => ({ commands: [BlurSearch()], model }),
     SearchInput: ({ text }) => searchInput(model, text),
+    SearchMore: () => loadMoreSearch(model),
     SearchOpened: ({ query }) => searchOpen(model, query),
     SearchPrefetchFailed: ({ personId, revision, problem }) => ({
       model:
@@ -1442,11 +1446,17 @@ const updateCore = (
             }
           : model,
     }),
+    SearchRetry: () => ({ model: refreshSearch(model) }),
+    SearchRetryCalendar: ({ accountId, calendarId }) =>
+      retrySearchCalendar(model, { accountId, calendarId }),
+    SearchRetryMore: () => retryMoreSearch(model),
     SearchScroll: ({ position }) => ({
-      model: {
-        ...model,
-        search: { ...model.search, scroll: Option.some(position) },
-      },
+      model: Predicate.isTagged(model.route, "Search")
+        ? {
+            ...model,
+            search: { ...model.search, scroll: Option.some(position) },
+          }
+        : model,
     }),
     SearchSelect: ({ key, goTo }) => {
       const selected = selectSearchResult(model, key, goTo);

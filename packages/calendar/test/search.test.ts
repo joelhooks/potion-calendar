@@ -136,6 +136,7 @@ it.effect.prop(
           accountId: "account",
           calendarId: "calendar",
           forwardHasMore: hasMore,
+          forwardNextPageToken: hasMore ? "not-followed" : undefined,
           olderHasMore: hasMore,
         },
       ]);

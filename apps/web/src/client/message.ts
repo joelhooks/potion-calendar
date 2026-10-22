@@ -1,4 +1,5 @@
 import {
+  CalendarRef,
   ListCalendarsOutput,
   ListEventsOutput,
 } from "@calendar/calendar/contracts";
@@ -225,12 +226,16 @@ export const Message = defineMessageUnion({
   SearchContextClose: {},
   SearchEscape: {},
   SearchInput: { text: Schema.String },
+  SearchMore: {},
   SearchOpened: { query: Schema.Option(Schema.String) },
   SearchPrefetchFailed: {
     personId: Schema.String,
     problem: SearchProblem,
     revision: Schema.Int,
   },
+  SearchRetry: {},
+  SearchRetryCalendar: CalendarRef.fields,
+  SearchRetryMore: {},
   SearchScroll: { position: Schema.Finite },
   SearchSelect: { goTo: Schema.Boolean, key: Schema.String },
   SelectedRectangle: {

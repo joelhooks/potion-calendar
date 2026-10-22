@@ -3,8 +3,10 @@ import { Effect, Result } from "effect";
 import { types } from "xstate";
 
 import { SearchRequest } from "../../search-contract.js";
+import type { SearchResponse } from "../../search-contract.js";
 import { CalendarSearchClient } from "./client.js";
 import { SearchNotice, SearchTask } from "./model.js";
+import type { SearchProblem } from "./model.js";
 
 interface SearchContext {
   readonly task: typeof SearchTask.Type;
@@ -21,6 +23,30 @@ const search = createEffectLogic({
   schemas: { input: SearchRequest },
 });
 
+const completeSearch = (
+  task: typeof SearchTask.Type,
+  output: Result.Result<typeof SearchResponse.Type, typeof SearchProblem.Type>
+) =>
+  Result.isFailure(output)
+    ? {
+        context: {
+          notice: SearchNotice.cases.Failed.make({
+            problem: output.failure,
+            task,
+          }),
+        },
+        target: "failed",
+      }
+    : {
+        context: {
+          notice: SearchNotice.cases.Ready.make({
+            response: output.success,
+            task,
+          }),
+        },
+        target: "ready",
+      };
+
 export const searchMachine = setupEffect({
   actors: { debounce, search },
   schemas: { context: types<SearchContext>(), events: {}, input: SearchTask },
@@ -32,8 +58,19 @@ export const searchMachine = setupEffect({
   initial: "checking",
   states: {
     checking: {
-      always: ({ context }) =>
-        context.task.request.query === ""
+      always: ({ context }) => {
+        if (context.task.request.continuation !== undefined) {
+          return {
+            context: {
+              notice: SearchNotice.cases.LoadingMore.make({
+                task: context.task,
+              }),
+            },
+            target: "loadingMore",
+          };
+        }
+
+        return context.task.request.query === ""
           ? { target: "idle" }
           : {
               context: {
@@ -42,7 +79,8 @@ export const searchMachine = setupEffect({
                 }),
               },
               target: "debouncing",
-            },
+            };
+      },
     },
     debouncing: {
       invoke: {
@@ -67,30 +105,20 @@ export const searchMachine = setupEffect({
     },
     failed: { type: "final" },
     idle: { type: "final" },
+    loadingMore: {
+      invoke: {
+        input: ({ context }) => context.task.request,
+        onDone: ({ context, event }) =>
+          completeSearch(context.task, event.output),
+        src: "search",
+      },
+    },
     ready: { type: "final" },
     searching: {
       invoke: {
         input: ({ context }) => context.task.request,
         onDone: ({ context, event }) =>
-          Result.isFailure(event.output)
-            ? {
-                context: {
-                  notice: SearchNotice.cases.Failed.make({
-                    problem: event.output.failure,
-                    task: context.task,
-                  }),
-                },
-                target: "failed",
-              }
-            : {
-                context: {
-                  notice: SearchNotice.cases.Ready.make({
-                    response: event.output.success,
-                    task: context.task,
-                  }),
-                },
-                target: "ready",
-              },
+          completeSearch(context.task, event.output),
         src: "search",
       },
     },

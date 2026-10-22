@@ -296,6 +296,8 @@ export {
   SearchEventsOutput,
   SearchEventResult,
   SearchWindow,
+  SearchPageTarget,
+  SearchContinuation,
 } from "./search-model.js";
 
 export type {

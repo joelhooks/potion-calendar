@@ -72,14 +72,17 @@ const accountFailureLine = (
   return `Couldn't search ${subject}.${Predicate.isTagged(failure, "Revoked") ? " Reconnect this account to include it." : ""}`;
 };
 
-export const searchFailureLines = (
+export const searchAccountFailureLines = (
   response: typeof SearchResponse.Type,
   model: AppModel
-): readonly string[] => [
-  ...response.accountFailures.map((failure) =>
-    accountFailureLine(failure, model)
-  ),
-  ...response.failures.map(({ accountId, calendarId }) => {
+): readonly string[] =>
+  response.accountFailures.map((failure) => accountFailureLine(failure, model));
+
+export const searchCalendarFailureNotices = (
+  response: typeof SearchResponse.Type,
+  model: AppModel
+) =>
+  response.failures.map(({ accountId, calendarId }) => {
     const calendar = model.calendar.calendars.find(
       (item) => item.accountId === accountId && item.calendarId === calendarId
     );
@@ -87,8 +90,29 @@ export const searchFailureLines = (
     const title = calendar?.title.trim() ?? "";
     const email = accountEmail(model, accountId);
 
-    return `Couldn't search ${title === "" ? "one calendar" : title}${email === "" ? "" : ` (${email})`}.`;
-  }),
+    const label = `${title === "" ? "one calendar" : title}${email === "" ? "" : ` (${email})`}`;
+
+    const continuation = model.search.continuationFailures.some(
+      (ref) => ref.accountId === accountId && ref.calendarId === calendarId
+    );
+
+    return {
+      accountId,
+      calendarId,
+      continuation,
+      label,
+      line: continuation
+        ? `Couldn't load more from ${label}.`
+        : `Couldn't search ${label}.`,
+    };
+  });
+
+export const searchFailureLines = (
+  response: typeof SearchResponse.Type,
+  model: AppModel
+): readonly string[] => [
+  ...searchAccountFailureLines(response, model),
+  ...searchCalendarFailureNotices(response, model).map((notice) => notice.line),
 ];
 
 export const searchProblemLines = (

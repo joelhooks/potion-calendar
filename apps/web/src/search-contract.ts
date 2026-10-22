@@ -21,6 +21,7 @@ export class SearchInventoryUnavailable extends Schema.TaggedError<SearchInvento
 
 export const SearchRequest = Schema.Struct({
   calendars: Schema.optionalKey(Schema.Never),
+  continuation: SearchEventsInput.fields.continuation,
   query: SearchEventsInput.fields.query,
   timeZone: SearchEventsInput.fields.timeZone,
   weekStartsOn: SearchEventsInput.fields.weekStartsOn,
@@ -39,7 +40,7 @@ export const SearchRequestFailure = Schema.Union([
 export const searchEventsContract = defineContract("searchEvents", {
   annotations: { idempotent: true, readOnly: true },
   description:
-    "Search the signed-in person's full server-built calendar inventory. Calendar selection and metadata are not accepted from the browser. Account inventory failures and calendar search failures remain explicit.",
+    "Search the signed-in person's server-built calendar inventory. Forward continuation and initial retries may name calendar refs, which must match that inventory; browser calendar metadata is forbidden. Account inventory failures and calendar search failures remain explicit.",
   failure: SearchRequestFailure,
   input: SearchRequest,
   output: SearchResponse,

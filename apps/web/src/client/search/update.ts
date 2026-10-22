@@ -1,3 +1,7 @@
+import type {
+  CalendarRefValue,
+  SearchPageTarget,
+} from "@calendar/calendar/contracts";
 import { Option, Predicate } from "effect";
 import type { Update } from "foldkit";
 
@@ -22,7 +26,16 @@ import {
   PrefetchSearchDate,
   RestoreSearchScroll,
 } from "./commands.js";
-import type { SearchNotice } from "./model.js";
+import { SearchProblem } from "./model.js";
+import type { SearchNotice, SearchUi } from "./model.js";
+import {
+  continuedSearchFailures,
+  failedSearchTarget,
+  forwardSearchTargets,
+  matchingSearchWindow,
+  mergeSearchPage,
+} from "./paging.js";
+import { searchScope, searchTaskScope } from "./source.js";
 
 type SearchResult = Update.Return<AppModel, AppMessage, CalendarSearchClient>;
 
@@ -50,6 +63,9 @@ export const syncSearchRoute = (
     route,
     search: {
       ...model.search,
+      continuation: undefined,
+      continuationFailures:
+        blank || !same ? [] : model.search.continuationFailures,
       menu: Option.none(),
       phase: blank ? "Idle" : "Debouncing",
       problem: Option.none(),
@@ -78,6 +94,8 @@ export const searchInput = (model: AppModel, text: string): SearchResult => {
           : { ...model.calendar, selected: [] },
       search: {
         ...model.search,
+        continuation: undefined,
+        continuationFailures: blank ? [] : model.search.continuationFailures,
         menu: Option.none(),
         phase: blank ? "Idle" : "Debouncing",
         problem: Option.none(),
@@ -129,6 +147,87 @@ export const blurSearch = (model: AppModel): SearchResult =>
     ? { commands: [BackRoute()], model }
     : { model };
 
+const settledSearch = (
+  model: AppModel,
+  notice: typeof SearchNotice.Type
+): Pick<
+  typeof SearchUi.Type,
+  | "phase"
+  | "problem"
+  | "response"
+  | "continuation"
+  | "continuationFailures"
+  | "responseScope"
+> => {
+  const retained =
+    model.search.text.trim() === "" ? Option.none() : model.search.response;
+
+  const { continuation } = notice.task.request;
+
+  const continuationFailures = Option.isNone(retained)
+    ? []
+    : model.search.continuationFailures;
+
+  if (Predicate.isTagged(notice, "Failed")) {
+    return {
+      continuationFailures,
+      phase: continuation === undefined ? "Failed" : "MoreFailed",
+      problem: Option.some(notice.problem),
+      response: retained,
+    };
+  }
+
+  if (!Predicate.isTagged(notice, "Ready")) {
+    return {
+      continuationFailures,
+      phase: notice._tag,
+      problem: Option.none(),
+      response: retained,
+    };
+  }
+
+  if (continuation === undefined) {
+    return {
+      continuation: undefined,
+      continuationFailures: [],
+      phase: "Ready",
+      problem: Option.none(),
+      response: Option.some(notice.response),
+      responseScope: searchTaskScope(notice.task),
+    };
+  }
+
+  if (
+    Option.isNone(retained) ||
+    model.search.responseScope !== searchTaskScope(notice.task) ||
+    !matchingSearchWindow(retained.value, notice.response, continuation)
+  ) {
+    return {
+      continuationFailures,
+      phase: "MoreFailed",
+      problem: Option.some(
+        SearchProblem.cases.Transport.make({
+          message: "The search window changed. Search again to continue.",
+        })
+      ),
+      response: retained,
+    };
+  }
+
+  return {
+    continuationFailures: continuedSearchFailures(
+      continuationFailures,
+      notice.response,
+      continuation
+    ),
+    phase: "Ready",
+    problem: Option.none(),
+    response: Option.some(
+      mergeSearchPage(retained.value, notice.response, continuation)
+    ),
+  };
+};
+
 export const receiveSearch = (
   model: AppModel,
   notice: typeof SearchNotice.Type
@@ -146,9 +245,6 @@ export const receiveSearch = (
     return { model };
   }
 
-  const retained =
-    model.search.text.trim() === "" ? Option.none() : model.search.response;
-
   const updateUrl =
     !Predicate.isTagged(notice, "Debouncing") &&
     model.search.urlQuery !== task.request.query;
@@ -162,7 +258,8 @@ export const receiveSearch = (
           }),
         ]
       : []),
-    ...(Predicate.isTagged(notice, "Ready")
+    ...(Predicate.isTagged(notice, "Ready") &&
+    task.request.continuation === undefined
       ? [RestoreSearchScroll({ position: model.search.scroll })]
       : []),
   ];
@@ -173,13 +270,7 @@ export const receiveSearch = (
       ...model,
       search: {
         ...model.search,
-        phase: notice._tag,
-        problem: Predicate.isTagged(notice, "Failed")
-          ? Option.some(notice.problem)
-          : Option.none(),
-        response: Predicate.isTagged(notice, "Ready")
-          ? Option.some(notice.response)
-          : retained,
+        ...settledSearch(model, notice),
         urlQuery: updateUrl ? task.request.query : model.search.urlQuery,
       },
     },
@@ -192,12 +283,76 @@ export const refreshSearch = (model: AppModel): AppModel =>
         ...model,
         search: {
           ...model.search,
+          continuation: undefined,
           phase: "Debouncing",
           problem: Option.none(),
           revision: model.search.revision + 1,
         },
       }
     : model;
+
+const beginSearchPage = (
+  model: AppModel,
+  pages: readonly (typeof SearchPageTarget.Type)[],
+  expectedPhase: "Ready" | "MoreFailed" = "Ready"
+): SearchResult => {
+  if (
+    !Predicate.isTagged(model.route, "Search") ||
+    Option.isNone(model.person) ||
+    Option.isNone(model.search.response) ||
+    pages.length === 0 ||
+    model.search.phase !== expectedPhase ||
+    model.search.responseScope !== searchScope(model)
+  ) {
+    return { model };
+  }
+
+  return {
+    model: {
+      ...model,
+      search: {
+        ...model.search,
+        continuation: { pages, window: model.search.response.value.window },
+        menu: Option.none(),
+        phase: "LoadingMore",
+        problem: Option.none(),
+        revision: model.search.revision + 1,
+      },
+    },
+  };
+};
+
+export const loadMoreSearch = (model: AppModel): SearchResult => {
+  if (Option.isNone(model.search.response)) {
+    return { model };
+  }
+
+  return beginSearchPage(
+    model,
+    forwardSearchTargets(model.search.response.value)
+  );
+};
+
+export const retrySearchCalendar = (
+  model: AppModel,
+  ref: CalendarRefValue
+): SearchResult => {
+  if (Option.isNone(model.search.response)) {
+    return { model };
+  }
+
+  const target = failedSearchTarget(model.search.response.value, ref);
+
+  return target === undefined ? { model } : beginSearchPage(model, [target]);
+};
+
+export const retryMoreSearch = (model: AppModel): SearchResult => {
+  if (model.search.continuation === undefined) {
+    return { model };
+  }
+
+  return beginSearchPage(model, model.search.continuation.pages, "MoreFailed");
+};
 
 export const selectSearchResult = (
   model: AppModel,
