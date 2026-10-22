@@ -12,9 +12,17 @@ import {
 } from "effect";
 import type { Plugin } from "vite";
 
+import type { WorkerArtifact } from "./bundle-worker.js";
 import { DevelopmentRuntime } from "./native-runtime.js";
 
-export const nativeDevelopmentBackend = (): Plugin => ({
+export interface NativeDevelopmentBackendOptions {
+  readonly worker?: WorkerArtifact;
+  readonly onWorkerLoaded?: (hash: string) => void;
+}
+
+export const nativeDevelopmentBackend = (
+  options?: NativeDevelopmentBackendOptions
+): Plugin => ({
   apply: "serve",
   config() {
     return { server: { host: "127.0.0.1", strictPort: true } };
@@ -33,7 +41,21 @@ export const nativeDevelopmentBackend = (): Plugin => ({
     const scope = Scope.makeUnsafe();
 
     const context = await Effect.runPromise(
-      Layer.buildWithScope(DevelopmentRuntime.layer(origin), scope).pipe(
+      Layer.buildWithScope(
+        DevelopmentRuntime.layer(origin, undefined, "success", options?.worker),
+        scope
+      ).pipe(
+        Effect.tap((built) =>
+          options?.onWorkerLoaded === undefined
+            ? Effect.void
+            : Context.get(built, DevelopmentRuntime)
+                .hashWorker()
+                .pipe(
+                  Effect.flatMap((hash) =>
+                    Effect.sync(() => options.onWorkerLoaded?.(hash))
+                  )
+                )
+        ),
         Effect.onExit((exit) =>
           Exit.isFailure(exit) ? Scope.close(scope, Exit.void) : Effect.void
         )

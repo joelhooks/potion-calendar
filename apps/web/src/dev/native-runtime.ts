@@ -11,7 +11,12 @@ import { Miniflare } from "miniflare";
 import type { CalendarEnvironment } from "../server/calendar-environment.js";
 import { desktopRoutes } from "../server/desktop-routes.js";
 import { calendarLiveClient } from "../server/live-client.js";
-import { bundleCalendarWorker } from "./bundle-worker.js";
+import {
+  bundleCalendarWorker,
+  workerModuleHash,
+  WorkerArtifactMismatch,
+} from "./bundle-worker.js";
+import type { WorkerArtifact } from "./bundle-worker.js";
 import { fakeCalendarGoogle } from "./calendar-google.js";
 import type { FakeConferenceOutcome } from "./calendar-google.js";
 import { seedFakePerson } from "./person.js";
@@ -31,13 +36,28 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
 )(function* makeNativeDevelopmentRuntime(
   origin: string,
   emails?: readonly string[],
-  conferenceOutcome: typeof FakeConferenceOutcome.Type = "success"
+  conferenceOutcome: typeof FakeConferenceOutcome.Type = "success",
+  artifact?: WorkerArtifact
 ) {
   const run = Effect.runPromiseWith(yield* Effect.context());
 
-  const modules = yield* bundleCalendarWorker(
-    new URL("live-worker.ts", import.meta.url).pathname
-  );
+  const modules =
+    artifact === undefined
+      ? yield* bundleCalendarWorker(
+          new URL("live-worker.ts", import.meta.url).pathname
+        )
+      : artifact.modules.map((module) => ({ ...module }));
+
+  if (artifact !== undefined) {
+    const actual = yield* workerModuleHash(modules);
+
+    if (actual !== artifact.hash) {
+      return yield* new WorkerArtifactMismatch({
+        actual,
+        expected: artifact.hash,
+      });
+    }
+  }
 
   const provider = makeFakeGoogle(origin);
 
@@ -464,6 +484,7 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
   return {
     database,
     handle,
+    hashWorker: () => workerModuleHash(modules),
     linkAccount: (email: string, cookie: string) =>
       seedFakePerson(fake, [email], { cookie }),
     miniflare,
@@ -483,11 +504,12 @@ export class DevelopmentRuntime extends Context.Service<
   static layer(
     origin: string,
     emails?: readonly string[],
-    conferenceOutcome: typeof FakeConferenceOutcome.Type = "success"
+    conferenceOutcome: typeof FakeConferenceOutcome.Type = "success",
+    artifact?: WorkerArtifact
   ) {
     return Layer.effect(
       this,
-      makeNativeDevelopmentRuntime(origin, emails, conferenceOutcome)
+      makeNativeDevelopmentRuntime(origin, emails, conferenceOutcome, artifact)
     );
   }
 }

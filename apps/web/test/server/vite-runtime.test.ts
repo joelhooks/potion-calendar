@@ -1,51 +1,19 @@
-import { createServer as createPortReservation } from "node:net";
-
 import { SessionSnapshot } from "@calendar/core/contracts";
 import { expect, it } from "@effect/vitest";
-import { Cause, Effect, Option, Schema } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
 } from "effect/http";
-import { createServer } from "vite";
 
-import { nativeDevelopmentBackend } from "../../src/dev/vite-backend.js";
+import { bundleCalendarWorkerArtifact } from "../../src/dev/bundle-worker.js";
 import { rpcValue } from "./calendar-rpc.js";
-
-const Address = Schema.Struct({ port: Schema.Int });
-
-const availablePort = Effect.callback<number, Cause.UnknownError>((resume) => {
-  const reservation = createPortReservation();
-  reservation.once("error", (cause) => {
-    resume(
-      Effect.fail(new Cause.UnknownError(cause, "Loopback reservation failed"))
-    );
-  });
-  reservation.listen(0, "127.0.0.1", () => {
-    const address = Schema.decodeUnknownOption(Address)(reservation.address());
-    reservation.close((cause) => {
-      if (cause !== undefined || Option.isNone(address)) {
-        resume(
-          Effect.fail(
-            new Cause.UnknownError(cause, "Loopback reservation did not close")
-          )
-        );
-
-        return;
-      }
-
-      resume(Effect.succeed(address.value.port));
-    });
-  });
-
-  return Effect.sync(() => {
-    if (reservation.listening) {
-      reservation.close();
-    }
-  });
-});
+import {
+  heldNativeListener,
+  nativeViteFixture,
+} from "./native-vite-fixture.js";
 
 const rpc = (port: number) =>
   Effect.gen(function* firstSession() {
@@ -94,77 +62,172 @@ const Proxy = Schema.Struct({
   "/live": Schema.Struct({ target: Schema.String }),
 });
 
+it.live("a pending native bind stays owned through interruption", () =>
+  Effect.uninterruptibleMask((restore) =>
+    Effect.gen(function* interruptedBind() {
+      const pending = yield* Deferred.make<
+        Exit.Exit<
+          {
+            readonly listener: Effect.Success<
+              ReturnType<typeof heldNativeListener>
+            >["listener"];
+            readonly complete: () => void;
+          },
+          Effect.Error<ReturnType<typeof heldNativeListener>>
+        >
+      >();
+
+      const fiber = yield* restore(
+        heldNativeListener((listener, ready) => {
+          listener.listen(0, "127.0.0.1", () => {
+            Deferred.doneUnsafe(
+              pending,
+              Effect.succeed(Exit.succeed({ complete: ready, listener }))
+            );
+          });
+        }).pipe(
+          Effect.scoped,
+          Effect.onExit((exit) =>
+            Deferred.succeed(
+              pending,
+              Exit.isFailure(exit)
+                ? Exit.failCause(exit.cause)
+                : Exit.fail(
+                    new Cause.UnknownError(
+                      undefined,
+                      "Native binding ended without its pending handshake"
+                    )
+                  )
+            )
+          )
+        )
+      ).pipe(Effect.forkChild);
+
+      const binding = yield* Deferred.await(pending);
+
+      const { listener, complete } = yield* binding;
+
+      yield* restore(
+        Effect.gen(function* inspectPendingInterruption() {
+          yield* Effect.sync(() => {
+            fiber.interruptUnsafe();
+          });
+          yield* Effect.yieldNow;
+          expect(listener.listening).toBe(true);
+          expect(fiber.pollUnsafe()).toBeUndefined();
+        })
+      ).pipe(Effect.ensuring(Effect.sync(complete)));
+
+      const interrupted = yield* Fiber.await(fiber);
+
+      expect(Exit.isFailure(interrupted)).toBe(true);
+
+      if (Exit.isFailure(interrupted)) {
+        expect(Cause.hasInterruptsOnly(interrupted.cause)).toBe(true);
+      }
+
+      expect(listener.listening).toBe(false);
+      expect(listener.address()).toBeNull();
+    })
+  )
+);
+
 it.live(
-  "two native Vite lifetimes (measured 2.3–4.3s) retain sessions and close retired listeners",
+  "an occupied native bind retains its cause and the existing owner",
+  () =>
+    Effect.gen(function* occupiedBind() {
+      const retired = yield* Effect.gen(function* ownerScope() {
+        const owner = yield* heldNativeListener();
+
+        const refused = yield* heldNativeListener((listener, ready) => {
+          listener.listen(owner.address.port, "127.0.0.1", ready);
+        }).pipe(Effect.exit);
+
+        expect(Exit.isFailure(refused)).toBe(true);
+
+        if (Exit.isFailure(refused)) {
+          expect(Cause.pretty(refused.cause)).toContain("EADDRINUSE");
+        }
+
+        expect(owner.listener.address()).toEqual(owner.address);
+        expect(owner.listener.listening).toBe(true);
+
+        return owner.listener;
+      }).pipe(Effect.scoped);
+
+      expect(retired.listening).toBe(false);
+      expect(retired.address()).toBeNull();
+    })
+);
+
+it.live(
+  "two native Vite middleware lifetimes retain sessions and close held and retired listeners",
   () =>
     Effect.gen(function* viteRuntimeLifetime() {
-      const port = yield* availablePort;
+      const worker = yield* bundleCalendarWorkerArtifact(
+        new URL("../../src/dev/live-worker.ts", import.meta.url).pathname
+      );
 
-      const server = yield* Effect.acquireRelease(
-        Effect.tryPromise({
+      const loadedHashes: string[] = [];
+
+      const retired = yield* Effect.gen(function* fixtureLifetime() {
+        const { address, listener, server } = yield* nativeViteFixture({
+          onWorkerLoaded: (hash) => {
+            loadedHashes.push(hash);
+          },
+          worker,
+        });
+
+        const { port } = address;
+
+        expect(listener.address()).toEqual(address);
+        expect(loadedHashes).toEqual([worker.hash]);
+
+        const first = yield* Schema.decodeUnknownEffect(Proxy)(
+          server.config.server.proxy
+        );
+
+        expect((yield* nativeReachable(first["/live"].target))._tag).toBe(
+          "Success"
+        );
+        yield* rpc(port);
+        yield* desktopRoute(port);
+        yield* Effect.tryPromise({
           catch: (cause) =>
-            new Cause.UnknownError(cause, "Vite fixture startup failed"),
+            new Cause.UnknownError(cause, "Vite fixture restart failed"),
           // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-          try: () =>
-            createServer({
-              configFile: false,
-              logLevel: "silent",
-              plugins: [nativeDevelopmentBackend()],
-              root: new URL("../../", import.meta.url).pathname,
-              server: { host: "127.0.0.1", port },
-            }),
-        }),
-        (instance) =>
-          Effect.tryPromise({
-            catch: (cause) =>
-              new Cause.UnknownError(cause, "Vite fixture shutdown failed"),
-            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-            try: () => instance.close(),
-          }).pipe(Effect.orDie)
-      );
+          try: () => server.restart(),
+        });
 
-      yield* Effect.tryPromise({
-        catch: (cause) =>
-          new Cause.UnknownError(cause, "Vite fixture listen failed"),
-        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-        try: () => server.listen(),
-      });
+        expect(listener.address()).toEqual(address);
+        expect(loadedHashes).toEqual([worker.hash, worker.hash]);
 
-      const first = yield* Schema.decodeUnknownEffect(Proxy)(
-        server.config.server.proxy
-      );
+        const second = yield* Schema.decodeUnknownEffect(Proxy)(
+          server.config.server.proxy
+        );
 
-      expect((yield* nativeReachable(first["/live"].target))._tag).toBe(
-        "Success"
-      );
-      yield* rpc(port);
-      yield* desktopRoute(port);
-      yield* Effect.tryPromise({
-        catch: (cause) =>
-          new Cause.UnknownError(cause, "Vite fixture restart failed"),
-        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-        try: () => server.restart(),
-      });
+        expect(second["/live"].target).not.toBe(first["/live"].target);
+        expect((yield* nativeReachable(first["/live"].target))._tag).toBe(
+          "Failure"
+        );
+        yield* rpc(port);
+        yield* desktopRoute(port);
+        yield* Effect.tryPromise({
+          catch: (cause) =>
+            new Cause.UnknownError(cause, "Vite fixture close failed"),
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => server.close(),
+        });
+        expect((yield* nativeReachable(second["/live"].target))._tag).toBe(
+          "Failure"
+        );
+        expect(listener.address()).toEqual(address);
 
-      const second = yield* Schema.decodeUnknownEffect(Proxy)(
-        server.config.server.proxy
-      );
+        return listener;
+      }).pipe(Effect.scoped);
 
-      expect(second["/live"].target).not.toBe(first["/live"].target);
-      expect((yield* nativeReachable(first["/live"].target))._tag).toBe(
-        "Failure"
-      );
-      yield* rpc(port);
-      yield* desktopRoute(port);
-      yield* Effect.tryPromise({
-        catch: (cause) =>
-          new Cause.UnknownError(cause, "Vite fixture close failed"),
-        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-        try: () => server.close(),
-      });
-      expect((yield* nativeReachable(second["/live"].target))._tag).toBe(
-        "Failure"
-      );
+      expect(retired.address()).toBeNull();
+      expect(retired.listening).toBe(false);
     }).pipe(Effect.provide(FetchHttpClient.layer)),
   15_000
 );
