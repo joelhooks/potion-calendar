@@ -82,6 +82,7 @@ it.effect.prop(
       const fake = yield* fakeGoogle([
         response(200, selected(original)),
         response(200, master(original)),
+        response(200, master(original)),
         response(200, successor),
         response(200, successor),
         response(200, master(original)),
@@ -105,6 +106,7 @@ it.effect.prop(
 
       const requests = yield* Ref.get(fake.requests);
       expect(requests.map((request) => request.method)).toEqual([
+        "GET",
         "GET",
         "GET",
         "POST",
@@ -187,6 +189,7 @@ it.effect(
 
       const fake = yield* fakeGoogle([
         response(200, selected(incomplete)),
+        response(200, master(incomplete)),
         response(200, master(incomplete)),
         response(200, successor),
         response(200, successor),

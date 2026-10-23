@@ -142,6 +142,7 @@ const scenarios: readonly Scenario[] = [
     responses: [
       response(200, instance),
       response(200, master),
+      response(200, master),
       response(
         200,
         timedEvent("successor", "Future meetings", {

@@ -10,6 +10,11 @@ import {
   requestedConferenceData,
   conferencingReadback,
 } from "./google-conferencing.js";
+import {
+  followingMetadata,
+  GooglePreservation,
+  mergeRetainedAttendees,
+} from "./google-preservation.js";
 import type { GoogleTokens } from "./google-tokens.js";
 import {
   Calendar,
@@ -251,6 +256,7 @@ export interface ListedEvents {
 }
 
 export interface WriteOptions {
+  readonly followingSource?: EventRefValue | undefined;
   readonly statusPropertyType?: "focusTime" | "outOfOffice" | undefined;
   readonly conferencingRequest?: ConferencingWriteRequestValue | undefined;
   readonly sendUpdates?: "none" | "all" | "externalOnly" | undefined;
@@ -373,6 +379,13 @@ export class GoogleCalendarClient extends Context.Service<
           path: eventPath(ref),
         }).pipe(Effect.map((event) => mapEvent(ref, event)));
 
+      const readPreservation = (ref: EventRefValue) =>
+        decode(GooglePreservation, {
+          accountId: ref.accountId,
+          method: "GET",
+          path: eventPath(ref),
+        });
+
       const readConferencingBack = (
         ref: EventRefValue,
         fallback: CalendarEventValue,
@@ -437,12 +450,25 @@ export class GoogleCalendarClient extends Context.Service<
               query.set("conferenceDataVersion", "1");
             }
 
+            const preservation =
+              options.followingSource === undefined
+                ? undefined
+                : yield* readPreservation(options.followingSource);
+
             const response = yield* request(
               {
                 acceptConflict: true,
                 accountId: ref.accountId,
                 body: JSON.stringify({
                   ...eventBody(fields, { kind: "create" }),
+                  ...followingMetadata(preservation),
+                  attendees:
+                    fields.attendees === undefined
+                      ? undefined
+                      : mergeRetainedAttendees(
+                          fields.attendees,
+                          preservation?.attendees
+                        ),
                   conferenceData,
                   id,
                 }),
@@ -668,6 +694,12 @@ export class GoogleCalendarClient extends Context.Service<
               query.set("conferenceDataVersion", "1");
             }
 
+            const preservation =
+              (fields.attendees?.length ?? 0) > 0 &&
+              fields.attendeesOmitted !== true
+                ? yield* readPreservation(ref)
+                : undefined;
+
             const event = yield* decode(
               GoogleEvent,
               {
@@ -677,6 +709,13 @@ export class GoogleCalendarClient extends Context.Service<
                     kind: "patch",
                     statusPropertyType: options.statusPropertyType,
                   }),
+                  attendees:
+                    fields.attendees === undefined
+                      ? undefined
+                      : mergeRetainedAttendees(
+                          fields.attendees,
+                          preservation?.attendees
+                        ),
                   conferenceData,
                 }),
                 method: "PATCH",

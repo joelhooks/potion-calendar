@@ -213,6 +213,7 @@ it.effect.each(["single", "allFollowing", "all"] as const)(
       const api = yield* editingRpcFixture([
         response(200, selected),
         ...(scope === "single" ? [] : [response(200, master)]),
+        ...(scope === "allFollowing" ? [response(200, master)] : []),
         response(200, scope === "all" ? master : selected),
         ...(scope === "allFollowing" ? [response(200, master)] : []),
       ]);

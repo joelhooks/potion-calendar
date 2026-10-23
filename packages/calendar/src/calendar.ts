@@ -954,7 +954,7 @@ export class CalendarService extends Context.Service<
                   start: selected.start,
                   ...input.changes,
                 },
-                conferencing
+                { ...conferencing, followingSource: master }
               )
             );
 

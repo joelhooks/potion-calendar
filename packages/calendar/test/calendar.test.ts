@@ -242,10 +242,11 @@ describe("Calendar service against fake Google", () => {
         const fake = yield* fakeGoogle([
           response(200, selected),
           response(200, master),
+          response(200, master),
           response(200, successor),
         ]);
 
-        yield* Ref.set(fake.crashAt, Option.some(4));
+        yield* Ref.set(fake.crashAt, Option.some(5));
 
         const operation = CalendarService.use((calendar) =>
           calendar.updateEvent({
@@ -275,6 +276,7 @@ describe("Calendar service against fake Google", () => {
         yield* Ref.set(fake.crashAt, Option.none());
         yield* Ref.set(fake.pending, [
           response(200, selected),
+          response(200, master),
           response(200, master),
           response(409),
           response(200, successor),
@@ -424,6 +426,7 @@ describe("Calendar service against fake Google", () => {
           ],
           allFollowing: [
             response(200, selected),
+            response(200, master),
             response(200, master),
             response(200, timedEvent("abcde", title)),
             response(200, master),
@@ -609,6 +612,7 @@ describe("Calendar service against fake Google", () => {
               selected,
             ],
           }),
+          response(200, master),
           response(200, timedEvent("abcde")),
           response(200, master),
         ]);
@@ -624,7 +628,7 @@ describe("Calendar service against fake Google", () => {
           const requests = yield* Ref.get(fake.requests);
 
           const body = yield* Schema.decodeEffect(bodySchema)(
-            requests[3]?.body ?? ""
+            requests[4]?.body ?? ""
           );
 
           expect(body.recurrence).toEqual(["RRULE:FREQ=WEEKLY;COUNT=2"]);
