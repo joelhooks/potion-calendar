@@ -61,7 +61,7 @@ it.effect(
       );
 
       expect(row?.textContent).toBe(
-        "Blair Chen · You · Creator · Optionaltentative"
+        "Blair Chen · You · Creator · OptionalMaybe"
       );
       expect(root.textContent).toContain("Alex Rivera · Organizer");
       expect(root.textContent).not.toContain("Created by");

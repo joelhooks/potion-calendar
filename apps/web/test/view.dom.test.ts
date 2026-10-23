@@ -79,9 +79,11 @@ it.effect(
       expect(document.querySelector(".detail-panel")?.textContent).toContain(
         "Alex"
       );
-      expect(document.querySelector(".detail-panel")?.textContent).toContain(
-        "accepted"
-      );
+      expect(
+        [...document.querySelectorAll(".attendee-response")].map(
+          (response) => response.textContent
+        )
+      ).toEqual(["Yes", "Yes"]);
       expect(
         document.querySelectorAll(
           ".detail-panel input, .detail-panel textarea:not(#rsvp-note)"

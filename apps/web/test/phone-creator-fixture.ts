@@ -39,9 +39,9 @@ export const phoneCreatorProofScript = String.raw`
     requireFact(panel.querySelectorAll('h2').length === 0, 'Duplicated details title');
     const rows = [...panel.querySelectorAll('ul li')];
     requireFact(rows.length === 3, 'Creator participant count changed');
-    requireFact(rows[0].textContent === 'Alex Rivera · Organizeraccepted', 'Organizer role changed');
-    requireFact(rows[1].textContent === 'Blair Chen · You · Creator · Optionaltentative', 'Creator attendee roles or response changed');
-    requireFact(rows[2].textContent === 'Casey QuinnneedsAction', 'Other participant changed');
+    requireFact(rows[0].textContent === 'Alex Rivera · OrganizerYes', 'Organizer role changed');
+    requireFact(rows[1].textContent === 'Blair Chen · You · Creator · OptionalMaybe', 'Creator attendee roles or response changed');
+    requireFact(rows[2].textContent === 'Casey QuinnNot answered', 'Other participant changed');
     requireFact(!panel.textContent.includes('Created by '), 'Creator attendee duplicated in byline');
     rows[1].scrollIntoView({ block: 'center' });
     requestAnimationFrame(() => {

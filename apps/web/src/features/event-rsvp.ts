@@ -8,6 +8,7 @@ import { eventKey } from "../client/calendar-state.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { bindingHints } from "../client/keyboard/registry.js";
 import type { DisplayEvent } from "../layout/presentation.js";
+import { responseLabel } from "../layout/response-label.js";
 
 export const eventRsvp = (
   model: AppModel,
@@ -33,13 +34,12 @@ export const eventRsvp = (
     eventKey(current.saving.value.event) === eventKey(selected.source);
 
   const choices: readonly {
-    readonly label: string;
     readonly response: "accepted" | "declined" | "tentative";
     readonly shortcutId: string;
   }[] = [
-    { label: "Yes", response: "accepted", shortcutId: "rsvp-yes" },
-    { label: "No", response: "declined", shortcutId: "rsvp-no" },
-    { label: "Maybe", response: "tentative", shortcutId: "rsvp-maybe" },
+    { response: "accepted", shortcutId: "rsvp-yes" },
+    { response: "declined", shortcutId: "rsvp-no" },
+    { response: "tentative", shortcutId: "rsvp-maybe" },
   ];
 
   return [
@@ -62,7 +62,7 @@ export const eventRsvp = (
                   })
                 ),
               ],
-              [choice.label]
+              [responseLabel(choice.response)]
             )
           )
         ),
@@ -90,7 +90,7 @@ export const eventRsvp = (
                   choices
                     .map(
                       (choice) =>
-                        `${bindingHints(choice.shortcutId).join(" / ")} ${choice.label}`
+                        `${bindingHints(choice.shortcutId).join(" / ")} ${responseLabel(choice.response)}`
                     )
                     .join(" · "),
                 ]

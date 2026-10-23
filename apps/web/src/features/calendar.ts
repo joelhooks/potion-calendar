@@ -36,6 +36,7 @@ import {
   visibleEvents,
 } from "../layout/presentation.js";
 import type { DisplayEvent } from "../layout/presentation.js";
+import { responseLabel } from "../layout/response-label.js";
 import { SettingsRoute, printRoute } from "../layout/route.js";
 import { chipColors } from "../layout/settings-colors.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
@@ -870,7 +871,7 @@ export const detailPanel = (
                       ),
                       h.span(
                         [h.Class("attendee-response")],
-                        [person.responseStatus ?? "needsAction"]
+                        [responseLabel(person.responseStatus)]
                       ),
                     ]
                   )

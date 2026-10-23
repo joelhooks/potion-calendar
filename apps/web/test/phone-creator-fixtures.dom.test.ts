@@ -38,9 +38,9 @@ it.effect(
         rows.map((row) => row.textContent),
         "Phone creator retains participant identities and roles"
       ).toEqual([
-        "Alex Rivera · Organizeraccepted",
-        "Blair Chen · You · Creator · Optionaltentative",
-        "Casey QuinnneedsAction",
+        "Alex Rivera · OrganizerYes",
+        "Blair Chen · You · Creator · OptionalMaybe",
+        "Casey QuinnNot answered",
       ]);
       expect(dialog?.textContent).not.toContain("Created by ");
       expect(root.querySelectorAll(".workspace > .detail-panel")).toHaveLength(

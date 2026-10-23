@@ -8,18 +8,18 @@ requireFact(panel && panel.querySelector('h2').textContent === 'Design planning'
 const list = panel.querySelector('ul');
 const rows = Array.from(list.querySelectorAll('li'));
 requireFact(rows.length === 3, 'Participant count changed');
-requireFact(rows[0].textContent === 'Alex Rivera · Organizeraccepted', 'Organizer identity or response changed');
+requireFact(rows[0].textContent === 'Alex Rivera · OrganizerYes', 'Organizer identity or response changed');
 const bylines = Array.from(panel.querySelectorAll('p')).filter(p => p.textContent.startsWith('Created by '));
 if (evidence.scene === 'attendee') {
- requireFact(rows[1].textContent === 'Blair Chen · You · Creator · Optionaltentative', 'Creator attendee lost roles or response');
+ requireFact(rows[1].textContent === 'Blair Chen · You · Creator · OptionalMaybe', 'Creator attendee lost roles or response');
  requireFact(bylines.length === 0, 'Attendee creator duplicated in byline');
 } else {
  requireFact(evidence.scene === 'non-attendee', 'Unknown creator scene');
- requireFact(rows[1].textContent === 'Blair Chen · You · Optionaltentative', 'Existing attendee roles changed');
+ requireFact(rows[1].textContent === 'Blair Chen · You · OptionalMaybe', 'Existing attendee roles changed');
  requireFact(bylines.length === 1 && bylines[0].textContent === 'Created by Drew Morgan', 'Missing or duplicate creator byline');
  requireFact(bylines[0] === list.nextElementSibling && bylines[0].classList.contains('muted'), 'Creator byline is not muted below list');
 }
-requireFact(rows[2].textContent === 'Casey QuinnneedsAction', 'Other participant changed');
+requireFact(rows[2].textContent === 'Casey QuinnNot answered', 'Other participant changed');
 for (const node of [...rows, ...bylines]) {
  const box = node.getBoundingClientRect();
  requireFact(box.width > 0 && box.height > 0 && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, 'Creator details are clipped');
