@@ -1,22 +1,25 @@
 import type { EffectActor } from "@xstate/effect";
-import { Option, Result } from "effect";
+import { Option } from "effect";
 
 import { gridGeometry } from "../../layout/geometry.js";
 import type { TimeGridGeometry } from "../../layout/geometry.js";
-import { platformModifier } from "../keyboard/modifier.js";
-import { monthGestureStart } from "../month/gesture.js";
 import type { MonthGestureRefused } from "../month/gesture.js";
+import type { phoneTouchMachine } from "../phone-grid/machine.js";
+import { bindGestureHold, supportsTouchHold } from "./gesture-hold.js";
 import { pointerPoint } from "./gesture-input.js";
 import type { gestureMachine } from "./gesture-machine.js";
 import type { GestureTarget } from "./gesture-model.js";
+import { pointerGestureStart } from "./gesture-start.js";
+import { bindTouchSurfaces } from "./touch-surfaces.js";
 
 interface Input {
   readonly actor: EffectActor<typeof gestureMachine>;
+  readonly getTargets: () => readonly (typeof GestureTarget.Type)[] | undefined;
+  readonly grid?: TimeGridGeometry;
+  readonly phoneTouch?: EffectActor<typeof phoneTouchMachine>;
+  readonly refused?: (reason: MonthGestureRefused["reason"]) => void;
   readonly root: HTMLElement;
   readonly scale: number;
-  readonly grid?: TimeGridGeometry;
-  readonly getTargets: () => readonly (typeof GestureTarget.Type)[] | undefined;
-  readonly refused?: (reason: MonthGestureRefused["reason"]) => void;
 }
 
 const scrollEdge = (
@@ -62,56 +65,41 @@ const scrollEdge = (
   }
 };
 
-const startsOnSurface = (
-  element: Element,
-  chip: HTMLElement | null
-): boolean =>
-  chip === null
-    ? element.closest("button,input,select,textarea,a") === null &&
-      element.closest(".day-column,.all-day-cell,.month-cell[data-day]") !==
-        null
-    : chip.classList.contains("selected");
-
-const selectionGesture = (root: HTMLElement, event: PointerEvent): boolean =>
-  (event.shiftKey && !platformModifier(event)) ||
-  (!root.classList.contains("month-view") &&
-    Number(root.dataset.selectionCount ?? 0) > 1);
-
-const gestureElement = (
-  root: HTMLElement,
-  event: PointerEvent
-): Element | undefined =>
-  event.button === 0 &&
-  !selectionGesture(root, event) &&
-  event.isPrimary &&
-  event.target instanceof Element &&
-  event.target.closest("[data-month-parked]") === null
-    ? event.target
-    : undefined;
-
-const canDragTarget = (
-  target: typeof GestureTarget.Type | undefined,
-  event: PointerEvent,
-  edge: "body" | "start" | "end"
-) =>
-  target === undefined || target.editable || (event.altKey && edge === "body");
-
 export const bindGestureEvents = ({
   actor,
+  getTargets,
+  phoneTouch,
+  refused,
   root,
   scale,
   grid = gridGeometry(scale),
-  getTargets,
-  refused,
 }: Input): (() => void) => {
-  const down = (event: PointerEvent): void => {
-    if (event.pointerType === "touch") {
-      return;
+  const releaseHold = bindGestureHold({
+    actor,
+    getTargets,
+    phoneTouch,
+    refused,
+    root,
+  });
+
+  const cancel = (): void => {
+    const pointerId = phoneTouch?.getSnapshot().context.start?.pointerId;
+
+    actor.send({ type: "CANCEL" });
+
+    if (pointerId !== undefined) {
+      phoneTouch?.send({ type: "CANCEL" });
+
+      if (root.hasPointerCapture?.(pointerId)) {
+        root.releasePointerCapture(pointerId);
+      }
     }
+  };
 
-    const element = gestureElement(root, event);
+  const down = (event: PointerEvent): void => {
+    const touch = event.pointerType === "touch";
 
-    if (element === undefined) {
+    if (touch && !supportsTouchHold(root, phoneTouch)) {
       return;
     }
 
@@ -121,69 +109,30 @@ export const bindGestureEvents = ({
       return;
     }
 
-    const chip = element.closest<HTMLElement>(".event-chip");
+    const start = pointerGestureStart({
+      event,
+      grid,
+      refused,
+      root,
+      scale,
+      targets,
+    });
 
-    if (!startsOnSurface(element, chip)) {
+    if (Option.isNone(start)) {
       return;
     }
 
-    const allDay =
-      root.classList.contains("month-view") ||
-      element.closest(".all-day") !== null;
-
-    const point = pointerPoint(root, event, scale, allDay, grid);
-
-    if (Option.isNone(point)) {
-      return;
+    if (touch) {
+      root.style.setProperty("--touch-press-x", `${event.clientX}px`);
+      root.style.setProperty("--touch-press-y", `${event.clientY}px`);
     }
 
-    const target = targets.find((item) => item.key === chip?.dataset.eventKey);
+    actor.send({ start: start.value, type: touch ? "PRESS" : "DOWN" });
 
-    if (chip !== null && target === undefined) {
-      return;
-    }
-
-    const handle =
-      element.closest<HTMLElement>("[data-resize-edge]")?.dataset.resizeEdge;
-
-    const edge = handle === "start" || handle === "end" ? handle : "body";
-
-    if (root.classList.contains("month-view")) {
-      const start = monthGestureStart({
-        edge,
-        point: point.value,
-        selected: chip?.classList.contains("selected") ?? false,
-        target: Option.fromUndefinedOr(target),
-      });
-
-      if (Result.isFailure(start)) {
-        refused?.(start.failure.reason);
-
-        return;
-      }
-
-      actor.send({ start: start.success, type: "DOWN" });
+    if (!touch) {
       root.setPointerCapture?.(event.pointerId);
       event.preventDefault();
-
-      return;
     }
-
-    if (!canDragTarget(target, event, edge)) {
-      return;
-    }
-
-    actor.send({
-      start: {
-        allDay,
-        edge,
-        point: point.value,
-        target: Option.fromUndefinedOr(target),
-      },
-      type: "DOWN",
-    });
-    root.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
   };
 
   const move = (event: PointerEvent): void => {
@@ -199,11 +148,19 @@ export const bindGestureEvents = ({
 
     const point = pointerPoint(root, event, scale, start.allDay, grid);
 
+    const pending =
+      actor.getSnapshot().matches("pressed") ||
+      actor.getSnapshot().matches("ready");
+
     if (Option.isSome(point)) {
       actor.send({ point: point.value, type: "MOVE" });
+    } else {
+      cancel();
     }
 
-    event.preventDefault();
+    if (!pending) {
+      event.preventDefault();
+    }
   };
 
   const up = (event: PointerEvent): void => {
@@ -215,6 +172,10 @@ export const bindGestureEvents = ({
 
     const point = pointerPoint(root, event, scale, start.allDay, grid);
 
+    const pending =
+      actor.getSnapshot().matches("pressed") ||
+      actor.getSnapshot().matches("ready");
+
     if (Option.isSome(point)) {
       actor.send({ point: point.value, type: "UP" });
     } else {
@@ -225,11 +186,9 @@ export const bindGestureEvents = ({
       root.releasePointerCapture(event.pointerId);
     }
 
-    event.preventDefault();
-  };
-
-  const cancel = (): void => {
-    actor.send({ type: "CANCEL" });
+    if (!pending) {
+      event.preventDefault();
+    }
   };
 
   const key = (event: KeyboardEvent): void => {
@@ -256,8 +215,39 @@ export const bindGestureEvents = ({
     actor.send({ type: "CLICK" });
   };
 
+  const lostCapture = (event: PointerEvent): void => {
+    if (event.target === root) {
+      cancel();
+    }
+  };
+
+  const nativeMove = (event: TouchEvent): void => {
+    if (
+      phoneTouch?.getSnapshot().matches("held") === true &&
+      actor.getSnapshot().matches("dragging") &&
+      event.touches.length === 1 &&
+      event.cancelable
+    ) {
+      event.preventDefault();
+    }
+  };
+
+  const contextMenu = (event: MouseEvent): void => {
+    if (
+      phoneTouch?.getSnapshot().matches("held") === true &&
+      actor.getSnapshot().matches("dragging")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const releaseSurfaces = bindTouchSurfaces(root, nativeMove);
+
+  root.addEventListener("contextmenu", contextMenu, true);
   root.addEventListener("pointerdown", down);
-  root.addEventListener("lostpointercapture", cancel);
+  root.addEventListener("lostpointercapture", lostCapture);
+  window.addEventListener("pagehide", cancel);
   window.addEventListener("click", click, true);
   window.addEventListener("pointermove", move, {
     capture: true,
@@ -270,8 +260,12 @@ export const bindGestureEvents = ({
 
   return () => {
     cancel();
+    releaseHold();
+    releaseSurfaces();
+    root.removeEventListener("contextmenu", contextMenu, true);
     root.removeEventListener("pointerdown", down);
-    root.removeEventListener("lostpointercapture", cancel);
+    root.removeEventListener("lostpointercapture", lostCapture);
+    window.removeEventListener("pagehide", cancel);
     window.removeEventListener("click", click, true);
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("pointerup", up, true);

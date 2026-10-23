@@ -11,6 +11,7 @@ import { phoneTouchMachine } from "../phone-grid/machine.js";
 import { bindGestureEvents } from "./gesture-events.js";
 import { gestureMachine } from "./gesture-machine.js";
 import type { GestureTargetRegistry } from "./gesture-targets.js";
+import { touchResizeTarget } from "./touch-resize.js";
 
 type GestureMessage =
   | ReturnType<typeof Message.PreparedGestureHost>
@@ -54,6 +55,12 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                     Effect.sync(() =>
                       bindPhoneTouch({
                         actor: touch,
+                        cancelGesture: () => {
+                          actor.send({ type: "CANCEL" });
+                        },
+                        consumeGestureClick: () => {
+                          actor.send({ type: "CLICK" });
+                        },
                         navigate: (key, direction) => {
                           Queue.offerUnsafe(
                             queue,
@@ -64,6 +71,8 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                             })
                           );
                         },
+                        resolveTarget: (event) =>
+                          touchResizeTarget(element, event)?.chip,
                         root: element,
                       })
                     ),
@@ -131,6 +140,7 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
                         actor,
                         getTargets: () => registry?.read(hostKey, element),
                         grid: gridGeometry(scale, hidden),
+                        phoneTouch: touch,
                         refused: (reason) => {
                           Queue.offerUnsafe(
                             queue,

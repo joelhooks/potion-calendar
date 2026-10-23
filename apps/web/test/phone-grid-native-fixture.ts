@@ -1,4 +1,14 @@
-import { Effect, Option, Predicate, Queue, Schema, Stream } from "effect";
+import { ActorWatch } from "@calendar/capability/actor-watch";
+import type { ActorWatchService } from "@calendar/capability/actor-watch";
+import {
+  Clock,
+  Effect,
+  Option,
+  Predicate,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 import { Runtime, Subscription } from "foldkit";
 import type { HtmlBuilder } from "foldkit/html";
 import { vi } from "vitest";
@@ -61,8 +71,12 @@ export const phoneDom = (read: () => boolean) =>
   });
 
 export const mountPhoneGrid = Effect.fn("mountPhoneGrid")(
-  function* mountPhoneGrid() {
-    let current = phoneGridFixture(phoneGridScenes[0]);
+  function* mountPhoneGrid(
+    clock?: Clock.Clock,
+    initial: AppModel = phoneGridFixture(phoneGridScenes[0]),
+    watcher?: ActorWatchService
+  ) {
+    let current = initial;
     const commands: string[] = [];
     const messages = yield* Queue.unbounded<AppMessage>();
     const inbound = yield* Queue.unbounded<AppMessage>();
@@ -123,13 +137,17 @@ export const mountPhoneGrid = Effect.fn("mountPhoneGrid")(
         h.div([h.Id("phone-grid-runtime")], [timeGrid(model, h, prepare)]),
     });
 
-    yield* Effect.acquireRelease(
-      Effect.sync(() => Runtime.embed(program)),
-      (mounted) =>
-        Effect.sync(() => {
-          mounted.dispose();
-        })
-    );
+    const watchedStart =
+      watcher === undefined
+        ? program.start()
+        : program.start().pipe(Effect.provideService(ActorWatch, watcher));
+
+    const timedStart =
+      clock === undefined
+        ? watchedStart
+        : watchedStart.pipe(Effect.provideService(Clock.Clock, clock));
+
+    yield* timedStart.pipe(Effect.forkScoped);
 
     const notice = (tag: AppMessage["_tag"]) =>
       Stream.fromQueue(messages).pipe(

@@ -24,12 +24,47 @@ const clock = (absolute: number): string => {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(Math.floor(minute % 60)).padStart(2, "0")}`;
 };
 
+const relativeResizeRange = (
+  start: typeof GestureStart.Type,
+  target: typeof GestureTarget.Type,
+  point: typeof GesturePoint.Type,
+  precision: ReturnType<typeof dragPrecision>
+) => {
+  const dates = target.allDay || start.allDay;
+
+  const distance =
+    (point.day - start.point.day) * 1440 +
+    (dates ? 0 : point.minute - start.point.minute);
+
+  const delta = dates ? distance : snapMinute(distance, precision);
+
+  if (delta === 0) {
+    return { end: target.end, start: target.start };
+  }
+
+  const minimum = target.allDay ? 1440 : precision;
+
+  return start.edge === "start"
+    ? {
+        end: target.end,
+        start: Math.min(target.start + delta, target.end - minimum),
+      }
+    : {
+        end: Math.max(target.end + delta, target.start + minimum),
+        start: target.start,
+      };
+};
+
 const resizedGesture = (
   start: typeof GestureStart.Type,
   target: typeof GestureTarget.Type,
   point: typeof GesturePoint.Type,
   precision: ReturnType<typeof dragPrecision>
 ) => {
+  if (start.resizeMode === "relative") {
+    return relativeResizeRange(start, target, point, precision);
+  }
+
   if (target.allDay) {
     return {
       end:

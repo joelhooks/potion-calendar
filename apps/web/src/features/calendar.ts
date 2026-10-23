@@ -52,6 +52,7 @@ import { eventRsvp } from "./event-rsvp.js";
 const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
 
 interface ChipAppearance {
+  readonly phone?: boolean;
   readonly theme: "light" | "dark";
   readonly timeFormat: ResolvedTimeFormat;
   readonly timeDisplay?: "start" | "range";
@@ -83,6 +84,50 @@ const chipText = (
   return compact
     ? [h.span([h.Class("timed-readout")], [time, title])]
     : [title, time];
+};
+
+const resizeHandles = (
+  h: HtmlBuilder<AppMessage>,
+  item: DisplayEvent,
+  appearance: ChipAppearance
+): readonly Html[] => {
+  if (
+    !(
+      item.selected &&
+      (appearance.resize !== "horizontal-only" || item.allDay) &&
+      (item.calendar.accessRole === "owner" ||
+        item.calendar.accessRole === "writer") &&
+      (item.source.organizer?.self === true ||
+        item.source.guestsCanModify === true)
+    )
+  ) {
+    return [];
+  }
+
+  const fine = ["start", "end"].map((edge) =>
+    h.span([
+      h.Class(
+        `resize-handle resize-${edge}${item.allDay ? " resize-horizontal" : ""}`
+      ),
+      h.DataAttribute("resize-edge", edge),
+      h.AriaHidden(true),
+    ])
+  );
+
+  if (appearance.phone !== true) {
+    return fine;
+  }
+
+  return [
+    ...fine,
+    ...["start", "end"].map((edge) =>
+      h.span([
+        h.Class(`touch-resize-target touch-resize-${edge}`),
+        h.DataAttribute("touch-resize-edge", edge),
+        h.AriaHidden(true),
+      ])
+    ),
+  ];
 };
 
 export const chip = (
@@ -147,22 +192,7 @@ export const chip = (
           ])
         )
       ),
-      ...(item.selected &&
-      (appearance.resize !== "horizontal-only" || item.allDay) &&
-      (item.calendar.accessRole === "owner" ||
-        item.calendar.accessRole === "writer") &&
-      (item.source.organizer?.self === true ||
-        item.source.guestsCanModify === true)
-        ? ["start", "end"].map((edge) =>
-            h.span([
-              h.Class(
-                `resize-handle resize-${edge}${item.allDay ? " resize-horizontal" : ""}`
-              ),
-              h.DataAttribute("resize-edge", edge),
-              h.AriaHidden(true),
-            ])
-          )
-        : []),
+      ...resizeHandles(h, item, appearance),
       ...chipText(h, item, appearance),
     ]
   );

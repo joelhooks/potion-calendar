@@ -34,6 +34,7 @@ export const GestureStart = Schema.Struct({
   allDay: Schema.Boolean,
   edge: Schema.Literals(["body", "start", "end"]),
   point: GesturePoint,
+  resizeMode: Schema.optionalKey(Schema.Literals(["relative"])),
   target: Schema.Option(GestureTarget),
 });
 

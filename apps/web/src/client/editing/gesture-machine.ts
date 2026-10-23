@@ -1,5 +1,5 @@
-import { setupEffect } from "@xstate/effect";
-import { Option, Schema } from "effect";
+import { createEffectLogic, setupEffect } from "@xstate/effect";
+import { Effect, Option, Schema } from "effect";
 import { types } from "xstate";
 
 import { doubleClick, dragPrecision } from "../../layout/edit-time.js";
@@ -19,14 +19,19 @@ interface Context {
 const startFor = (context: Context) =>
   Schema.decodeUnknownSync(GestureStart)(context.start);
 
+const hold = createEffectLogic({ effect: () => Effect.sleep(450) });
+
 export const gestureMachine = setupEffect({
+  actors: { hold },
   schemas: {
     context: types<Context>(),
     events: {
+      ACTIVATE: Schema.Struct({}),
       CANCEL: Schema.Struct({}),
       CLICK: Schema.Struct({}),
       DOWN: Schema.Struct({ start: GestureStart }),
       MOVE: Schema.Struct({ point: GesturePoint }),
+      PRESS: Schema.Struct({ start: GestureStart }),
       UP: Schema.Struct({ point: GesturePoint }),
     },
   },
@@ -152,6 +157,78 @@ export const gestureMachine = setupEffect({
                 context: { blockClick: false, start: event.start },
                 target: "armed",
               },
+        PRESS: ({ event }) => ({
+          context: {
+            blockClick: false,
+            click: undefined,
+            start: GestureStart.make({
+              ...event.start,
+              resizeMode: "relative",
+            }),
+          },
+          target: "pressed",
+        }),
+      },
+    },
+    pressed: {
+      invoke: { onDone: { target: "ready" }, src: "hold" },
+      on: {
+        CANCEL: {
+          context: { preview: undefined, start: undefined },
+          target: "idle",
+        },
+        MOVE: ({ context, event }) => {
+          const start = startFor(context);
+
+          return start.point.pointerId === event.point.pointerId &&
+            Math.hypot(
+              start.point.x - event.point.x,
+              start.point.y - event.point.y
+            ) >= 8
+            ? {
+                context: { preview: undefined, start: undefined },
+                target: "idle",
+              }
+            : {};
+        },
+        UP: ({ context, event }) =>
+          context.start?.point.pointerId === event.point.pointerId
+            ? {
+                context: { preview: undefined, start: undefined },
+                target: "idle",
+              }
+            : {},
+      },
+    },
+    ready: {
+      on: {
+        ACTIVATE: ({ context }) =>
+          Option.isSome(startFor(context).target) &&
+          !Option.getOrThrow(startFor(context).target).editable
+            ? {
+                context: { preview: undefined, start: undefined },
+                target: "idle",
+              }
+            : {
+                context: {
+                  blockClick: true,
+                  click: undefined,
+                  preview: gestureRange(
+                    startFor(context),
+                    startFor(context).point,
+                    context.sequence + 1
+                  ),
+                },
+                target: "dragging",
+              },
+        CANCEL: {
+          context: { preview: undefined, start: undefined },
+          target: "idle",
+        },
+        UP: {
+          context: { preview: undefined, start: undefined },
+          target: "idle",
+        },
       },
     },
   },

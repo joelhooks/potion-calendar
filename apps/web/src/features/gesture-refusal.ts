@@ -15,7 +15,11 @@ export const gestureRefusalNotice = (
         [
           h.Class("gesture-refusal"),
           h.Role("alert"),
-          h.AriaLabel("Month gesture unavailable"),
+          h.AriaLabel(
+            model.calendar.navigation.mode === "month"
+              ? "Month gesture unavailable"
+              : "Calendar gesture unavailable"
+          ),
         ],
         [
           h.p(

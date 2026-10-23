@@ -10,8 +10,11 @@ const point = (event: PointerEvent) => ({
 
 export const bindPhoneTouch = (input: {
   readonly actor: EffectActor<typeof phoneTouchMachine>;
+  readonly cancelGesture?: () => void;
+  readonly consumeGestureClick?: () => void;
   readonly root: HTMLElement;
   readonly navigate: (hostKey: string, direction: -1 | 1) => void;
+  readonly resolveTarget?: (event: PointerEvent) => Element | undefined;
 }): (() => void) => {
   const { actor, root } = input;
   let delivered = 0;
@@ -67,6 +70,7 @@ export const bindPhoneTouch = (input: {
   const cancel = (): void => {
     const id = actor.getSnapshot().context.start?.pointerId ?? activePointer;
     activePointer = undefined;
+    input.cancelGesture?.();
     actor.send({ type: "CANCEL" });
 
     if (id !== undefined && root.hasPointerCapture?.(id)) {
@@ -101,10 +105,12 @@ export const bindPhoneTouch = (input: {
       return;
     }
 
+    const target = input.resolveTarget?.(event) ?? event.target;
+
     if (
-      !(event.target instanceof Element) ||
-      event.target.closest("[data-month-parked]") !== null ||
-      event.target.closest(
+      !(target instanceof Element) ||
+      target.closest("[data-month-parked]") !== null ||
+      target.closest(
         ".event-chip,.day-column,.all-day-cell,.month-cell[data-day]"
       ) === null
     ) {
@@ -112,9 +118,8 @@ export const bindPhoneTouch = (input: {
     }
 
     if (
-      event.target.closest(".event-chip,.month-date,.phone-month-summary") ===
-        null &&
-      event.target.closest(
+      target.closest(".event-chip,.month-date,.phone-month-summary") === null &&
+      target.closest(
         "button,input,textarea,select,a,[contenteditable=true]"
       ) !== null
     ) {
@@ -147,6 +152,7 @@ export const bindPhoneTouch = (input: {
 
   const up = (event: PointerEvent): void => {
     const owned = activePointer === event.pointerId;
+    const held = actor.getSnapshot().matches("held");
 
     if (owned) {
       activePointer = undefined;
@@ -162,7 +168,7 @@ export const bindPhoneTouch = (input: {
       event.preventDefault();
     }
 
-    if (root.hasPointerCapture?.(event.pointerId)) {
+    if (!held && root.hasPointerCapture?.(event.pointerId)) {
       root.releasePointerCapture(event.pointerId);
     }
   };
@@ -188,6 +194,7 @@ export const bindPhoneTouch = (input: {
     }
 
     if (actor.getSnapshot().context.blockClick) {
+      input.consumeGestureClick?.();
       event.preventDefault();
       event.stopImmediatePropagation();
     }

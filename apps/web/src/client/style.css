@@ -1788,3 +1788,65 @@ h3 {
   border: 1px solid var(--text);
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
+.touch-resize-target {
+  display: none;
+}
+@media (max-width: 640px) and (any-pointer: coarse) {
+  #gesture-host .event-chip.selected {
+    overflow: visible;
+  }
+  #gesture-host .event-chip.selected .touch-resize-target {
+    display: block;
+    position: absolute;
+    inset: auto;
+    width: 44px;
+    height: 44px;
+    pointer-events: none;
+    z-index: 6;
+  }
+  #gesture-host .event-chip.selected .touch-resize-start {
+    top: var(--touch-corner-top, -37px);
+    left: var(--touch-corner-left, -37px);
+  }
+  #gesture-host .event-chip.selected .touch-resize-end {
+    top: var(--touch-corner-top, calc(100% - 7px));
+    left: var(--touch-corner-left, calc(100% - 7px));
+  }
+  #gesture-host
+    .event-chip.selected
+    .touch-resize-target[data-touch-corner-hidden] {
+    display: none;
+  }
+  #gesture-host .event-chip.selected .touch-resize-target::after {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--text);
+    content: "";
+  }
+  #gesture-host .event-chip.selected .touch-resize-start::after {
+    right: 0;
+    bottom: 0;
+  }
+  #gesture-host .event-chip.selected .touch-resize-end::after {
+    top: 0;
+    left: 0;
+  }
+  #gesture-host[data-touch-edit-phase="pressed"]::after {
+    box-sizing: border-box;
+    position: fixed;
+    top: var(--touch-press-y);
+    left: var(--touch-press-x);
+    z-index: 100;
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--text);
+    border-radius: 50%;
+    outline: 2px solid var(--focus);
+    background: var(--surface);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    content: "";
+  }
+}

@@ -362,6 +362,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                                   "z-index": event.selected ? "20" : "1",
                                 },
                                 {
+                                  phone: isPhoneShell(model),
                                   theme: resolvedTheme(model),
                                   timeFormat: resolvedTimeFormat(model),
                                 }
@@ -492,6 +493,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                                 "z-index": String(placement.paint + 1),
                               },
                               {
+                                phone: isPhoneShell(model),
                                 theme: resolvedTheme(model),
                                 timeFormat: resolvedTimeFormat(model),
                                 timedContent: timedContent(height, "chip"),
