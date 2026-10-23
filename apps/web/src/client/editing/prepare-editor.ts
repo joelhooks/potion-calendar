@@ -3,7 +3,7 @@ import {
   statusEventType,
 } from "@calendar/calendar/contracts";
 import { createEffectLogic } from "@xstate/effect";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Option, Struct } from "effect";
 
 import { scopeOffer } from "../../layout/edit-scope.js";
 import type { ScopeEditValue } from "../../layout/edit-scope.js";
@@ -257,11 +257,29 @@ export const prepareEditor = Effect.fn("prepareEditor")(function* prepareEditor(
   yield* validateStatusPolicyDraft(session, permissions.editMeeting);
   const ordinaryFields = yield* draftEventFields(session.draft);
 
+  const duplicateFields =
+    session.kind === "duplicate"
+      ? yield* Effect.fromOption(session.original).pipe(
+          Effect.map((source) =>
+            composeClipboardCreationFields(ordinaryFields, {
+              creationFields: Struct.omit(source, ["attachments"]),
+            })
+          ),
+          Effect.mapError(
+            () =>
+              new EditorInputFailure({
+                message:
+                  "The original event is unavailable. Reload before copying.",
+              })
+          )
+        )
+      : ordinaryFields;
+
   const fields = yield* creationTypeFields(
     session,
     session.clipboard === undefined
-      ? ordinaryFields
-      : composeClipboardCreationFields(ordinaryFields, session.clipboard)
+      ? duplicateFields
+      : composeClipboardCreationFields(duplicateFields, session.clipboard)
   );
 
   const delta = draftChanges(session.draft, session.baseline, fields);

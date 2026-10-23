@@ -80,12 +80,16 @@ const saveCreated = Effect.fn("saveCreatedEvent")(function* saveCreated(
       conferencingRequest: statusEventType(plan.fields.eventType)
         ? undefined
         : plan.session.draft.conferencing?.request,
-      event: {
-        ...plan.fields,
-        guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
-        guestsCanModify: plan.fields.guestsCanModify ?? true,
-        guestsCanSeeOtherGuests: plan.fields.guestsCanSeeOtherGuests ?? true,
-      },
+      event:
+        plan.session.kind === "duplicate"
+          ? plan.fields
+          : {
+              ...plan.fields,
+              guestsCanInviteOthers: plan.fields.guestsCanInviteOthers ?? true,
+              guestsCanModify: plan.fields.guestsCanModify ?? true,
+              guestsCanSeeOtherGuests:
+                plan.fields.guestsCanSeeOtherGuests ?? true,
+            },
       id,
       sendUpdates: statusEventType(plan.fields.eventType)
         ? "none"
