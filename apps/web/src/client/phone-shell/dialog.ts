@@ -38,7 +38,12 @@ export const reconcileModalDialog = (
 
     if (current === undefined) {
       const active = root.ownerDocument.activeElement;
-      opener = active instanceof HTMLElement ? active : undefined;
+      opener =
+        active instanceof HTMLElement &&
+        active !== root.ownerDocument.body &&
+        active !== root.ownerDocument.documentElement
+          ? active
+          : undefined;
     } else {
       current.close();
     }

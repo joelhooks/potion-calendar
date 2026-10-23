@@ -46,10 +46,22 @@ const mountedState = (read: () => boolean) =>
     });
   });
 
-it.effect.each(["connected-opener", "command-menu-removal"] as const)(
-  "real mounted Search scheduling focuses its query and restores a connected opener or Commands: %s",
+it.effect.each([
+  "connected-opener",
+  "command-menu-removal",
+  "command-menu-settings",
+] as const)(
+  "real mounted phone route scheduling focuses its content and restores a connected opener or Commands: %s",
   (path) =>
-    Effect.gen(function* mountedSearchFocus() {
+    Effect.gen(function* mountedRouteFocus() {
+      const settings = path === "command-menu-settings";
+
+      const dialogId = settings
+        ? "phone-settings-dialog"
+        : "phone-search-dialog";
+
+      const closeId = `${dialogId}-close`;
+      const focusId = settings ? closeId : "search-query";
       const inbound = yield* Queue.unbounded<AppMessage>();
       const seen: AppMessage[] = [];
       const heldCommands: string[] = [];
@@ -218,20 +230,22 @@ it.effect.each(["connected-opener", "command-menu-removal"] as const)(
               ?.open === true
         );
 
-        const search = yield* Effect.fromNullishOr(
-          root.querySelector<HTMLButtonElement>("#command-search-events")
+        const choice = yield* Effect.fromNullishOr(
+          root.querySelector<HTMLButtonElement>(
+            settings ? "#command-settings" : "#command-search-events"
+          )
         );
 
-        search.click();
+        choice.click();
       }
 
       yield* mountedState(
         () =>
-          root.querySelector<HTMLDialogElement>("#phone-search-dialog")
-            ?.open === true && document.activeElement?.id === "search-query"
+          root.querySelector<HTMLDialogElement>(`#${dialogId}`)?.open ===
+            true && document.activeElement?.id === focusId
       );
       expect(root.querySelector("#keyboard-command-dialog")).toBeNull();
-      expect(current.route._tag).toBe("Search");
+      expect(current.route._tag).toBe(settings ? "Settings" : "Search");
       expect(
         seen.some(
           (message) =>
@@ -241,17 +255,25 @@ it.effect.each(["connected-opener", "command-menu-removal"] as const)(
       ).toBe(true);
 
       const close = yield* Effect.fromNullishOr(
-        root.querySelector<HTMLButtonElement>("#phone-search-dialog-close")
+        root.querySelector<HTMLButtonElement>(`#${closeId}`)
       );
 
       close.click();
       yield* mountedState(
         () =>
-          root.querySelector("#phone-search-dialog") === null &&
+          root.querySelector(`#${dialogId}`) === null &&
           Predicate.isTagged(current.route, "Calendar")
       );
-      expect(opener.isConnected).toBe(true);
-      expect(document.activeElement).toBe(opener);
+
+      const returned = settings
+        ? yield* Effect.fromNullishOr(
+            root.querySelector<HTMLButtonElement>("#command-menu-button")
+          )
+        : opener;
+
+      expect(returned.isConnected).toBe(true);
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(returned);
       expect(heldCommands).toContain("NavigateRoute");
     })
 );
