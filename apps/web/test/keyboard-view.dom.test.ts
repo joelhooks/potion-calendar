@@ -16,6 +16,7 @@ import { keyboardRegistry, keyHints } from "../src/client/keyboard/registry.js";
 import { keyboardStream } from "../src/client/keyboard/subscription.js";
 import { view } from "../src/features/app.js";
 import { maximumDisplayedDays, visibleDays } from "../src/layout/navigation.js";
+import { dayLabel } from "../src/layout/presentation.js";
 import { editorViewFields } from "./editor-fixture.js";
 import { keyboardDensityFixture, keyboardFixture } from "./keyboard-fixture.js";
 
@@ -414,7 +415,11 @@ it.effect(
     Effect.gen(function* wideDayViews() {
       const base = keyboardFixture();
 
-      for (const count of [10, 20, maximumDisplayedDays]) {
+      for (const { count, form } of [
+        { count: 10, form: "full" },
+        { count: 20, form: "initial" },
+        { count: maximumDisplayedDays, form: "number" },
+      ] as const) {
         const { model } = update(
           base,
           Message.ClickedView({ days: count, mode: "days" })
@@ -425,12 +430,28 @@ it.effect(
         expect(visibleDays(model.calendar.navigation)).toHaveLength(count);
         expect(columns).toHaveLength(count);
 
-        const headerLines = [...dom.querySelectorAll(".day-header")].map(
-          (header) => header.querySelectorAll("span").length
-        );
+        const headers = [...dom.querySelectorAll<HTMLElement>(".day-header")];
 
-        expect(new Set(headerLines).size).toBe(1);
-        expect(headerLines[0]).toBe(count === 10 ? 0 : 2);
+        expect(headers).toHaveLength(count);
+
+        for (const header of headers) {
+          const day = Number(header.dataset.day);
+          const number = dayLabel(day, { day: "numeric" });
+
+          const labels = {
+            full: dayLabel(day, { day: "numeric", weekday: "short" }),
+            initial: `${number} ${dayLabel(day, { weekday: "narrow" })}`,
+            number,
+          };
+
+          expect(header.dataset.dayHeaderForm).toBe(form);
+          expect(header.querySelector(".day-header-label")?.textContent).toBe(
+            labels[form]
+          );
+          expect(header.getAttribute("aria-label")).toBe(
+            dayLabel(day, { dateStyle: "full" })
+          );
+        }
 
         const options = [
           ...dom.querySelectorAll<HTMLOptionElement>("option"),

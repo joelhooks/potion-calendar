@@ -380,9 +380,15 @@ h3 {
 }
 .day-header {
   border-left: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
   text-align: center;
   padding-top: 5px;
   font-size: 12px;
+}
+.day-header-label {
+  display: inline-block;
+  white-space: nowrap;
 }
 .day-header.is-today {
   color: var(--today);

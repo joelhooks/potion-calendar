@@ -18,6 +18,7 @@ import {
 import { zoneDragHostKey, zoneDragScopeKey } from "../client/zone-drag/host.js";
 import { PrepareZoneDrag } from "../client/zone-drag/mount.js";
 import { allDayCounts } from "../layout/all-day.js";
+import { dayHeaderLabel } from "../layout/day-header.js";
 import {
   minuteInZone,
   minuteToY,
@@ -85,7 +86,6 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   );
 
   const columns = column.template;
-  const stackDayLabels = column.day < 56;
   const canCollapse = counts.some((count) => count > 1);
 
   return h.section(
@@ -209,34 +209,19 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                   ]
                 )
               ),
-              ...days.map((day) =>
-                h.div(
+              ...days.map((day) => {
+                const label = dayHeaderLabel(day, column.day);
+
+                return h.div(
                   [
                     h.Class(`day-header${day === today ? " is-today" : ""}`),
-                    h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
-                    ...(stackDayLabels
-                      ? [
-                          h.Style({
-                            "line-height": "12px",
-                            "padding-top": "1px",
-                          }),
-                        ]
-                      : []),
+                    h.AriaLabel(label.ariaLabel),
+                    h.DataAttribute("day", String(day)),
+                    h.DataAttribute("day-header-form", label.form),
                   ],
-                  stackDayLabels
-                    ? [
-                        h.span(
-                          [h.Style({ display: "block" })],
-                          [`${dayLabel(day, { day: "numeric" })} `]
-                        ),
-                        h.span(
-                          [h.Style({ display: "block" })],
-                          [dayLabel(day, { weekday: "short" })]
-                        ),
-                      ]
-                    : [dayLabel(day, { day: "numeric", weekday: "short" })]
-                )
-              ),
+                  [h.span([h.Class("day-header-label")], [label.text])]
+                );
+              }),
             ]
           ),
           h.div(
