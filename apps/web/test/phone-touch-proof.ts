@@ -22,8 +22,8 @@ export const phoneTouchProofScript = (scene: PhoneTouchScene) => `(() => {
   if (scene.state === 'pressed') {
     require(document.querySelector('.gesture-preview') === null, 'No preview before hold');
     root.dataset.touchEditPhase = 'pressed';
-    root.style.setProperty('--touch-press-x', (scene.kind === 'move' ? anchorBox.left + anchorBox.width / 2 : column.getBoundingClientRect().right - 30) + 'px');
-    root.style.setProperty('--touch-press-y', (scene.kind === 'move' ? anchorBox.top + anchorBox.height / 2 : anchorBox.bottom + 30) + 'px');
+    root.style.setProperty('--touch-press-x', Math.round(scene.kind === 'move' ? anchorBox.left + anchorBox.width / 2 : column.getBoundingClientRect().right - 30) + 'px');
+    root.style.setProperty('--touch-press-y', Math.round(scene.kind === 'move' ? anchorBox.top + anchorBox.height / 2 : anchorBox.bottom + 30) + 'px');
     const cue = getComputedStyle(root, '::after');
     require(cue.position === 'fixed' && parseFloat(cue.width) === 44, 'Pressed contact cue uses runtime state selector');
     const swatch = document.createElement('span');

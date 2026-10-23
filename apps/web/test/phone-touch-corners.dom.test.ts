@@ -15,7 +15,10 @@ const Frame = Schema.Struct({
 });
 
 const rectangularCorners = Effect.fn("phoneTouch.rectangularCorners")(
-  function* rectangularCorners(input: typeof Frame.Type) {
+  function* rectangularCorners(
+    input: typeof Frame.Type,
+    border?: { readonly left: number; readonly top: number }
+  ) {
     const root = yield* Effect.acquireRelease(
       Effect.sync(() => {
         const element = document.createElement("section");
@@ -70,8 +73,8 @@ const rectangularCorners = Effect.fn("phoneTouch.rectangularCorners")(
       clientWidth: { value: input.width },
     });
     Object.defineProperties(chip, {
-      clientLeft: { value: 1 },
-      clientTop: { value: 2 },
+      clientLeft: { value: border?.left ?? 1 },
+      clientTop: { value: border?.top ?? 2 },
     });
     placeTouchCorners(root);
 
@@ -86,6 +89,93 @@ const coordinate = Effect.fn("phoneTouch.cornerCoordinate")(
 
     return yield* Schema.decodeEffect(Schema.Finite)(Number(raw.slice(0, -2)));
   }
+);
+
+const fractionalClippedCorners = Effect.fn("phoneTouch.fractionalClip")(
+  function* fractionalClippedCorners(
+    axis: "left" | "top",
+    minimum: number,
+    maximum: number
+  ) {
+    const scene = yield* rectangularCorners(
+      {
+        column: 1,
+        columns: 1,
+        height: 200,
+        itemHeight: 12,
+        itemLeft: 100,
+        itemTop: 100,
+        itemWidth: 12,
+        width: 200,
+      },
+      { left: 1, top: 1 }
+    );
+
+    scene.column.getBoundingClientRect = () =>
+      axis === "left"
+        ? new DOMRect(minimum, 100, maximum - minimum, 100)
+        : new DOMRect(100, minimum, 100, maximum - minimum);
+
+    placeTouchCorners(scene.root);
+
+    return scene;
+  }
+);
+
+it.effect.each(["left", "top"] as const)(
+  "a fractional clip without an integer offset keeps its contained target on a two-decimal grid: %s",
+  (axis) =>
+    Effect.gen(function* fractionalFallback() {
+      const { root } = yield* fractionalClippedCorners(axis, 100.25, 144.5);
+      const written = [];
+
+      for (const target of root.querySelectorAll<HTMLElement>(
+        ".touch-resize-target"
+      )) {
+        expect(Object.hasOwn(target.dataset, "touchCornerHidden")).toBe(false);
+        const offset = yield* coordinate(target, axis);
+        written.push(target.style.getPropertyValue(`--touch-corner-${axis}`));
+        expect(101 + offset).toBeGreaterThanOrEqual(100.25);
+        expect(101 + offset + 44).toBeLessThanOrEqual(144.5);
+      }
+
+      expect(written).toEqual(["-0.75px", "-0.50px"]);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.each(["left", "top"] as const)(
+  "a neighboring feasible fractional clip retains whole-pixel offsets: %s",
+  (axis) =>
+    Effect.gen(function* wholePixelNeighbor() {
+      const { root } = yield* fractionalClippedCorners(axis, 100.25, 145);
+
+      for (const target of root.querySelectorAll<HTMLElement>(
+        ".touch-resize-target"
+      )) {
+        expect(Object.hasOwn(target.dataset, "touchCornerHidden")).toBe(false);
+        const offset = yield* coordinate(target, axis);
+        expect(target.style.getPropertyValue(`--touch-corner-${axis}`)).toBe(
+          "0px"
+        );
+        expect(Object.is(offset, -0)).toBe(false);
+        expect(101 + offset).toBeGreaterThanOrEqual(100.25);
+        expect(101 + offset + 44).toBeLessThanOrEqual(145);
+      }
+    }).pipe(Effect.scoped)
+);
+
+it.effect.each(["left", "top"] as const)(
+  "a clip with under one hundredth pixel of slack hides only when neither grid has an offset: %s",
+  (axis) =>
+    Effect.gen(function* unplaceableFractionalClip() {
+      const { root } = yield* fractionalClippedCorners(axis, 100.251, 144.259);
+
+      for (const target of root.querySelectorAll<HTMLElement>(
+        ".touch-resize-target"
+      )) {
+        expect(Object.hasOwn(target.dataset, "touchCornerHidden")).toBe(true);
+      }
+    }).pipe(Effect.scoped)
 );
 
 it.effect.prop(
@@ -109,6 +199,10 @@ it.effect.prop(
       )) {
         const x = yield* coordinate(target, "left");
         const y = yield* coordinate(target, "top");
+        expect(Number.isInteger(x)).toBe(true);
+        expect(Number.isInteger(y)).toBe(true);
+        expect(Object.is(x, -0)).toBe(false);
+        expect(Object.is(y, -0)).toBe(false);
         const left = frame.itemLeft + chip.clientLeft + x;
         const top = frame.itemTop + chip.clientTop + y;
         expect(left).toBeGreaterThanOrEqual(
@@ -123,6 +217,65 @@ it.effect.prop(
           !visible
         );
       }
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "the exact prod-69 shrunk frame serializes whole-pixel corners without scientific notation",
+  () =>
+    Effect.gen(function* shrunkCornerFrame() {
+      const { root } = yield* rectangularCorners({
+        column: 3,
+        columns: 3,
+        height: 100,
+        itemHeight: 12,
+        itemLeft: 192,
+        itemTop: 0,
+        itemWidth: 12,
+        width: 237,
+      });
+
+      const coordinates = [];
+
+      for (const target of root.querySelectorAll<HTMLElement>(
+        ".touch-resize-target"
+      )) {
+        const x = yield* coordinate(target, "left");
+        const y = yield* coordinate(target, "top");
+        coordinates.push({ edge: target.dataset.touchResizeEdge, x, y });
+      }
+
+      expect(coordinates).toEqual([
+        { edge: "start", x: -19, y: 98 },
+        { edge: "end", x: -1, y: 98 },
+      ]);
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "fractional rendered event dimensions round interior end-corner offsets",
+  () =>
+    Effect.gen(function* fractionalRenderedCorner() {
+      const { chip, root } = yield* rectangularCorners({
+        column: 1,
+        columns: 1,
+        height: 600,
+        itemHeight: 44,
+        itemLeft: 49,
+        itemTop: 140,
+        itemWidth: 83,
+        width: 390,
+      });
+
+      chip.getBoundingClientRect = () => new DOMRect(49, 140, 83.25, 44.25);
+      placeTouchCorners(root);
+
+      const end = yield* Effect.fromNullishOr(
+        root.querySelector<HTMLElement>('[data-touch-resize-edge="end"]')
+      );
+
+      expect(yield* coordinate(end, "left")).toBe(75);
+      expect(yield* coordinate(end, "top")).toBe(35);
     }).pipe(Effect.scoped)
 );
 
@@ -151,7 +304,7 @@ it.effect(
 );
 
 it.effect(
-  "targets stay inside their own column rather than borrowing the adjacent day",
+  "whole-pixel targets align inward within one pixel of their own fractional column edge",
   () =>
     Effect.gen(function* separateColumnFrame() {
       const { chip, column, root } = yield* rectangularCorners({
@@ -170,9 +323,10 @@ it.effect(
       );
 
       const x = yield* coordinate(end, "left");
-      expect(181 + chip.clientLeft + x + 44).toBeCloseTo(
-        column.getBoundingClientRect().right
-      );
+      const right = 181 + chip.clientLeft + x + 44;
+      const columnRight = column.getBoundingClientRect().right;
+      expect(right).toBeLessThanOrEqual(columnRight);
+      expect(columnRight - right).toBeLessThan(1);
     }).pipe(Effect.scoped)
 );
 

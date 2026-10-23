@@ -142,6 +142,27 @@ it.effect.each([
 );
 
 it.effect(
+  "fractional touch input rounds only the displayed press cue to whole pixels",
+  () =>
+    Effect.gen(function* fractionalPressCue() {
+      const clock = yield* Clock.Clock;
+      const scene = yield* mountPhoneGrid(clock);
+      phonePointer(scene.chip, "pointerdown", 180.25, 200.75);
+      yield* phoneDom(() => scene.root.dataset.touchEditPhase === "pressed");
+      expect(scene.root.style.getPropertyValue("--touch-press-x")).toBe(
+        "180px"
+      );
+      expect(scene.root.style.getPropertyValue("--touch-press-y")).toBe(
+        "201px"
+      );
+      expect(scene.captures.size).toBe(0);
+      expect(scene.commands).not.toContain("DispatchEditing");
+      phonePointer(window, "pointerup", 180.25, 200.75);
+      yield* phoneDom(() => scene.root.dataset.touchEditPhase === "idle");
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
   "a read-only hold is refused through the existing recipient without capture or native scroll lock",
   () =>
     Effect.gen(function* readOnlyHold() {

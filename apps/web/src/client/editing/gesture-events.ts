@@ -123,8 +123,14 @@ export const bindGestureEvents = ({
     }
 
     if (touch) {
-      root.style.setProperty("--touch-press-x", `${event.clientX}px`);
-      root.style.setProperty("--touch-press-y", `${event.clientY}px`);
+      root.style.setProperty(
+        "--touch-press-x",
+        `${Math.round(event.clientX)}px`
+      );
+      root.style.setProperty(
+        "--touch-press-y",
+        `${Math.round(event.clientY)}px`
+      );
     }
 
     actor.send({ start: start.value, type: touch ? "PRESS" : "DOWN" });

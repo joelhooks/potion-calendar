@@ -70,8 +70,6 @@ export const placeTouchCorners = (root: HTMLElement): void => {
         continue;
       }
 
-      handle.toggleAttribute("data-touch-corner-hidden", !visible);
-
       const x =
         Math.min(Math.max(left, placement.left), right - 44) -
         box.left -
@@ -82,15 +80,57 @@ export const placeTouchCorners = (root: HTMLElement): void => {
         box.top -
         chip.clientTop;
 
-      const horizontal = `${x}px`;
-      const vertical = `${y}px`;
+      const offsets = [
+        {
+          maximum: right - 44 - box.left - chip.clientLeft,
+          minimum: left - box.left - chip.clientLeft,
+          property: "--touch-corner-left",
+          value: x,
+        },
+        {
+          maximum: bottom - 44 - box.top - chip.clientTop,
+          minimum: top - box.top - chip.clientTop,
+          property: "--touch-corner-top",
+          value: y,
+        },
+      ].map(({ maximum, minimum, property, value }) => {
+        for (const scale of [1, 100]) {
+          const from = Math.ceil(minimum * scale);
+          const to = Math.floor(maximum * scale);
 
-      if (handle.style.getPropertyValue("--touch-corner-left") !== horizontal) {
-        handle.style.setProperty("--touch-corner-left", horizontal);
+          if (from <= to) {
+            const pixels =
+              Math.min(Math.max(Math.round(value * scale), from), to) / scale;
+
+            const normalized = Object.is(pixels, -0) ? 0 : pixels;
+
+            return {
+              property,
+              value: `${scale === 1 ? normalized : normalized.toFixed(2)}px`,
+            };
+          }
+        }
+
+        return null;
+      });
+
+      const unplaceable = offsets.some((offset) => offset === null);
+      handle.toggleAttribute(
+        "data-touch-corner-hidden",
+        !visible || unplaceable
+      );
+
+      if (unplaceable) {
+        continue;
       }
 
-      if (handle.style.getPropertyValue("--touch-corner-top") !== vertical) {
-        handle.style.setProperty("--touch-corner-top", vertical);
+      for (const offset of offsets) {
+        if (
+          offset !== null &&
+          handle.style.getPropertyValue(offset.property) !== offset.value
+        ) {
+          handle.style.setProperty(offset.property, offset.value);
+        }
       }
     }
   }
