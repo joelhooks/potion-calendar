@@ -15,7 +15,7 @@ import {
 import { orderedWeekdays } from "../client/settings/weekday-choices.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
 import { LocationMaps } from "../layout/location-maps.js";
-import { hiddenTimeWeekdays, viewLabel } from "../layout/navigation.js";
+import { hiddenTimeWeekdays } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
 import { desktopSettingsView } from "./desktop-settings-actions.js";
 import { desktopGeneralRows } from "./desktop-settings.js";
@@ -194,7 +194,16 @@ export const settingsGeneral = (
             h.span(
               [],
               [
-                `${viewLabel(model.calendar.navigation.mode)} · ${model.calendar.navigation.mode === "week" ? "7" : model.calendar.navigation.days} days. Change this on the calendar.`,
+                `${Match.value(model.calendar.navigation.mode).pipe(
+                  Match.when("week", () => "Week · 7 days"),
+                  Match.when("day", () => "Day · 1 day"),
+                  Match.when(
+                    "days",
+                    () => `${model.calendar.navigation.days} days`
+                  ),
+                  Match.when("month", () => "Month"),
+                  Match.exhaustive
+                )}. Change this on the calendar.`,
               ]
             ),
           ]
