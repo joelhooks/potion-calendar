@@ -125,6 +125,11 @@ import {
   settleMonthRead,
 } from "./month/update.js";
 import { navigationTransition, preserveMonthDisplay } from "./navigation.js";
+import {
+  PhoneGrid,
+  initialPhoneGrid,
+  phoneSwipeKey,
+} from "./phone-grid/model.js";
 import { phoneShellMode } from "./phone-shell/machine.js";
 import {
   PhoneShell,
@@ -248,6 +253,7 @@ export const Model = Schema.Struct({
   keyboard: KeyboardUi,
   month: MonthUi,
   person: Schema.Option(Schema.String),
+  phoneGrid: PhoneGrid,
   phoneShell: PhoneShell,
   reminders: ReminderState,
   route: Route,
@@ -326,6 +332,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   keyboard: initialKeyboard(),
   month: initialMonthUi(),
   person: Option.none(),
+  phoneGrid: initialPhoneGrid(),
   phoneShell: initialPhoneShell(),
   reminders: initialReminderState(),
   route: CalendarRoute.make({}),
@@ -763,7 +770,12 @@ const updateCore = (
     }),
     ClickedToday: () => changeNavigation(model, { type: "today" }),
     ClickedView: ({ mode, days }) =>
-      changeNavigation(model, { days, mode, type: "view" }),
+      changeNavigation(
+        isPhoneShell(model)
+          ? { ...model, phoneGrid: { defaultView: "settled" } }
+          : model,
+        { days, mode, type: "view" }
+      ),
     ClickedWeekends: () =>
       dispatch(
         model,
@@ -995,15 +1007,31 @@ const updateCore = (
       },
     }),
     KeyboardReturn: () => pickKeyboard(model, undefined, dispatch),
-    MeasuredShellViewport: ({ width }) => ({
-      model: {
+    MeasuredShellViewport: ({ width }) => {
+      const measured = {
         ...model,
         phoneShell: {
-          mode: width <= 640 ? model.phoneShell.mode : "closed",
+          ...model.phoneShell,
+          mode: width <= 640 ? model.phoneShell.mode : ("closed" as const),
           viewportWidth: width,
         },
-      },
-    }),
+      };
+
+      const next =
+        isPhoneShell(measured) && Option.isSome(measured.timeZones.drag)
+          ? {
+              ...measured,
+              timeZones: { ...measured.timeZones, drag: Option.none() },
+            }
+          : measured;
+
+      return isPhoneShell(next) && next.phoneGrid.defaultView === "pending"
+        ? changeNavigation(
+            { ...next, phoneGrid: { defaultView: "settled" } },
+            { days: 1, mode: "day", type: "view" }
+          )
+        : { model: next };
+    },
     MeasuredViewport: ({ gutter, height, width }) => ({
       model: {
         ...model,
@@ -1062,6 +1090,11 @@ const updateCore = (
           }
         : model,
     }),
+    PhoneSwipedPeriod: ({ hostKey, personId, direction }) =>
+      Option.contains(model.person, personId) &&
+      Option.contains(phoneSwipeKey(model), hostKey)
+        ? changeNavigation(model, { direction, type: "page" })
+        : { model },
     PreparedGestureHost: () => ({ model }),
     PreparedGestureTargets: () => ({ model }),
     PreparedSelection: () => ({ model }),

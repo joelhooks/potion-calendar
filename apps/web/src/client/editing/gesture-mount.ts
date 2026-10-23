@@ -6,6 +6,8 @@ import { Mount } from "foldkit";
 import { gridGeometry } from "../../layout/geometry.js";
 import { MinuteRange } from "../../layout/time-blocks.js";
 import { Message } from "../message.js";
+import { bindPhoneTouch } from "../phone-grid/events.js";
+import { phoneTouchMachine } from "../phone-grid/machine.js";
 import { bindGestureEvents } from "./gesture-events.js";
 import { gestureMachine } from "./gesture-machine.js";
 import type { GestureTargetRegistry } from "./gesture-targets.js";
@@ -14,7 +16,8 @@ type GestureMessage =
   | ReturnType<typeof Message.PreparedGestureHost>
   | ReturnType<typeof Message.PreviewedGesture>
   | ReturnType<typeof Message.CompletedGesture>
-  | ReturnType<typeof Message.RefusedGesture>;
+  | ReturnType<typeof Message.RefusedGesture>
+  | ReturnType<typeof Message.PhoneSwipedPeriod>;
 
 export const gestureMountFor = (registry?: GestureTargetRegistry) =>
   Mount.defineStream("PrepareGestures", {
@@ -45,6 +48,27 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
 
                   const actor = yield* createEffectActor(gestureMachine);
                   yield* watchActor("calendar.gesture", actor);
+                  const touch = yield* createEffectActor(phoneTouchMachine);
+                  yield* watchActor("calendar.phoneTouch", touch);
+                  yield* Effect.acquireRelease(
+                    Effect.sync(() =>
+                      bindPhoneTouch({
+                        actor: touch,
+                        navigate: (key, direction) => {
+                          Queue.offerUnsafe(
+                            queue,
+                            Message.PhoneSwipedPeriod({
+                              direction,
+                              hostKey: key,
+                              personId,
+                            })
+                          );
+                        },
+                        root: element,
+                      })
+                    ),
+                    (release) => Effect.sync(release)
+                  );
                   let completed = 0;
                   element.dataset.gesturePhase = "idle";
                   Queue.offerUnsafe(
@@ -141,6 +165,7 @@ export const gestureMountFor = (registry?: GestureTargetRegistry) =>
         )
       ),
     messages: [
+      Message.PhoneSwipedPeriod,
       Message.RefusedGesture,
       Message.PreparedGestureHost,
       Message.PreviewedGesture,

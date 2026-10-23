@@ -8,6 +8,8 @@ import { PrepareGestures } from "../client/editing/gesture-mount.js";
 import { monthSurfaceMountFor } from "../client/month/gesture-mount.js";
 import { monthHostKey } from "../client/month/host.js";
 import { PrepareMonthViewport } from "../client/month/viewport.js";
+import { phoneSwipeKey } from "../client/phone-grid/model.js";
+import { isPhoneShell } from "../client/phone-shell/model.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { monthWeekLayout } from "../layout/month-week.js";
 import type { MonthWindowFrame } from "../layout/month-window.js";
@@ -18,6 +20,7 @@ import { dayLabel, visibleEvents } from "../layout/presentation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { chip } from "./calendar.js";
 import { monthPreviewLayer } from "./month-gesture-preview.js";
+import { phoneMonthCell } from "./phone-grid.js";
 import { selectionSurface } from "./selection-surface.js";
 
 export const monthGrid = (
@@ -38,6 +41,8 @@ export const monthGrid = (
   const columns = monthHidesWeekends(model.calendar.navigation) ? 5 : 7;
   const template = `${geometry.columnsPrefix}repeat(${columns}, minmax(0, 1fr))`;
   const today = dayInZone(model.calendar.now, model.calendar.zone);
+
+  const compact = isPhoneShell(model);
 
   const appearance = {
     resize: "horizontal-only" as const,
@@ -75,6 +80,9 @@ export const monthGrid = (
         String(model.calendar.selected.length)
       ),
       h.AriaLabel("Month grid"),
+      ...Option.toArray(phoneSwipeKey(model)).map((key) =>
+        h.DataAttribute("phone-period", key)
+      ),
       h.OnMount(
         Option.isSome(host) &&
           Option.isSome(model.person) &&
@@ -167,6 +175,18 @@ export const monthGrid = (
                         ]);
                       }
 
+                      if (compact) {
+                        return phoneMonthCell(
+                          h,
+                          day,
+                          today,
+                          events.filter(
+                            (event) =>
+                              event.startDay <= day && day < event.endDay
+                          ).length
+                        );
+                      }
+
                       return h.div(
                         [
                           h.Class(
@@ -240,7 +260,7 @@ export const monthGrid = (
                         left: `${model.settings.showWeekNumbers ? monthMetrics.weekGutter : 0}px`,
                       }),
                     ],
-                    layout.bars.map((bar) =>
+                    (compact ? [] : layout.bars).map((bar) =>
                       h.div(
                         [
                           h.Class("month-span month-item-all-day"),

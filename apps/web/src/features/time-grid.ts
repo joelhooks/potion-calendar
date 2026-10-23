@@ -7,14 +7,12 @@ import { EditorView } from "../client/editing/editor-model.js";
 import { PrepareGestures } from "../client/editing/gesture-mount.js";
 import { gestureHostKey } from "../client/editing/gesture-targets.js";
 import { PrepareTimeGrid } from "../client/grid-mount.js";
+import { gridZones, phoneSwipeKey } from "../client/phone-grid/model.js";
+import { isPhoneShell } from "../client/phone-shell/model.js";
 import { selectionHostKey } from "../client/selection/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { timeGridGeometry } from "../client/time-blocks/grid.js";
-import {
-  TimeZoneAction,
-  ZoneChooser,
-  displayedZones,
-} from "../client/time-zones/model.js";
+import { TimeZoneAction, ZoneChooser } from "../client/time-zones/model.js";
 import { zoneDragHostKey, zoneDragScopeKey } from "../client/zone-drag/host.js";
 import { PrepareZoneDrag } from "../client/zone-drag/mount.js";
 import { allDayCounts } from "../layout/all-day.js";
@@ -62,10 +60,14 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const nowMinute = minuteInZone(model.calendar.now, model.calendar.zone);
   const today = dayInZone(model.calendar.now, model.calendar.zone);
   const counts = allDayCounts(packed, days);
-  const zones = displayedZones(model.timeZones);
+  const zones = gridZones(model);
   const zoneCount = zones.length;
   const dragKey = zoneDragHostKey(model);
-  const { secondary } = model.timeZones.preferences;
+
+  const secondary = isPhoneShell(model)
+    ? []
+    : model.timeZones.preferences.secondary;
+
   const preview = model.timeZones.drag;
 
   const origin = Option.isSome(preview)
@@ -80,7 +82,8 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   const reference = gutterReferenceDay(days, today);
 
   const column = zoneColumns(
-    model.calendar.viewportWidth,
+    model.calendar.viewportWidth -
+      (isPhoneShell(model) ? Math.max(0, zoneCount - 1) * 46 : 0),
     days.length,
     zoneCount
   );
@@ -553,6 +556,9 @@ export const timeGrid = (
         String(model.calendar.selected.length)
       ),
       h.DataAttribute("gesture-host-key", hostKey),
+      ...Option.toArray(phoneSwipeKey(model)).map((key) =>
+        h.DataAttribute("phone-period", key)
+      ),
       h.Class("gesture-host"),
       h.Style({ display: "contents" }),
       ...(Option.isSome(model.person) &&

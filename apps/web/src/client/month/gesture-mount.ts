@@ -22,6 +22,7 @@ export const monthSurfaceMountFor = (
       ),
     messages: [
       Message.MeasuredViewport,
+      Message.PhoneSwipedPeriod,
       Message.PreparedGestureHost,
       Message.PreviewedGesture,
       Message.CompletedGesture,

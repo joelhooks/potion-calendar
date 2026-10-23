@@ -13,6 +13,8 @@ export const canResumeHost = (
     host.querySelector(`.day-column[data-day="${resume.day}"]`) !== null &&
     host.dataset.gesturePhase !== "armed" &&
     host.dataset.gesturePhase !== "dragging" &&
+    (host.dataset.touchPhase === undefined ||
+      host.dataset.touchPhase === "idle") &&
     host.dataset.selectionPhase !== "armed" &&
     host.dataset.selectionPhase !== "dragging" &&
     host.querySelector(

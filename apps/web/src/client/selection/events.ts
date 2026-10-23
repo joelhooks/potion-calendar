@@ -153,7 +153,7 @@ export const bindSelectionEvents = (input: {
   };
 
   const down = (event: PointerEvent) => {
-    if (!event.isPrimary) {
+    if (event.pointerType === "touch" || !event.isPrimary) {
       return;
     }
 

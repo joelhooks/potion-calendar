@@ -105,6 +105,10 @@ export const bindGestureEvents = ({
   refused,
 }: Input): (() => void) => {
   const down = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
     const element = gestureElement(root, event);
 
     if (element === undefined) {

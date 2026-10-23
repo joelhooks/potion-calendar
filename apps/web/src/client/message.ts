@@ -160,6 +160,11 @@ export const Message = defineMessageUnion({
   PhoneShellOpened: {
     mode: Schema.Literals(["drawer", "details", "upcoming"]),
   },
+  PhoneSwipedPeriod: {
+    direction: Schema.Literals([-1, 1]),
+    hostKey: Schema.String,
+    personId: Schema.String,
+  },
   PreparedGestureHost: { hostKey: Schema.String },
   PreparedGestureTargets: {},
   PreparedSelection: {},
