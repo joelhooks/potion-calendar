@@ -15,6 +15,7 @@ import { PrepareKeyboard } from "../client/keyboard/mount.js";
 import { bindingHints } from "../client/keyboard/registry.js";
 import { monthFrame, monthHostKey } from "../client/month/host.js";
 import { PrepareMonthViewport } from "../client/month/viewport.js";
+import { isPhoneShell } from "../client/phone-shell/model.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
@@ -29,6 +30,7 @@ import { editorDialogs } from "./event-editor.js";
 import { gestureRefusalNotice } from "./gesture-refusal.js";
 import { icsExportNotice } from "./ics-export-notice.js";
 import { instantSaveNotice } from "./instant-save-notice.js";
+import { phoneShellDialog, phoneToolbar } from "./phone-shell.js";
 import { reminderCards } from "./reminder-cards.js";
 import { searchPanel } from "./search.js";
 import { selectionCommandStatus } from "./selection-command-status.js";
@@ -210,10 +212,13 @@ const dateFlash = (
   ];
 };
 
-const pageToolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html =>
-  Predicate.isTagged(model.route, "Settings")
-    ? h.header([h.Class("toolbar")], [h.h1([], ["Calendar"])])
-    : toolbar(model, h);
+const pageToolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
+  if (Predicate.isTagged(model.route, "Settings")) {
+    return h.header([h.Class("toolbar")], [h.h1([], ["Calendar"])]);
+  }
+
+  return isPhoneShell(model) ? phoneToolbar(model, h) : toolbar(model, h);
+};
 
 const workspaceContent = (
   model: AppModel,
@@ -255,7 +260,7 @@ const routedPage = (
   return h.div(
     [h.Class("workspace")],
     [
-      ...(model.keyboard.sidebar
+      ...(model.keyboard.sidebar && !isPhoneShell(model)
         ? [
             h.div(
               [h.Class("sidebar-shell")],
@@ -267,7 +272,8 @@ const routedPage = (
           ]
         : []),
       workspaceContent(model, h, prepare, prepareMonth),
-      ...(model.settings.hideContextPanel
+      ...(isPhoneShell(model) ? phoneShellDialog(model, h) : []),
+      ...(model.settings.hideContextPanel || isPhoneShell(model)
         ? []
         : [...detailPanel(model, h), ...upcomingMeetingPanel(model, h)]),
     ]
@@ -335,7 +341,7 @@ export const view = (
               ]
             : [
                 pageToolbar(model, h),
-                ...(model.keyboard.sidebar
+                ...(model.keyboard.sidebar && !isPhoneShell(model)
                   ? [
                       h.button(
                         [

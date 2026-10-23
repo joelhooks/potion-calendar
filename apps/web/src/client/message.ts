@@ -140,6 +140,7 @@ export const Message = defineMessageUnion({
   KeyboardQuery: { query: Schema.String },
   KeyboardResetSequence: {},
   KeyboardReturn: {},
+  MeasuredShellViewport: { width: Schema.Finite },
   MeasuredViewport: {
     gutter: Schema.Finite,
     height: Schema.Finite,
@@ -155,6 +156,10 @@ export const Message = defineMessageUnion({
   Navigated: {},
   ObservedNotification: { event: NotificationEvent, now: Schema.Finite },
   PageHidden: {},
+  PhoneShellClosed: {},
+  PhoneShellOpened: {
+    mode: Schema.Literals(["drawer", "details", "upcoming"]),
+  },
   PreparedGestureHost: { hostKey: Schema.String },
   PreparedGestureTargets: {},
   PreparedSelection: {},

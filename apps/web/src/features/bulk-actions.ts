@@ -17,7 +17,8 @@ import { conferencingNoticeText } from "./conferencing-save-notice.js";
 
 export const bulkDetail = (
   model: AppModel,
-  h: HtmlBuilder<AppMessage>
+  h: HtmlBuilder<AppMessage>,
+  presentation: "panel" | "sheet" = "panel"
 ): readonly Html[] => {
   const context = selectionContext(model.calendar.selected);
 
@@ -35,15 +36,19 @@ export const bulkDetail = (
     h.aside(
       [h.Class("detail-panel bulk-detail"), h.AriaLabel(context.label)],
       [
-        h.button(
-          [
-            h.Class("close-detail"),
-            h.OnClick(Message.ClosedDetail()),
-            h.AriaLabel("Clear selection"),
-          ],
-          ["×"]
-        ),
-        h.h2([], [context.label]),
+        ...(presentation === "panel"
+          ? [
+              h.button(
+                [
+                  h.Class("close-detail"),
+                  h.OnClick(Message.ClosedDetail()),
+                  h.AriaLabel("Clear selection"),
+                ],
+                ["×"]
+              ),
+              h.h2([], [context.label]),
+            ]
+          : []),
         h.p(
           [],
           [

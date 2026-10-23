@@ -125,6 +125,13 @@ import {
   settleMonthRead,
 } from "./month/update.js";
 import { navigationTransition, preserveMonthDisplay } from "./navigation.js";
+import { phoneShellMode } from "./phone-shell/machine.js";
+import {
+  PhoneShell,
+  initialPhoneShell,
+  isPhoneShell,
+} from "./phone-shell/model.js";
+import { afterPhoneShellMessage } from "./phone-shell/update.js";
 import { actOnReminderCard } from "./reminders/actions.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
@@ -241,6 +248,7 @@ export const Model = Schema.Struct({
   keyboard: KeyboardUi,
   month: MonthUi,
   person: Schema.Option(Schema.String),
+  phoneShell: PhoneShell,
   reminders: ReminderState,
   route: Route,
   search: SearchUi,
@@ -318,6 +326,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   keyboard: initialKeyboard(),
   month: initialMonthUi(),
   person: Option.none(),
+  phoneShell: initialPhoneShell(),
   reminders: initialReminderState(),
   route: CalendarRoute.make({}),
   search: initialSearch(),
@@ -986,6 +995,15 @@ const updateCore = (
       },
     }),
     KeyboardReturn: () => pickKeyboard(model, undefined, dispatch),
+    MeasuredShellViewport: ({ width }) => ({
+      model: {
+        ...model,
+        phoneShell: {
+          mode: width <= 640 ? model.phoneShell.mode : "closed",
+          viewportWidth: width,
+        },
+      },
+    }),
     MeasuredViewport: ({ gutter, height, width }) => ({
       model: {
         ...model,
@@ -1024,6 +1042,26 @@ const updateCore = (
         : { model };
     },
     PageHidden: () => leaveEditing(model),
+    PhoneShellClosed: () => ({
+      model: {
+        ...model,
+        phoneShell: {
+          ...model.phoneShell,
+          mode: phoneShellMode(model.phoneShell.mode, "closed"),
+        },
+      },
+    }),
+    PhoneShellOpened: ({ mode }) => ({
+      model: isPhoneShell(model)
+        ? {
+            ...model,
+            phoneShell: {
+              ...model.phoneShell,
+              mode: phoneShellMode(model.phoneShell.mode, mode),
+            },
+          }
+        : model,
+    }),
     PreparedGestureHost: () => ({ model }),
     PreparedGestureTargets: () => ({ model }),
     PreparedSelection: () => ({ model }),
@@ -1663,6 +1701,7 @@ export const update = (model: AppModel, message: AppMessage): Result => {
         ...result.model,
         attachmentReads: initialAttachmentReads,
         clipboard: resetClipboardScope(model.clipboard),
+        phoneShell: { ...result.model.phoneShell, mode: "closed" },
         settings: {
           ...result.model.settings,
           timeBlockEditor: initialTimeBlockEditor(),
@@ -1671,9 +1710,14 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     };
   }
 
-  return withEventAttachmentReads(
+  const attached = withEventAttachmentReads(
     Predicate.isTagged(message, "ReceivedSession")
       ? { ...result, model: { ...result.model, clipboard: model.clipboard } }
       : result
   );
+
+  return {
+    ...attached,
+    model: afterPhoneShellMessage(attached.model, message),
+  };
 };

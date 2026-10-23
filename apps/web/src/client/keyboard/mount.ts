@@ -3,9 +3,16 @@ import type { Cause } from "effect";
 import { Mount } from "foldkit";
 
 import { Message } from "../message.js";
+import { attachPhoneShell } from "../phone-shell/mount.js";
+import type { PhoneShellMessage } from "../phone-shell/mount.js";
 
 const cancelKeyboard =
-  (queue: Queue.Queue<ReturnType<typeof Message.KeyboardClose>, Cause.Done>) =>
+  (
+    queue: Queue.Queue<
+      ReturnType<typeof Message.KeyboardClose> | PhoneShellMessage,
+      Cause.Done
+    >
+  ) =>
   (event: Event): void => {
     if (
       event.target instanceof HTMLDialogElement &&
@@ -18,7 +25,9 @@ const cancelKeyboard =
 
 export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
   execute: ({ element }) =>
-    Stream.callback<ReturnType<typeof Message.KeyboardClose>>((queue) =>
+    Stream.callback<
+      ReturnType<typeof Message.KeyboardClose> | PhoneShellMessage
+    >((queue) =>
       Effect.acquireRelease(
         Effect.sync(() => {
           let current: HTMLElement | undefined;
@@ -84,14 +93,23 @@ export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
           element.addEventListener("cancel", cancel, true);
           inspect();
 
-          return { cancel, observer };
+          const disposePhoneShell = attachPhoneShell(element, (message) => {
+            Queue.offerUnsafe(queue, message);
+          });
+
+          return { cancel, disposePhoneShell, observer };
         }),
-        ({ observer, cancel }) =>
+        ({ observer, cancel, disposePhoneShell }) =>
           Effect.sync(() => {
             observer.disconnect();
+            disposePhoneShell();
             element.removeEventListener("cancel", cancel, true);
           })
       )
     ),
-  messages: [Message.KeyboardClose],
+  messages: [
+    Message.KeyboardClose,
+    Message.MeasuredShellViewport,
+    Message.PhoneShellClosed,
+  ],
 });

@@ -650,10 +650,11 @@ const statusEventSummary = (
 
 export const detailPanel = (
   model: AppModel,
-  h: HtmlBuilder<AppMessage>
+  h: HtmlBuilder<AppMessage>,
+  presentation: "panel" | "sheet" = "panel"
 ): readonly Html[] => {
   if (model.calendar.selected.length > 1) {
-    return bulkDetail(model, h);
+    return bulkDetail(model, h, presentation);
   }
 
   const selected = visibleEvents(model).find((item) => item.selected);
@@ -688,15 +689,19 @@ export const detailPanel = (
     h.aside(
       [h.Class("detail-panel"), h.AriaLabel("Event details")],
       [
-        h.button(
-          [
-            h.Class("close-detail"),
-            h.OnClick(Message.ClosedDetail()),
-            h.AriaLabel("Close event details"),
-          ],
-          ["×"]
-        ),
-        h.h2([], [selected.title]),
+        ...(presentation === "panel"
+          ? [
+              h.button(
+                [
+                  h.Class("close-detail"),
+                  h.OnClick(Message.ClosedDetail()),
+                  h.AriaLabel("Close event details"),
+                ],
+                ["×"]
+              ),
+              h.h2([], [selected.title]),
+            ]
+          : []),
         ...statusEventSummary(event, h),
         ...(writable
           ? []
