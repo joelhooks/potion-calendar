@@ -5,21 +5,34 @@ import {
 import { implement } from "@calendar/capability/implement";
 import { toRpc } from "@calendar/capability/rpc";
 import { expect, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Match, Option } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
+import { renderToString } from "foldkit/experimental/server";
+import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
+import type { AppMessage } from "../src/client/app.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
+import { observeKeyboard } from "../src/client/keyboard/input.js";
 import { LiveNotice } from "../src/client/live/protocol.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { view } from "../src/features/app.js";
 import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
+import { editingFixture } from "./editor-fixture.js";
 import { keyboardFixture } from "./keyboard-fixture.js";
 import { unexpectedSearchClient } from "./search-fixture.js";
 
-it.effect(
-  "R syncs each account's calendars before reading while live pushes only read",
-  () =>
+it.effect.each([
+  { kind: "plain", platform: "Win32" },
+  { kind: "dialog", platform: "MacIntel" },
+  { kind: "title", platform: "MacIntel" },
+  { kind: "title", platform: "Win32" },
+  { kind: "editor", platform: "MacIntel" },
+  { kind: "editor", platform: "Win32" },
+])(
+  "native refresh syncs each account before reading while live pushes only read: %j",
+  ({ kind, platform }) =>
     Effect.gen(function* refreshOrdering() {
       const calls: {
         readonly accountId: string;
@@ -75,20 +88,84 @@ it.effect(
         dispatch: () => unexpectedEditing,
       });
 
-      const model = keyboardFixture();
+      const base = keyboardFixture();
 
-      const forced = update(
-        model,
-        Message.PressedCalendarKey({
-          alt: false,
-          key: "r",
-          mod: false,
-          now: 1,
-          shift: false,
+      const model = Match.value(kind).pipe(
+        Match.when("editor", () => ({
+          ...base,
+          editing: {
+            ...base.editing,
+            owner: base.person,
+            view: editingFixture,
+          },
+        })),
+        Match.when("plain", () => base),
+        Match.orElse(
+          () => update(base, Message.KeyboardAction({ id: "commands" })).model
+        )
+      );
+
+      const spy = vi
+        .spyOn(navigator, "platform", "get")
+        .mockReturnValue(platform);
+
+      const host = document.createElement("div");
+      document.body.append(host);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          spy.mockRestore();
+          host.remove();
         })
       );
 
-      expect(forced.commands?.length).toBeGreaterThan(0);
+      const rendered = yield* renderToString(
+        { init: () => ({ model }), view },
+        { isHydratable: false }
+      );
+
+      host.innerHTML = rendered.html;
+
+      const selector = Match.value(kind).pipe(
+        Match.when("editor", () => "#event-title"),
+        Match.when("title", () => "#keyboard-query"),
+        Match.when("dialog", () => "#keyboard-command-dialog"),
+        Match.orElse(() => "#time-viewport")
+      );
+
+      const target = yield* Effect.fromNullishOr(
+        host.querySelector<HTMLElement>(selector)
+      );
+
+      const received: AppMessage[] = [];
+      host.addEventListener(
+        "keydown",
+        (event) => {
+          const message = observeKeyboard(model, event, model.calendar.now);
+
+          if (Option.isSome(message)) {
+            received.push(message.value);
+          }
+        },
+        { once: true }
+      );
+
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: kind !== "plain",
+        key: "r",
+      });
+
+      target.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(received).toHaveLength(1);
+
+      const forced = update(
+        model,
+        Option.getOrThrow(Option.fromUndefinedOr(received[0]))
+      );
+
+      expect(forced.commands ?? []).not.toHaveLength(0);
       expect(forced.commands?.map((command) => command.name)).toEqual(
         update(model, Message.ClickedRefresh()).commands?.map(
           (command) => command.name
@@ -123,7 +200,7 @@ it.effect(
       calls.length = 0;
 
       const passive = update(
-        model,
+        base,
         Message.ReceivedLive({
           notice: LiveNotice.cases.CalendarChanged.make({
             change: {

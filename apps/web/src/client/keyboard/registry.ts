@@ -564,8 +564,13 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
       scope: "app",
     }
   ),
-  row("refresh", "Refresh calendars", ["r"], "General", "Calendar", () =>
-    Message.ClickedRefresh()
+  row(
+    "refresh",
+    "Refresh calendars",
+    ["r", "Control+r"],
+    "General",
+    "Calendar",
+    () => Message.ClickedRefresh()
   ),
   row("undo", "Undo", ["Mod+z"], "General", "Event", special("undo"), {
     availability: (model) =>

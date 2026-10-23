@@ -1099,13 +1099,8 @@ const updateCore = (
     PreparedGestureTargets: () => ({ model }),
     PreparedSelection: () => ({ model }),
     PreparedZoneDragHost: () => ({ model }),
-    PressedCalendarKey: ({ key, mod, shift, alt, now }) =>
-      pressedKeyboard(
-        model,
-        { alt, key, mod, shift },
-        now ?? model.calendar.now,
-        dispatch
-      ),
+    PressedCalendarKey: (input) =>
+      pressedKeyboard(model, input, input.now ?? model.calendar.now, dispatch),
     PreviewedGesture: ({ personId, preview, hostKey }) =>
       acceptsGesture(model, personId, hostKey)
         ? {

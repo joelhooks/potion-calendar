@@ -43,6 +43,7 @@ const bindings: readonly (readonly [string, string])[] = [
   ["Mod+a", "select-all"],
   ["c", "create"],
   ["r", "refresh"],
+  ["Control+r", "refresh"],
   ["n", "next-selection"],
   ["b", "previous-selection"],
   ["Shift+n", "previous-selection"],
@@ -102,12 +103,14 @@ const bindings: readonly (readonly [string, string])[] = [
 const inputFor = (token: string) => {
   const parts = token.split("+");
 
-  return {
+  const input = {
     alt: parts.includes("Alt"),
     key: parts.at(-1) ?? "",
     mod: parts.includes("Mod"),
     shift: parts.includes("Shift"),
   };
+
+  return parts.includes("Control") ? { ...input, control: true } : input;
 };
 
 const press = (model: AppModel, token: string, now = 100): AppModel =>

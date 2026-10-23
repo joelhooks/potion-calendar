@@ -171,6 +171,7 @@ export const Message = defineMessageUnion({
   PreparedZoneDragHost: { hostKey: Schema.String },
   PressedCalendarKey: {
     alt: Schema.Boolean,
+    control: Schema.optionalKey(Schema.Boolean),
     key: Schema.String,
     mod: Schema.Boolean,
     now: Schema.optional(Schema.Finite),

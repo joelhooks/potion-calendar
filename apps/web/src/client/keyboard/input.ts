@@ -12,11 +12,19 @@ export interface KeyboardInput {
   readonly mod: boolean;
   readonly shift: boolean;
   readonly alt: boolean;
+  readonly control?: boolean;
 }
 
-export const keyToken = ({ key, mod, shift, alt }: KeyboardInput): string =>
+export const keyToken = ({
+  key,
+  mod,
+  shift,
+  alt,
+  control,
+}: KeyboardInput): string =>
   [
     ...(shift && key !== "?" && key !== "`" ? ["Shift"] : []),
+    ...(control === true ? ["Control"] : []),
     ...(mod ? ["Mod"] : []),
     ...(alt ? ["Alt"] : []),
     key.length === 1 ? key.toLowerCase() : key,
@@ -34,8 +42,11 @@ export const resolveBinding = (
   const action = keyboardRegistry.find(
     (candidate) =>
       candidate.keys.includes(sequence.token) &&
-      (candidate.scope === scope || candidate.scope === "app") &&
-      ["enabled", "shortcut-only"].includes(candidate.availability(model))
+      ((sequence.token === "Control+r" &&
+        candidate.id === "refresh" &&
+        Option.isSome(model.person)) ||
+        ((candidate.scope === scope || candidate.scope === "app") &&
+          ["enabled", "shortcut-only"].includes(candidate.availability(model))))
   );
 
   const prefix =
@@ -73,13 +84,24 @@ const shiftedKeys = new Map([
   ["Digit0", "0"],
 ]);
 
+const literalControlRefresh = (event: KeyboardEvent): boolean =>
+  event.ctrlKey &&
+  !event.metaKey &&
+  !event.altKey &&
+  !event.shiftKey &&
+  event.key.toLowerCase() === "r";
+
 const keyboardInput = (
   event: KeyboardEvent,
   platform: string
 ): KeyboardInput | undefined => {
-  const mod = /Mac|iPhone|iPad/u.test(platform) ? event.metaKey : event.ctrlKey;
+  const control = literalControlRefresh(event);
 
-  if ((event.metaKey || event.ctrlKey) && !mod) {
+  const mod =
+    !control &&
+    (/Mac|iPhone|iPad/u.test(platform) ? event.metaKey : event.ctrlKey);
+
+  if ((event.metaKey || event.ctrlKey) && !mod && !control) {
     return undefined;
   }
 
@@ -92,7 +114,9 @@ const keyboardInput = (
     key = "t";
   }
 
-  return { alt: event.altKey, key, mod, shift: event.shiftKey };
+  const input = { alt: event.altKey, key, mod, shift: event.shiftKey };
+
+  return control ? { ...input, control: true } : input;
 };
 
 export const keyboardMessage = (
@@ -116,7 +140,7 @@ export const keyboardMessage = (
 
   if (
     scope === "text" &&
-    !["Mod+k", "Mod+f", "Shift+Mod+Enter"].includes(token)
+    !["Mod+k", "Mod+f", "Shift+Mod+Enter", "Control+r"].includes(token)
   ) {
     return Option.none();
   }
@@ -124,14 +148,14 @@ export const keyboardMessage = (
   if (
     model.keyboard.screen !== "closed" &&
     input.key !== "Escape" &&
-    !["Mod+k", "Mod+f"].includes(token)
+    !["Mod+k", "Mod+f", "Control+r"].includes(token)
   ) {
     return Option.none();
   }
 
   if (
     Predicate.isTagged(model.route, "Shortcuts") &&
-    !["Escape", "Mod+k", "Mod+f", "/", "?"].includes(token)
+    !["Escape", "Mod+k", "Mod+f", "/", "?", "Control+r"].includes(token)
   ) {
     return Option.none();
   }
@@ -154,6 +178,17 @@ export const observeKeyboard = (
   event: KeyboardEvent,
   now: number
 ): Option.Option<AppMessage> => {
+  if (
+    event.repeat &&
+    !event.isComposing &&
+    literalControlRefresh(event) &&
+    Option.isSome(model.person)
+  ) {
+    event.preventDefault();
+
+    return Option.none();
+  }
+
   const handled = keyboardMessage(model, event, now);
 
   if (Option.isSome(handled)) {
