@@ -139,6 +139,15 @@ export const chip = (
   const colors = chipColors(item.color, appearance.theme);
   const content = appearance.timedContent;
   const compact = content?.compact === true;
+  const statusStyle: Record<string, string> = {};
+
+  if (item.selected) {
+    statusStyle["--event-selected-primary-fill"] = colors.selectedPrimaryFill;
+  }
+
+  if (["declined", "unanswered", "unconfirmed"].includes(item.status)) {
+    statusStyle["--event-status-text"] = colors.statusText;
+  }
 
   return h.button(
     [
@@ -151,6 +160,7 @@ export const chip = (
         "--event-fill": colors.fill,
         "--event-selected-fill": colors.selectedFill,
         "--event-text": colors.text,
+        ...statusStyle,
         ...style,
         ...content?.style,
         "padding-left": `${5 + item.copies.length * 4 + (item.status === "tentative" ? 4 : 0)}px`,

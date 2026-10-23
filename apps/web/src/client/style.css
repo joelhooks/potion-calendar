@@ -668,11 +668,14 @@ h3 {
   white-space: nowrap;
   font-size: 10px;
 }
-.status-declined,
-.status-unanswered,
-.status-unconfirmed {
-  border: 1px dashed var(--event-border);
+.event-chip.status-declined,
+.event-chip.status-unanswered,
+.event-chip.status-unconfirmed {
+  border-width: 1px;
+  border-style: dashed;
+  border-color: var(--event-status-text);
   background: var(--surface);
+  color: var(--event-status-text);
 }
 .status-declined strong,
 .status-declined .event-time {
@@ -693,9 +696,9 @@ h3 {
   );
 }
 .event-chip.selected {
-  background: var(--event-selected-fill);
-  border-color: var(--event-text);
-  color: var(--event-text);
+  background: var(--event-selected-primary-fill);
+  border-color: #fff;
+  color: #fff;
   box-shadow: 0 0 0 1px var(--surface);
 }
 .now-line {
@@ -940,10 +943,13 @@ h3 {
 .month-item-timed .event-chip.status-declined,
 .month-item-timed .event-chip.status-unanswered,
 .month-item-timed .event-chip.status-unconfirmed {
-  border-color: var(--event-border);
+  border-color: var(--event-status-text);
 }
-.month-item-timed .event-chip.selected,
-.month-item-timed .event-chip:hover {
+.month-item-timed .event-chip.selected {
+  background: var(--event-selected-primary-fill);
+  border-color: #fff;
+}
+.month-item-timed .event-chip:hover:not(.selected) {
   background: var(--event-selected-fill);
 }
 .month-item-timed .resize-handle {
