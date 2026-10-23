@@ -3,6 +3,8 @@ const keyPart = (part: string, platform: string): string => {
 
   const labels = new Map([
     ["Mod", mac ? "⌘" : "Ctrl"],
+    ["Control", mac ? "⌃" : "Ctrl"],
+    ["Command", mac ? "⌘" : "Command"],
     ["Shift", mac ? "⇧" : "Shift"],
     ["Alt", mac ? "⌥" : "Alt"],
     ["Escape", "Esc"],
@@ -29,6 +31,26 @@ export const formatKey = (key: string, platform = navigator.platform): string =>
         .join(/Mac|iPhone|iPad/u.test(platform) ? "" : "+")
     )
     .join(" then ");
+
+export const globalShortcutBinding = (accelerator: string): string => {
+  const aliases = new Map([
+    ["alt", "Alt"],
+    ["option", "Alt"],
+    ["control", "Control"],
+    ["ctrl", "Control"],
+    ["command", "Command"],
+    ["cmd", "Command"],
+    ["meta", "Command"],
+    ["cmdorctrl", "Mod"],
+    ["commandorcontrol", "Mod"],
+    ["shift", "Shift"],
+  ]);
+
+  return accelerator
+    .split("+")
+    .map((part) => aliases.get(part.toLowerCase()) ?? part)
+    .join("+");
+};
 
 export const displayedKeyTokens = (
   key: string,

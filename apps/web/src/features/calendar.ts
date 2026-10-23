@@ -287,6 +287,7 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
             })
           ),
           h.Title("Create event (C)"),
+          h.Disabled(!model.calendar.calendars.some(writableCalendar)),
         ],
         ["Create"]
       ),

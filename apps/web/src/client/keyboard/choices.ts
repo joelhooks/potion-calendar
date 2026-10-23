@@ -84,7 +84,7 @@ export const actionScore = (action: KeyboardAction, input: string): number => {
 };
 
 export const shortcutMatches = (
-  action: KeyboardAction,
+  action: Pick<KeyboardAction, "title" | "keys" | "keywords">,
   input: string
 ): boolean => {
   const query = input.trim().toLowerCase();

@@ -680,7 +680,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
       availability: (model) =>
         model.calendar.calendars.some(writableCalendar)
           ? active(model)
-          : "disabled",
+          : "hidden",
       keywords: [{ text: "new meeting", weight: 0.8 }],
     }
   ),

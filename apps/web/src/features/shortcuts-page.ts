@@ -3,12 +3,14 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel } from "../client/app.js";
 import { shortcutMatches } from "../client/keyboard/choices.js";
-import { keyboardRegistry, keyHints } from "../client/keyboard/registry.js";
-import type { ShortcutSection } from "../client/keyboard/registry.js";
+import { formatKey } from "../client/keyboard/hints.js";
+import { shortcutReference } from "../client/keyboard/reference.js";
+import type { ShortcutReference } from "../client/keyboard/reference.js";
 import { Message } from "../client/message.js";
 import type { AppMessage } from "../client/message.js";
 
-export const shortcutSections: readonly ShortcutSection[] = [
+export const shortcutSections: readonly ShortcutReference["section"][] = [
+  "System-wide",
   "General",
   "Workflows",
   "Editing",
@@ -60,7 +62,7 @@ export const shortcutsPage = (
         h.Style({ "box-sizing": "border-box", padding: "10px", width: "100%" }),
       ]),
       ...shortcutSections.flatMap((section) => {
-        const actions = keyboardRegistry.filter(
+        const actions = shortcutReference(model).filter(
           (action) =>
             action.section === section &&
             action.keys.length > 0 &&
@@ -100,7 +102,7 @@ export const shortcutsPage = (
                               "white-space": "nowrap",
                             }),
                           ],
-                          [keyHints(action).join(" / ")]
+                          [action.keys.map((key) => formatKey(key)).join(" / ")]
                         ),
                       ]
                     )
