@@ -5,11 +5,15 @@ import { Mount } from "foldkit";
 import { Message } from "../message.js";
 import { attachPhoneShell } from "../phone-shell/mount.js";
 import type { PhoneShellMessage } from "../phone-shell/mount.js";
+import { attachPhoneRouteSheets } from "../phone-shell/route-dialogs.js";
+import type { PhoneRouteMessage } from "../phone-shell/route-dialogs.js";
 
 const cancelKeyboard =
   (
     queue: Queue.Queue<
-      ReturnType<typeof Message.KeyboardClose> | PhoneShellMessage,
+      | ReturnType<typeof Message.KeyboardClose>
+      | PhoneShellMessage
+      | PhoneRouteMessage,
       Cause.Done
     >
   ) =>
@@ -26,7 +30,9 @@ const cancelKeyboard =
 export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
   execute: ({ element }) =>
     Stream.callback<
-      ReturnType<typeof Message.KeyboardClose> | PhoneShellMessage
+      | ReturnType<typeof Message.KeyboardClose>
+      | PhoneShellMessage
+      | PhoneRouteMessage
     >((queue) =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -97,11 +103,19 @@ export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
             Queue.offerUnsafe(queue, message);
           });
 
-          return { cancel, disposePhoneShell, observer };
+          const disposePhoneRoutes = attachPhoneRouteSheets(
+            element,
+            (message) => {
+              Queue.offerUnsafe(queue, message);
+            }
+          );
+
+          return { cancel, disposePhoneRoutes, disposePhoneShell, observer };
         }),
-        ({ observer, cancel, disposePhoneShell }) =>
+        ({ observer, cancel, disposePhoneShell, disposePhoneRoutes }) =>
           Effect.sync(() => {
             observer.disconnect();
+            disposePhoneRoutes();
             disposePhoneShell();
             element.removeEventListener("cancel", cancel, true);
           })
@@ -111,5 +125,6 @@ export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
     Message.KeyboardClose,
     Message.MeasuredShellViewport,
     Message.PhoneShellClosed,
+    Message.RequestedRoute,
   ],
 });

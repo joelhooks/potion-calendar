@@ -3,6 +3,7 @@ import type { Cause } from "effect";
 import { Mount } from "foldkit";
 
 import { Message } from "../message.js";
+import { reconcileModalDialog } from "../phone-shell/dialog.js";
 import { EditorAction } from "./editor-action.js";
 
 const cancelDialog =
@@ -29,12 +30,33 @@ const cancelDialog =
 export const PrepareEditingDialogs = Mount.defineStream(
   "PrepareEditingDialogs",
   {
-    args: { person: Schema.Option(Schema.String) },
-    execute: ({ element, person }) =>
+    args: {
+      person: Schema.Option(Schema.String),
+      phone: Schema.optional(Schema.Boolean),
+    },
+    execute: ({ element, person, phone }) =>
       Stream.callback<ReturnType<typeof Message.EditingAction>>((queue) =>
         Effect.acquireRelease(
           Effect.sync(() => {
             const appliedFocus = new WeakMap<HTMLDialogElement, string>();
+
+            const disposePhone =
+              phone === true
+                ? reconcileModalDialog(element.closest("main") ?? element, {
+                    close: () => {
+                      Queue.offerUnsafe(
+                        queue,
+                        Message.EditingAction({
+                          action: EditorAction.cases.Cancel.make({}),
+                          personId: Option.getOrUndefined(person),
+                        })
+                      );
+                    },
+                    fallbackId: "command-menu-button",
+                    ownsEscape: false,
+                    selector: "dialog[data-editing-dialog]",
+                  })
+                : undefined;
 
             const openDialogs = () => {
               const keyboardOpen =
@@ -48,7 +70,7 @@ export const PrepareEditingDialogs = Mount.defineStream(
                   continue;
                 }
 
-                if (!dialog.open) {
+                if (!dialog.open && phone !== true) {
                   dialog.showModal();
                   appliedFocus.delete(dialog);
                 }
@@ -81,14 +103,19 @@ export const PrepareEditingDialogs = Mount.defineStream(
               childList: true,
               subtree: true,
             });
-            element.addEventListener("cancel", cancel, true);
+
+            if (phone !== true) {
+              element.addEventListener("cancel", cancel, true);
+            }
+
             openDialogs();
 
-            return { cancel, observer };
+            return { cancel, disposePhone, observer };
           }),
           (resource) =>
             Effect.sync(() => {
               resource.observer.disconnect();
+              resource.disposePhone?.();
               element.removeEventListener("cancel", resource.cancel, true);
             })
         )

@@ -13,7 +13,8 @@ import { resolvedTimeFormat } from "../layout/time-format.js";
 
 export const upcomingMeetingPanel = (
   model: AppModel,
-  h: HtmlBuilder<AppMessage>
+  h: HtmlBuilder<AppMessage>,
+  presentation: "panel" | "sheet" = "panel"
 ): readonly Html[] => {
   if (visibleEvents(model).some((event) => event.selected)) {
     return [];
@@ -45,7 +46,7 @@ export const upcomingMeetingPanel = (
           h.AriaLabel("Upcoming meeting"),
         ],
         [
-          h.h2([], ["Upcoming meeting"]),
+          ...(presentation === "sheet" ? [] : [h.h2([], ["Upcoming meeting"])]),
           ...notices,
           ...(AsyncData.isSuccess(read) || AsyncData.isRefreshing(read)
             ? [h.p([h.Role("status")], ["No upcoming meeting"])]
@@ -74,7 +75,9 @@ export const upcomingMeetingPanel = (
         h.AriaLabel(candidate.item.title),
       ],
       [
-        h.p([h.Class("muted upcoming-label")], ["Upcoming meeting"]),
+        ...(presentation === "sheet"
+          ? []
+          : [h.p([h.Class("muted upcoming-label")], ["Upcoming meeting"])]),
         ...notices,
         h.h2([h.Class("upcoming-title")], [candidate.item.title]),
         h.p([h.Class("detail-date")], [timing.date]),

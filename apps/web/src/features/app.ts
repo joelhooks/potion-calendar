@@ -19,6 +19,7 @@ import { isPhoneShell } from "../client/phone-shell/model.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { homeZone } from "../client/time-zones/model.js";
 import { visibleDays } from "../layout/navigation.js";
+import { CalendarRoute } from "../layout/route.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { bulkNotice, selectionRectangle } from "./bulk-actions.js";
 import { calendarRefreshNotices } from "./calendar-read-failures.js";
@@ -30,6 +31,7 @@ import { editorDialogs } from "./event-editor.js";
 import { gestureRefusalNotice } from "./gesture-refusal.js";
 import { icsExportNotice } from "./ics-export-notice.js";
 import { instantSaveNotice } from "./instant-save-notice.js";
+import { phoneDialogStyles, phoneRouteSheet } from "./phone-dialogs.js";
 import { phoneShellDialog, phoneToolbar } from "./phone-shell.js";
 import { reminderCards } from "./reminder-cards.js";
 import { searchPanel } from "./search.js";
@@ -227,7 +229,21 @@ const workspaceContent = (
   prepareMonth: typeof PrepareMonthViewport
 ): Html => {
   if (Predicate.isTagged(model.route, "Search")) {
-    return searchPanel(model, h);
+    const panel = searchPanel(model, h);
+
+    return isPhoneShell(model)
+      ? phoneRouteSheet(h, {
+          body: [panel],
+          close: Message.RequestedRoute({
+            replace: true,
+            route: CalendarRoute.make({}),
+          }),
+          closeLabel: "Close search",
+          id: "phone-search-dialog",
+          initialFocus: "search-query",
+          title: "Search",
+        })
+      : panel;
   }
 
   return model.calendar.navigation.mode === "month"
@@ -252,9 +268,24 @@ const routedPage = (
   }
 
   if (Predicate.isTagged(model.route, "Settings")) {
-    return model.route.page === "calendar"
-      ? settingsPage(model, h, "calendar", model.route.accountId)
-      : settingsPage(model, h, model.route.page);
+    const page =
+      model.route.page === "calendar"
+        ? settingsPage(model, h, "calendar", model.route.accountId)
+        : settingsPage(model, h, model.route.page);
+
+    return isPhoneShell(model)
+      ? phoneRouteSheet(h, {
+          body: [page],
+          close: Message.RequestedRoute({
+            replace: true,
+            route: CalendarRoute.make({}),
+          }),
+          closeLabel: "Close settings",
+          id: "phone-settings-dialog",
+          initialFocus: "phone-settings-dialog-close",
+          title: "Settings",
+        })
+      : page;
   }
 
   return h.div(
@@ -365,10 +396,15 @@ export const view = (
                 ...selectionCommandStatus(model, h),
               ],
       }),
+      ...phoneDialogStyles(model, h),
       h.div(
         [
           h.Style({ display: "contents" }),
-          h.OnMount(PrepareEditingDialogs({ person: model.person })),
+          h.OnMount(
+            isPhoneShell(model)
+              ? PrepareEditingDialogs({ person: model.person, phone: true })
+              : PrepareEditingDialogs({ person: model.person })
+          ),
         ],
         editingLayers(model, h)
       ),

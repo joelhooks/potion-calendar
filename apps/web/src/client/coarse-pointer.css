@@ -1,0 +1,7 @@
+@media (pointer: coarse) {
+  [data-command-trigger-hint],
+  #keyboard-choices button > span:last-child,
+  #keyboard-command-dialog > footer {
+    display: none !important;
+  }
+}

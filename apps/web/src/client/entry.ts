@@ -32,6 +32,7 @@ import { occurrenceSubscriptions } from "./selection-commands/subscription.js";
 import { subscriptions } from "./subscriptions.js";
 
 import "./style.css";
+import "./coarse-pointer.css";
 
 const editingServices = deletionWriterLayer.pipe(
   Layer.provideMerge(CalendarEditingClient.layer("available"))

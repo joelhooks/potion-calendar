@@ -1,6 +1,7 @@
 export interface ModalDialogOptions {
   readonly close: () => void;
   readonly fallbackId: string;
+  readonly ownsEscape?: boolean;
   readonly selector: string;
 }
 
@@ -47,6 +48,12 @@ export const reconcileModalDialog = (
     if (!next.open && next.isConnected) {
       next.showModal();
     }
+
+    const { initialFocus } = next.dataset;
+
+    if (initialFocus !== undefined) {
+      next.querySelector<HTMLElement>(`#${initialFocus}`)?.focus();
+    }
   };
 
   const cancel = (event: Event) => {
@@ -79,6 +86,7 @@ export const reconcileModalDialog = (
 
   const keydown = (event: Event) => {
     if (
+      options.ownsEscape !== false &&
       event instanceof KeyboardEvent &&
       event.key === "Escape" &&
       !event.isComposing &&

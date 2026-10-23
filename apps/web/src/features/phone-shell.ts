@@ -162,7 +162,8 @@ export const phoneShellDialog = (
     Match.when("upcoming", () =>
       upcomingMeetingPanel(
         { ...model, calendar: { ...model.calendar, selected: [] } },
-        h
+        h,
+        "sheet"
       )
     ),
     Match.exhaustive
