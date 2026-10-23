@@ -13,6 +13,8 @@ import { RsvpResult } from "../editing/rsvp-machine.js";
 import { EditingNotice } from "../editing/runtime.js";
 import { noticeAffectsSelection } from "../live/socket.js";
 import type { AppMessage } from "../message.js";
+import { retainedReminderEvents } from "../reminders/retained.js";
+import { reminderSnoozeLookback } from "../reminders/snooze-lookback.js";
 import {
   initialUpcoming,
   upcomingHorizonMilliseconds,
@@ -93,13 +95,24 @@ const beginUpcoming = (
                 end: DateTime.formatIso(
                   DateTime.makeUnsafe(now + upcomingHorizonMilliseconds)
                 ),
-                start: DateTime.formatIso(DateTime.makeUnsafe(now)),
+                start: DateTime.formatIso(
+                  DateTime.makeUnsafe(
+                    Math.min(
+                      now,
+                      Option.getOrElse(
+                        reminderSnoozeLookback(model.reminders.context, now),
+                        () => now
+                      )
+                    )
+                  )
+                ),
               },
               request,
             }),
       refreshAt:
         (Math.floor(now / upcomingRefreshMilliseconds) + 1) *
         upcomingRefreshMilliseconds,
+      reminderEvents: model.upcoming.reminderEvents ?? [],
       request,
     },
   };
@@ -252,8 +265,24 @@ export const withUpcoming = <R>(
     calendars
   );
 
+  const lookback = reminderSnoozeLookback(
+    next.reminders.context,
+    next.calendar.now
+  );
+
+  const query = Option.getOrUndefined(next.upcoming.query);
+
+  const snoozeWindowChanged =
+    calendars.length > 0 &&
+    Option.isSome(lookback) &&
+    (query === undefined ||
+      DateTime.toEpochMillis(DateTime.makeUnsafe(query.range.start)) >
+        lookback.value);
+
   const triggered =
-    selectionChanged || refreshTriggered(previous, next, message, calendars);
+    selectionChanged ||
+    snoozeWindowChanged ||
+    refreshTriggered(previous, next, message, calendars);
 
   const live = liveRefresh(next, message, calendars);
 
@@ -315,6 +344,11 @@ export const receiveUpcoming = (
             request: model.upcoming.query.value.request,
           }),
           data: RemoteEvents.Success({ data: message.result }),
+          reminderEvents: retainedReminderEvents(
+            model,
+            message.result.events,
+            model.upcoming.query.value.range
+          ),
         },
       }
     : model;

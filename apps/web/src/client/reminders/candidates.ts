@@ -127,6 +127,10 @@ export const eligibleNotificationEvent = (
   candidate.end > now &&
   eligibleSavedEvent(candidate.event, candidate.calendar);
 
+export const eligibleSnoozedReminder = (
+  candidate: ReminderCandidateValue
+): boolean => eligibleSavedEvent(candidate.event, candidate.calendar);
+
 export const eligibleReminder = (
   candidate: ReminderCandidateValue,
   now: number

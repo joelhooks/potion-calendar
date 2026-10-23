@@ -3,7 +3,10 @@ import { Option } from "effect";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppModel } from "../src/client/app.js";
-import { NotificationEvent } from "../src/client/reminders/model.js";
+import {
+  NotificationEvent,
+  ReminderSnoozeRestore,
+} from "../src/client/reminders/model.js";
 import type { NotificationPermission } from "../src/client/reminders/model.js";
 import {
   savedUpcomingEvent,
@@ -19,7 +22,8 @@ export const reminderCardScene = (
   theme: "light" | "dark",
   width: number,
   permission: typeof NotificationPermission.Type = "granted",
-  availability: AppModel["desktop"]["availability"] = "unavailable"
+  availability: AppModel["desktop"]["availability"] = "unavailable",
+  snoozeRestore: "ready" | "failed" | "loading" = "ready"
 ) => {
   const base = upcomingFixture();
 
@@ -57,8 +61,24 @@ export const reminderCardScene = (
     })
   ).model;
 
+  const restoreOutcome =
+    snoozeRestore === "failed"
+      ? ReminderSnoozeRestore.cases.Failed.make({})
+      : ReminderSnoozeRestore.cases.Restored.make({ entries: [] });
+
+  const restored =
+    snoozeRestore === "loading"
+      ? accepted
+      : update(
+          accepted,
+          Message.ReminderSnoozesRestored({
+            outcome: restoreOutcome,
+            personId: upcomingPerson,
+          })
+        ).model;
+
   const permitted = update(
-    accepted,
+    restored,
     Message.ObservedNotification({
       event: NotificationEvent.cases.Permission.make({
         permission,

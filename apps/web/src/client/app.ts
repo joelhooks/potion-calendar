@@ -143,6 +143,14 @@ import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
 import { selectReminderNotification } from "./reminders/selection.js";
 import {
+  completeReminderSnoozeCleanup,
+  completeReminderSnoozeClock,
+  completeReminderSnoozeRestore,
+  completeReminderSnoozeSave,
+  requestReminderSnooze,
+  reminderSnoozeDisclosureChanged,
+} from "./reminders/snooze.js";
+import {
   completeReminderDelivery,
   completeReminderPermission,
   observeReminder,
@@ -1482,6 +1490,15 @@ const updateCore = (
     ReminderEffectCompleted: () => ({ model }),
     ReminderPermissionCompleted: (result) =>
       completeReminderPermission(model, result),
+    ReminderSnoozeCacheCleaned: (result) =>
+      completeReminderSnoozeCleanup(model, result),
+    ReminderSnoozeClockSampled: (result) =>
+      completeReminderSnoozeClock(model, result, dispatch),
+    ReminderSnoozeDisclosureChanged: (result) =>
+      reminderSnoozeDisclosureChanged(model, result),
+    ReminderSnoozeSaved: (result) => completeReminderSnoozeSave(model, result),
+    ReminderSnoozesRestored: (result) =>
+      completeReminderSnoozeRestore(model, result, dispatch),
     RequestedDesktop: ({ request }) => {
       const desktop = beginDesktopRequest(model.desktop);
 
@@ -1522,6 +1539,7 @@ const updateCore = (
           model: { ...model, error: Option.none() },
         }),
       }),
+    RequestedReminderSnooze: (result) => requestReminderSnooze(model, result),
     RequestedRoute: ({ route, replace }) => ({
       commands: [NavigateRoute({ replace, route })],
       model: syncSearchRoute(closeKeyboard(model), route),

@@ -7,7 +7,11 @@ import {
   reminderOccurrence,
   resolveReminderCard,
 } from "./action-machine.js";
-import { eligibleNotificationEvent, eligibleReminder } from "./candidates.js";
+import {
+  eligibleNotificationEvent,
+  eligibleReminder,
+  eligibleSnoozedReminder,
+} from "./candidates.js";
 import type {
   ReminderCandidateValue,
   ReminderMemory,
@@ -165,16 +169,68 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
     eligibleNotificationEvent(candidate, scan.now)
   );
 
+  const snoozes = memory.snoozes ?? [];
+  const pendingIdentities = new Set(snoozes.map((entry) => entry.identity));
+
+  const retainedIdentities = new Set([
+    ...pendingIdentities,
+    ...memory.active
+      .filter((entry) => entry.card?.snoozedUntil !== undefined)
+      .map((entry) => entry.candidate.identity),
+  ]);
+
   const current = new Map(
-    candidates.map((candidate) => [candidate.identity, candidate])
+    scan.candidates
+      .filter(
+        (candidate) =>
+          eligibleNotificationEvent(candidate, scan.now) ||
+          (retainedIdentities.has(candidate.identity) &&
+            eligibleSnoozedReminder(candidate))
+      )
+      .map((candidate) => [candidate.identity, candidate])
   );
+
+  const dueSnoozes =
+    scan.webCards === true
+      ? snoozes.filter(
+          (entry) =>
+            entry.due <= scan.now &&
+            (scan.snoozeRangeReady !== false || current.has(entry.identity))
+        )
+      : [];
+
+  const snoozeProposals: NotificationContentValue[] = dueSnoozes.flatMap(
+    (entry) => {
+      const candidate = current.get(entry.identity);
+
+      return candidate === undefined
+        ? []
+        : [
+            {
+              candidate,
+              card: {
+                kind: "reminder",
+                snoozedUntil: entry.due,
+                state: "active",
+              },
+              id: JSON.stringify(["snooze", entry.identity, entry.due]),
+              personId: scan.personId,
+              title: `Reminder: ${candidate.title}`,
+            },
+          ];
+    }
+  );
+
+  const snoozeIds = new Set(snoozeProposals.map((entry) => entry.id));
 
   const active = memory.active.flatMap((notification) => {
     const candidate = current.get(notification.candidate.identity);
 
     if (
       (!permitted && notification.card === undefined) ||
-      (notification.card !== undefined && scan.webCards !== true) ||
+      (notification.card !== undefined &&
+        (scan.webCards !== true ||
+          pendingIdentities.has(notification.candidate.identity))) ||
       reminderCardExpired(notification, scan.now) ||
       candidate === undefined ||
       (notification.card !== undefined &&
@@ -229,6 +285,7 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
       : [];
 
   const popupIds = new Set(proposals.map((notification) => notification.id));
+  proposals.unshift(...snoozeProposals);
 
   if (
     permitted &&
@@ -258,6 +315,28 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
     }
 
     fired.add(notification.id);
+
+    if (
+      popupIds.has(notification.id) &&
+      pendingIdentities.has(notification.candidate.identity)
+    ) {
+      return [];
+    }
+
+    if (snoozeIds.has(notification.id)) {
+      const occurrence = reminderOccurrence(
+        notification.personId,
+        notification.candidate
+      );
+
+      if (selected.has(occurrence)) {
+        return [];
+      }
+
+      selected.add(occurrence);
+
+      return [notification];
+    }
 
     if (scan.webCards !== true || !popupIds.has(notification.id)) {
       return [notification];
@@ -301,5 +380,6 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
     fired: [...fired],
     lastChecked: Option.some(checked),
     scope: scan.scope,
+    snoozes: snoozes.filter((entry) => !dueSnoozes.includes(entry)),
   };
 };

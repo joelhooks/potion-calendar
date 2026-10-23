@@ -1,4 +1,8 @@
-import { CalendarRef, Range } from "@calendar/calendar/contracts";
+import {
+  CalendarEvent,
+  CalendarRef,
+  Range,
+} from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
 import { RemoteEvents } from "../calendar-state.js";
@@ -25,6 +29,7 @@ export const Upcoming = Schema.Struct({
   deferredRefresh: Schema.Option(UpcomingReceipt.fields.origin),
   query: Schema.Option(UpcomingQuery),
   refreshAt: Schema.Finite,
+  reminderEvents: Schema.optional(Schema.Array(CalendarEvent)),
   request: Schema.Int,
 });
 
@@ -40,5 +45,6 @@ export const initialUpcoming = (request = 0): UpcomingValue => ({
   deferredRefresh: Option.none(),
   query: Option.none(),
   refreshAt: 0,
+  reminderEvents: [],
   request,
 });

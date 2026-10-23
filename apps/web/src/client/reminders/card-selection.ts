@@ -5,7 +5,10 @@ import { participantEmail } from "../../layout/email-participants.js";
 import type { ParticipantEmail } from "../../layout/email-participants.js";
 import type { AppModel } from "../app.js";
 import { reminderCardExpired } from "./action-machine.js";
-import { eligibleNotificationEvent } from "./candidates.js";
+import {
+  eligibleNotificationEvent,
+  eligibleSnoozedReminder,
+} from "./candidates.js";
 import type { NotificationContentValue } from "./model.js";
 import { reminderSnapshot } from "./source.js";
 
@@ -37,7 +40,9 @@ export const currentReminderCard = (
 
   return active !== undefined &&
     candidate !== undefined &&
-    eligibleNotificationEvent(candidate, model.calendar.now) &&
+    (active.card?.snoozedUntil === undefined
+      ? eligibleNotificationEvent(candidate, model.calendar.now)
+      : eligibleSnoozedReminder(candidate)) &&
     !reminderCardExpired(active, model.calendar.now)
     ? { ...active, candidate }
     : undefined;

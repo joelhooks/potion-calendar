@@ -2,6 +2,8 @@ import { Option } from "effect";
 
 import type { AppModel, update } from "../app.js";
 import { initialReminderState, stepReminder } from "./machine.js";
+import { ReminderSnoozeStorage } from "./model.js";
+import { releaseResolvedReminderEvents } from "./retained.js";
 import { reminderSnapshot } from "./source.js";
 import { commitReminders } from "./update.js";
 
@@ -17,7 +19,10 @@ const inputsChanged = (previous: AppModel, next: AppModel): boolean =>
   previous.session !== next.session ||
   previous.settings !== next.settings ||
   previous.desktop.availability !== next.desktop.availability ||
-  previous.reminders.context.permission !== next.reminders.context.permission;
+  previous.reminders.context.permission !== next.reminders.context.permission ||
+  previous.reminders.context.snoozes !== next.reminders.context.snoozes ||
+  previous.reminders.context.snoozeStorage !==
+    next.reminders.context.snoozeStorage;
 
 const startReminders = (previous: AppModel, model: AppModel): Result => {
   const samePerson =
@@ -27,6 +32,12 @@ const startReminders = (previous: AppModel, model: AppModel): Result => {
   const memory = samePerson
     ? previous.reminders.context
     : model.reminders.context;
+
+  const cache =
+    model.reminders.context.snoozeStorage === undefined ||
+    ReminderSnoozeStorage.guards.Unloaded(model.reminders.context.snoozeStorage)
+      ? memory
+      : model.reminders.context;
 
   return commitReminders(
     model,
@@ -39,6 +50,9 @@ const startReminders = (previous: AppModel, model: AppModel): Result => {
           fired: memory.fired,
           lastChecked: memory.lastChecked,
           permission: memory.permission,
+          snoozeStorage:
+            cache.snoozeStorage ?? model.reminders.context.snoozeStorage,
+          snoozes: cache.snoozes ?? [],
         },
       },
       { now: model.calendar.now, type: "START" }
@@ -69,6 +83,8 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
   }
 
   if (Option.isNone(model.person)) {
+    model = releaseResolvedReminderEvents(model);
+
     return commands.length === 0
       ? { ...result, model }
       : { ...result, commands, model };
@@ -82,6 +98,19 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
     commands.push(...(started.commands ?? []));
   }
 
+  if (
+    model.reminders.context.snoozeStorage === undefined ||
+    ReminderSnoozeStorage.guards.Unloaded(model.reminders.context.snoozeStorage)
+  ) {
+    const restoring = commitReminders(
+      model,
+      stepReminder(model.reminders, { type: "SNOOZE_LOADING" })
+    );
+
+    ({ model } = restoring);
+    commands.push(...(restoring.commands ?? []));
+  }
+
   if (starting || inputsChanged(previous, model)) {
     const snapshot = reminderSnapshot(model);
 
@@ -90,6 +119,7 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
         model,
         stepReminder(model.reminders, {
           ...snapshot,
+          snoozeRangeReady: snapshot.snoozeRangeReady,
           type: "SCAN",
           webCards: model.desktop.availability === "unavailable",
         })
@@ -99,6 +129,8 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
       commands.push(...(scanned.commands ?? []));
     }
   }
+
+  model = releaseResolvedReminderEvents(model);
 
   return commands.length === 0
     ? { ...result, model }

@@ -100,6 +100,7 @@ export const scanReminders = (
     now: reminderEpoch + minutes * 60_000,
     personId: "fixture-person",
     scope: "fixture-selection",
+    snoozeRangeReady: undefined,
     type: "SCAN",
     webCards: false,
     ...changes,

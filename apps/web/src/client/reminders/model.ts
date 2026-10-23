@@ -1,5 +1,5 @@
 import { Calendar, CalendarEvent } from "@calendar/calendar/contracts";
-import { Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 
 export const NotificationPermission = Schema.Literals([
   "default",
@@ -28,8 +28,74 @@ export const ReminderCardAction = Schema.Literals([
   "dismiss",
 ]);
 
+export const ReminderSnooze = Schema.Struct({
+  due: Schema.Finite.check(
+    Schema.isBetween({
+      maximum: 8_640_000_000_000_000,
+      minimum: -8_640_000_000_000_000,
+    })
+  ),
+  identity: Schema.String,
+});
+
+export const reminderSnoozeMinutes = [1, 5, 15, 30, 60, 1440] as const;
+
+export const reminderSnoozeElementId = (personId: string, id: string): string =>
+  `reminder-snooze:${JSON.stringify([personId, id])}`;
+
+export const ReminderSnoozeChoice = Schema.Literals([
+  ...reminderSnoozeMinutes,
+  "start",
+]);
+
+export const ReminderSnoozeRestore = Schema.TaggedUnion({
+  Failed: {},
+  Restored: { entries: Schema.Array(ReminderSnooze) },
+});
+
+export const ReminderSnoozeStorage = Schema.TaggedUnion({
+  Failed: {},
+  Loading: {},
+  Ready: {},
+  Sampling: {
+    choice: ReminderSnoozeChoice,
+    id: Schema.String,
+    identity: Schema.String,
+    persistence: Schema.Literals(["durable", "session"]),
+  },
+  Saving: { entry: ReminderSnooze, id: Schema.String },
+  Unloaded: {},
+});
+
+export const reminderSnoozeCanStart = (
+  storage: typeof ReminderSnoozeStorage.Type | undefined
+): boolean =>
+  ReminderSnoozeStorage.guards.Ready(storage) ||
+  ReminderSnoozeStorage.guards.Failed(storage);
+
+export const reminderSnoozeIsSessionOnly = (
+  storage: typeof ReminderSnoozeStorage.Type | undefined
+): boolean =>
+  ReminderSnoozeStorage.guards.Failed(storage) ||
+  (ReminderSnoozeStorage.guards.Sampling(storage) &&
+    storage.persistence === "session");
+
+export const reminderSnoozeOperationIdentity = (
+  storage: typeof ReminderSnoozeStorage.Type | undefined
+): Option.Option<string> =>
+  Match.value(storage).pipe(
+    Match.when(ReminderSnoozeStorage.guards.Sampling, (operation) =>
+      Option.some(operation.identity)
+    ),
+    Match.when(ReminderSnoozeStorage.guards.Saving, (operation) =>
+      Option.some(operation.entry.identity)
+    ),
+    Match.orElse(() => Option.none())
+  );
+
 export const ReminderCard = Schema.Struct({
   kind: Schema.Literals(["upcoming", "reminder"]),
+  snoozedUntil: Schema.optional(Schema.Finite),
   state: Schema.Literals(["active", "resolved"]),
 });
 
@@ -83,6 +149,8 @@ export const ReminderMemory = Schema.Struct({
   lastChecked: Schema.Option(Schema.Finite),
   permission: NotificationPermission,
   scope: Schema.String,
+  snoozeStorage: Schema.optional(ReminderSnoozeStorage),
+  snoozes: Schema.optional(Schema.Array(ReminderSnooze)),
 });
 
 export const ReminderState = Schema.Struct({
@@ -110,5 +178,6 @@ export const ReminderScan = Schema.Struct({
   now: Schema.Finite,
   personId: Schema.String,
   scope: Schema.String,
+  snoozeRangeReady: Schema.optional(Schema.Boolean),
   webCards: Schema.optional(Schema.Boolean),
 });

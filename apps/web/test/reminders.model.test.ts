@@ -336,6 +336,7 @@ it.effect.prop(
           now: reminderEpoch + now * 60_000,
           personId: "fixture-person",
           scope: "generated-selection",
+          snoozeRangeReady: undefined,
           type: "SCAN",
           webCards: false,
         });

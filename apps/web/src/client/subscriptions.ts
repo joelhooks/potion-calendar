@@ -21,6 +21,10 @@ import type { AppMessage } from "./message.js";
 import { monthHostKey } from "./month/host.js";
 import type { MonthRuntime } from "./month/runtime.js";
 import { monthScrollStream } from "./month/subscription.js";
+import {
+  reminderSnoozeWakeDependencies,
+  reminderSnoozeWakeStream,
+} from "./reminders/snooze-clock.js";
 import { reminderNotificationStream } from "./reminders/subscription.js";
 import { searchInteractions } from "./search/browser.js";
 import { SearchTask } from "./search/model.js";
@@ -139,6 +143,14 @@ export const subscriptions = Subscription.make<
         Stream.map(() => Message.PageHidden())
       )
     )
+  ),
+  reminderSnoozeWake: entry(
+    { due: Schema.Option(Schema.Finite), person: Schema.Option(Schema.String) },
+    {
+      dependenciesToStream: ({ due, person }) =>
+        Option.isNone(person) ? Stream.empty : reminderSnoozeWakeStream(due),
+      modelToDependencies: reminderSnoozeWakeDependencies,
+    }
   ),
   reminders: entry(
     { person: Schema.Option(Schema.String) },

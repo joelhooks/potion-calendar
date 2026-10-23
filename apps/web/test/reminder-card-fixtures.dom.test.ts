@@ -6,11 +6,15 @@ import { renderToString } from "foldkit/experimental/server";
 import { afterEach, vi } from "vitest";
 
 import { browserNotifications } from "../src/client/reminders/browser.js";
+import { ReminderSnoozeStorage } from "../src/client/reminders/model.js";
 import type { NotificationEvent } from "../src/client/reminders/model.js";
 import { view } from "../src/features/app.js";
 import { reminderCardScene } from "./reminder-card-fixture.js";
 import type { ReminderCardScene } from "./reminder-card-fixture.js";
-import { reminderCardProofScript } from "./reminder-card-proof.js";
+import {
+  executeReminderCardProofWithStandInBoxes,
+  reminderCardProofScript,
+} from "./reminder-card-proof.js";
 import { upcomingNow } from "./upcoming-fixture.js";
 
 const scenes: readonly ReminderCardScene[] = [
@@ -25,6 +29,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+const assertBrokenReminderCardProofs = (
+  saved: string,
+  script: string,
+  width: number
+): void => {
+  for (const violation of ["missing", "open", "disabled-lifecycle"] as const) {
+    const broken = new DOMParser().parseFromString(saved, "text/html");
+    const snooze = broken.querySelector("details.reminder-snooze");
+    let reason = "Exactly one Snooze disclosure";
+
+    if (violation === "missing") {
+      snooze?.remove();
+    } else if (violation === "open") {
+      snooze?.setAttribute("open", "");
+      reason = "Snooze disclosure must initially be closed";
+    } else {
+      broken
+        .querySelector(".reminder-card .meeting-actions button")
+        ?.setAttribute("disabled", "");
+      reason = "Action is disabled";
+    }
+
+    expect(() => {
+      executeReminderCardProofWithStandInBoxes(broken, script, width);
+    }).toThrow(reason);
+  }
+};
 
 it.effect(
   "exports twelve actual-root reminder and prompt fixtures with the exact proof and one native-adapter handoff each",
@@ -64,6 +96,11 @@ it.effect(
                 (command) => command.name === "DeliverReminderNotification"
               )
             ).toHaveLength(1);
+            expect(
+              ReminderSnoozeStorage.guards.Ready(
+                result.model.reminders.context.snoozeStorage
+              )
+            ).toBe(true);
             const [notification] = result.model.reminders.context.active;
 
             if (notification?.card === undefined) {
@@ -106,6 +143,8 @@ it.effect(
                 scene === "reminder"
                   ? "Read the project brief"
                   : "Weekly project review",
+              untilStart:
+                result.model.calendar.now < notification.candidate.start,
               width,
             });
 
@@ -127,6 +166,43 @@ it.effect(
             expect(proofDocument.querySelector("script")?.textContent).toBe(
               script
             );
+
+            const disclosure = proofDocument.querySelector(
+              "details.reminder-snooze"
+            );
+
+            expect(disclosure).not.toBeNull();
+            expect(disclosure?.hasAttribute("open")).toBe(false);
+            expect(
+              disclosure?.querySelectorAll("button[disabled]")
+            ).toHaveLength(0);
+            expect(
+              [...(disclosure?.querySelectorAll("button") ?? [])].map(
+                (button) => button.textContent?.trim()
+              )
+            ).toEqual([
+              "1 minute",
+              "5 minutes",
+              "15 minutes",
+              "30 minutes",
+              "60 minutes",
+              "1440 minutes",
+              ...(result.model.calendar.now < notification.candidate.start
+                ? ["Until start"]
+                : []),
+            ]);
+            expect(() => {
+              executeReminderCardProofWithStandInBoxes(
+                proofDocument,
+                script,
+                width
+              );
+            }).not.toThrow();
+            expect(
+              proofDocument.documentElement.dataset.reminderCardProof
+            ).toBe("pass");
+
+            assertBrokenReminderCardProofs(saved, script, width);
             exported += 1;
             vi.restoreAllMocks();
             vi.unstubAllGlobals();

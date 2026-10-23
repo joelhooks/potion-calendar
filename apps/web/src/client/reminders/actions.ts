@@ -10,6 +10,7 @@ import {
   currentReminderCard,
   reminderParticipantEmail,
 } from "./card-selection.js";
+import { reminderSnoozeOperationIdentity } from "./model.js";
 import type { ReminderCardAction } from "./model.js";
 import { selectReminderNotification } from "./selection.js";
 import { resolveReminderPresentation } from "./update.js";
@@ -26,6 +27,17 @@ export const actOnReminderCard = (
   const notification = currentReminderCard(model, personId, id);
 
   if (notification === undefined) {
+    return { model };
+  }
+
+  const storage = model.reminders.context.snoozeStorage;
+
+  if (
+    Option.contains(
+      reminderSnoozeOperationIdentity(storage),
+      notification.candidate.identity
+    )
+  ) {
     return { model };
   }
 

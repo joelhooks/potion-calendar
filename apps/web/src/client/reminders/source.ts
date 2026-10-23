@@ -1,11 +1,11 @@
-import { Option } from "effect";
+import { DateTime, Option } from "effect";
 import { AsyncData } from "foldkit";
 
-import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { upcomingSelection } from "../upcoming/update.js";
-import { reminderCandidates } from "./candidates.js";
+import { acceptedReminderCandidates } from "./accepted-candidates.js";
 import type { ReminderScan } from "./model.js";
+import { reminderSnoozeLookback } from "./snooze-lookback.js";
 
 export const reminderSnapshot = (
   model: AppModel
@@ -15,28 +15,30 @@ export const reminderSnapshot = (
   }
 
   const saved = AsyncData.getData(model.upcoming.data);
-  const session = Option.getOrUndefined(AsyncData.getData(model.session));
-  const accounts = session?.accounts ?? [];
 
-  const primaryAccount =
-    accounts.find((account) => account.email === session?.user.email)?.id ??
-    accounts[0]?.id;
+  const lookback = reminderSnoozeLookback(
+    model.reminders.context,
+    model.calendar.now
+  );
+
+  const query = Option.getOrUndefined(model.upcoming.query);
+  const accepted = Option.getOrUndefined(model.upcoming.accepted);
+
+  const snoozeRangeReady =
+    Option.isNone(lookback) ||
+    (query === undefined && AsyncData.isSuccess(model.upcoming.data)) ||
+    (query !== undefined &&
+      accepted?.request === query.request &&
+      DateTime.toEpochMillis(DateTime.makeUnsafe(query.range.start)) <=
+        lookback.value);
 
   return {
     accepted: Option.isSome(saved) ? model.upcoming.accepted : Option.none(),
-    candidates: reminderCandidates({
-      accounts: accounts.map((account) => account.id),
-      calendars: model.calendar.calendars,
-      events: Option.isSome(saved) ? saved.value.events : [],
-      format: resolvedTimeFormat(model),
-      hidden: model.calendar.hidden,
-      now: model.calendar.now,
-      primaryAccount,
-      zone: model.calendar.zone,
-    }),
+    candidates: acceptedReminderCandidates(model),
     eventInvites: model.settings.eventInvites,
     now: model.calendar.now,
     personId: model.person.value,
     scope: JSON.stringify([model.person.value, upcomingSelection(model)]),
+    snoozeRangeReady,
   };
 };

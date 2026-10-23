@@ -50,7 +50,10 @@ export const browserNotifications = (): NotificationPortService => {
       return yield* new NotificationFailure({ reason: "permission" });
     }
 
-    if (content.candidate.end <= (yield* Clock.currentTimeMillis)) {
+    if (
+      content.card?.snoozedUntil === undefined &&
+      content.candidate.end <= (yield* Clock.currentTimeMillis)
+    ) {
       return yield* new NotificationFailure({ reason: "expired" });
     }
 

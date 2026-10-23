@@ -54,7 +54,9 @@ export const executeSearchMoreProofWithStandInBoxes = (
 ): Document => {
   const document = new DOMParser().parseFromString(html, "text/html");
 
-  for (const button of document.querySelectorAll("button")) {
+  for (const button of document.querySelectorAll<HTMLButtonElement>(
+    '#search-results [data-search-page-controls="true"] button'
+  )) {
     button.focus = () => {
       Object.defineProperty(document, "activeElement", {
         configurable: true,

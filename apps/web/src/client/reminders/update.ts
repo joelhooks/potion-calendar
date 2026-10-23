@@ -9,42 +9,71 @@ import {
   RequestReminderPermission,
 } from "./commands.js";
 import { stepReminder } from "./machine.js";
-import { NotificationEvent, PermissionOutcome } from "./model.js";
+import {
+  NotificationEvent,
+  PermissionOutcome,
+  reminderSnoozeIsSessionOnly,
+} from "./model.js";
 import type { ReminderState } from "./model.js";
+import { RemoveReminderSnoozes } from "./snooze-commands.js";
 
 type Result = ReturnType<typeof update>;
 
 export const commitReminders = (
   model: AppModel,
   state: typeof ReminderState.Type
-): Result => ({
-  commands: Option.isSome(model.person)
-    ? [
-        ...(state.context.close.length === 0
-          ? []
-          : [
-              CloseReminderNotifications({
-                ids: state.context.close,
-                personId: model.person.value,
-              }),
-            ]),
-        ...state.context.deliveries
-          .filter(
-            (notification) =>
-              notification.card === undefined ||
-              state.context.permission === "granted"
-          )
-          .map((notification) => DeliverReminderNotification({ notification })),
-      ]
-    : [],
-  model: {
-    ...model,
-    reminders: {
-      ...state,
-      context: { ...state.context, close: [], deliveries: [] },
+): Result => {
+  const removed =
+    state.value === "stopped"
+      ? []
+      : (model.reminders.context.snoozes ?? []).filter(
+          (entry) =>
+            !(state.context.snoozes ?? []).some(
+              (next) =>
+                next.identity === entry.identity && next.due === entry.due
+            )
+        );
+
+  return {
+    commands: Option.isSome(model.person)
+      ? [
+          ...(removed.length === 0 ||
+          reminderSnoozeIsSessionOnly(state.context.snoozeStorage)
+            ? []
+            : [
+                RemoveReminderSnoozes({
+                  entries: removed,
+                  personId: model.person.value,
+                }),
+              ]),
+          ...(state.context.close.length === 0
+            ? []
+            : [
+                CloseReminderNotifications({
+                  ids: state.context.close,
+                  personId: model.person.value,
+                }),
+              ]),
+          ...state.context.deliveries
+            .filter(
+              (notification) =>
+                notification.card === undefined ||
+                state.context.permission === "granted"
+            )
+            .map((notification) =>
+              DeliverReminderNotification({ notification })
+            ),
+        ]
+      : [],
+    model: {
+      ...model,
+      reminders: {
+        ...state,
+        context: { ...state.context, close: [], deliveries: [] },
+      },
     },
-  },
-});
+  };
+};
 
 export const resolveReminderPresentation = (
   model: AppModel,

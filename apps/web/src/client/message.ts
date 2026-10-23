@@ -31,6 +31,9 @@ import {
   NotificationFailure,
   PermissionOutcome,
   ReminderCardAction,
+  ReminderSnooze,
+  ReminderSnoozeChoice,
+  ReminderSnoozeRestore,
 } from "./reminders/model.js";
 import { SearchNotice, SearchProblem } from "./search/model.js";
 import { OccurrenceNotice } from "./selection-commands/model.js";
@@ -239,10 +242,42 @@ export const Message = defineMessageUnion({
     outcome: PermissionOutcome,
     personId: Schema.String,
   },
+  ReminderSnoozeCacheCleaned: {
+    failed: Schema.Boolean,
+    personId: Schema.String,
+  },
+  ReminderSnoozeClockSampled: {
+    choice: ReminderSnoozeChoice,
+    id: Schema.String,
+    identity: Schema.String,
+    now: Schema.Finite,
+    personId: Schema.String,
+  },
+  ReminderSnoozeDisclosureChanged: {
+    id: Schema.String,
+    open: Schema.Boolean,
+    personId: Schema.String,
+  },
+  ReminderSnoozeSaved: {
+    entry: ReminderSnooze,
+    failed: Schema.Boolean,
+    id: Schema.String,
+    personId: Schema.String,
+  },
+  ReminderSnoozesRestored: {
+    now: Schema.optional(Schema.Finite),
+    outcome: ReminderSnoozeRestore,
+    personId: Schema.String,
+  },
   RequestedDesktop: { request: DesktopRequest },
   RequestedEmailParticipants: {},
   RequestedIcsExport: {},
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },
+  RequestedReminderSnooze: {
+    choice: ReminderSnoozeChoice,
+    id: Schema.String,
+    personId: Schema.String,
+  },
   RequestedRoute: { replace: Schema.Boolean, route: Route },
   RequestedRouteBack: {},
   ResumedFromBackground: { now: Schema.Finite },

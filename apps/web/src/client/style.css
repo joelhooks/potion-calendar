@@ -281,6 +281,54 @@ h3 {
 .reminder-card .meeting-actions {
   margin-top: 0;
 }
+.reminder-snooze {
+  min-width: 0;
+}
+.reminder-snooze[open] {
+  max-height: calc(60dvh - 16px);
+  overflow-y: auto;
+}
+.reminder-snooze summary {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--text);
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.reminder-snooze-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.app .reminder-card .reminder-snooze .reminder-snooze-choices button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--text);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+}
+@media (max-width: 640px) {
+  .reminder-card button,
+  .reminder-card summary {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .reminder-card p {
+    font-size: 16px;
+  }
+  .reminder-card button {
+    min-width: 44px;
+  }
+  .app .reminder-cards .reminder-card .meeting-actions button {
+    border-color: var(--text);
+  }
+}
 .calendar-toggle > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;

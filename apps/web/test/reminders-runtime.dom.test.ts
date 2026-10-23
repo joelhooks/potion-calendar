@@ -148,7 +148,8 @@ it.effect(
       yield* TestClock.setTime(upcomingNow);
       const fake = yield* fakeNotificationPort();
       const { next } = yield* observer(fake.port);
-      const initial = update(upcomingFixture(), yield* next).model;
+      const restored = update(upcomingFixture(), yield* next).model;
+      const initial = update(restored, yield* next).model;
       expect(fake.requests).toHaveLength(0);
       yield* fake.setPermission("granted");
       const clicked = update(initial, Message.ClickedEnableReminders());
@@ -202,7 +203,8 @@ it.effect(
       yield* TestClock.setTime(upcomingNow);
       const fake = yield* fakeNotificationPort("granted");
       const { next } = yield* observer(fake.port);
-      let { model } = update(upcomingFixture(), yield* next);
+      const restored = update(upcomingFixture(), yield* next).model;
+      let { model } = update(restored, yield* next);
       model = { ...model, settings: { ...model.settings, timeFormat: "24" } };
       ({ model } = accept(model, []));
       yield* TestClock.adjust(60_000);
