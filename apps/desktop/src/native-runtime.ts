@@ -27,6 +27,7 @@ import type { BrowserWindow } from "electron";
 
 import { acceptsDesktopFrame } from "./bridge-policy.js";
 import { DesktopError } from "./config.js";
+import { mainWindowActions } from "./main-window.js";
 import { NativeIntent, startNativeHost } from "./native-host.js";
 import type { NativeIntentValue } from "./native-host.js";
 import { NativeIntentEvent } from "./native-intent-event.js";
@@ -102,6 +103,8 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
         },
       });
 
+    const windowActions = mainWindowActions(focus, pageAction);
+
     const join = Effect.fn("Desktop.joinMeeting")(function* join(
       request: MeetingJoinRequestValue
     ) {
@@ -153,17 +156,8 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                   Effect.asVoid
                 ),
               MenuState: () => Effect.void,
-              OpenSettings: (value) =>
-                Effect.sync(focus).pipe(
-                  Effect.andThen(
-                    pageAction(
-                      DesktopAction.cases.OpenSettings.make({
-                        page: value.page,
-                      })
-                    )
-                  )
-                ),
-              OpenWindow: () => Effect.sync(focus),
+              OpenSettings: (value) => windowActions.settings(value.page),
+              OpenWindow: () => windowActions.open(),
               Quit: () =>
                 Effect.sync(() => {
                   app.quit();
@@ -402,7 +396,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       })
     );
 
-    return { done: host.done };
+    return { done: host.done, intent };
   }
 );
 

@@ -1,13 +1,40 @@
-import { Menu } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 
-export const applicationMenu = (signIn: () => void) => {
-  const template: MenuItemConstructorOptions[] = [
+import { NativeIntent } from "./native-host.js";
+import type { NativeIntentValue } from "./native-host.js";
+
+type ApplicationMenuItem = Pick<
+  MenuItemConstructorOptions,
+  "role" | "type" | "label" | "id" | "accelerator"
+> & {
+  click?: () => void;
+  submenu?: ApplicationMenuItem[];
+};
+
+export const applicationMenu = (
+  signIn: () => void,
+  intent: (value: NativeIntentValue) => void
+) => {
+  const template: ApplicationMenuItem[] = [
     {
       label: "Potion Calendar",
       submenu: [
         { role: "about" },
         { click: signIn, id: "sign-in", label: "Sign In…" },
+        {
+          accelerator: "CmdOrCtrl+1",
+          click: () => {
+            intent(NativeIntent.cases.OpenWindow.make({}));
+          },
+          label: "Show Calendar Window",
+        },
+        {
+          accelerator: "CmdOrCtrl+,",
+          click: () => {
+            intent(NativeIntent.cases.OpenSettings.make({ page: "general" }));
+          },
+          label: "Settings…",
+        },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -48,5 +75,5 @@ export const applicationMenu = (signIn: () => void) => {
     { role: "windowMenu" },
   ];
 
-  return Menu.buildFromTemplate(template);
+  return template;
 };

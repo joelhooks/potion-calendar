@@ -20,6 +20,7 @@ import { desktopPermission } from "./bridge-policy.js";
 import { runBrowserAccount } from "./browser-account-machine.js";
 import { DesktopError, desktopOrigin } from "./config.js";
 import { waitForSignIn } from "./loopback.js";
+import { focusMainWindow } from "./main-window.js";
 import { applicationMenu } from "./menus.js";
 import { DesktopRuntime } from "./native-runtime.js";
 import { navigation, startsSystemSignIn } from "./navigation.js";
@@ -128,12 +129,7 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
   );
 
   const focus = () => {
-    if (window.isMinimized()) {
-      window.restore();
-    }
-
-    window.show();
-    window.focus();
+    focusMainWindow(window);
   };
 
   const signInRequests = new EventTarget();
@@ -424,9 +420,11 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
       )
     );
   });
-  Menu.setApplicationMenu(applicationMenu(startSignIn));
   yield* Effect.gen(function* nativeApplication() {
     const native = yield* DesktopRuntime;
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(applicationMenu(startSignIn, native.intent))
+    );
     yield* Effect.raceFirst(
       loadWindow(window, origin).pipe(Effect.andThen(native.done)),
       native.done
