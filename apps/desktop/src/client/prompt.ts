@@ -319,7 +319,6 @@ const render = (view: typeof PromptView.Type) => {
   }
 
   root.replaceChildren(...view.events.map(card));
-  root.querySelector("button")?.focus();
   measurement.presented(view.revision);
 };
 
