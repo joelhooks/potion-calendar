@@ -12,6 +12,7 @@ import { persistentZoneLimit } from "../../layout/time-zones.js";
 import type { AppModel } from "../app.js";
 import { BulkView } from "../bulk/model.js";
 import { eventKey } from "../calendar-state.js";
+import { DesktopRequest } from "../desktop/model.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { EditorView } from "../editing/editor-model.js";
 import {
@@ -25,6 +26,7 @@ import { JoinSelection } from "../meetings/model.js";
 import { joinSelection } from "../meetings/selection.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
+import { SettingsChange } from "../settings/model.js";
 import { TimeZoneAction, ZoneChooser } from "../time-zones/model.js";
 import { formatKey } from "./hints.js";
 
@@ -457,6 +459,18 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     "Accounts",
     () => Message.ClickedAddGoogle()
   ),
+  row(
+    "manage-accounts",
+    "Manage calendar accounts",
+    [],
+    "App navigation",
+    "Accounts",
+    () =>
+      Message.RequestedRoute({
+        replace: false,
+        route: SettingsRoute.make({ page: "calendars" }),
+      })
+  ),
   row("sign-out", "Log out", [], "App navigation", "Accounts", () =>
     Message.ClickedSignOut()
   ),
@@ -468,6 +482,42 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     "App",
     special("commands"),
     { menu: false, scope: "app" }
+  ),
+  row(
+    "desktop-menu-bar",
+    "Show/hide menu-bar calendar",
+    [],
+    "App navigation",
+    "App",
+    (model) =>
+      Option.match(AsyncData.getData(model.desktop.settings), {
+        onNone: () => Message.KeyboardClose(),
+        onSome: ({ preferences }) =>
+          Message.RequestedDesktop({
+            request: DesktopRequest.cases.Save.make({
+              preferences: { ...preferences, menuBar: !preferences.menuBar },
+              request: model.desktop.request + 1,
+            }),
+          }),
+      }),
+    {
+      availability: (model) => {
+        if (model.desktop.availability !== "available") {
+          return "hidden";
+        }
+
+        if (
+          Option.isNone(AsyncData.getData(model.desktop.settings)) ||
+          AsyncData.isLoading(model.desktop.settings) ||
+          AsyncData.isRefreshing(model.desktop.settings)
+        ) {
+          return "disabled";
+        }
+
+        return active(model);
+      },
+      scope: "app",
+    }
   ),
   row(
     "sidebar",
@@ -833,6 +883,19 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
     "Calendar view",
     "View",
     () => Message.ClickedWeekends()
+  ),
+  row(
+    "week-numbers",
+    "Show/hide week numbers",
+    [],
+    "Calendar view",
+    "View",
+    (model) =>
+      Message.ChangedSettings({
+        change: SettingsChange.cases.WeekNumbers.make({
+          shown: !model.settings.showWeekNumbers,
+        }),
+      })
   ),
   row(
     "declined",

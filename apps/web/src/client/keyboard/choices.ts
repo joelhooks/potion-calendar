@@ -350,6 +350,8 @@ interface CommandProjection {
   readonly action: AppModel["action"];
   readonly choices: readonly CommandChoice[];
   readonly cursor: AppModel["keyboard"]["cursor"];
+  readonly desktop: AppModel["desktop"];
+  readonly settings: AppModel["settings"];
   readonly editing: AppModel["editing"];
   readonly person: AppModel["person"];
   readonly query: string;
@@ -368,6 +370,8 @@ export const commandChoices = (model: AppModel): readonly CommandChoice[] => {
 
   if (
     cached?.editing === model.editing &&
+    cached.desktop === model.desktop &&
+    cached.settings === model.settings &&
     cached.timeZones === model.timeZones &&
     cached.person === model.person &&
     cached.session === model.session &&
@@ -385,12 +389,14 @@ export const commandChoices = (model: AppModel): readonly CommandChoice[] => {
     action: model.action,
     choices,
     cursor: model.keyboard.cursor,
+    desktop: model.desktop,
     editing: model.editing,
     person: model.person,
     query: model.keyboard.query,
     screen: model.keyboard.screen,
     searchResponse: model.search.response,
     session: model.session,
+    settings: model.settings,
     timeZones: model.timeZones,
   });
 
