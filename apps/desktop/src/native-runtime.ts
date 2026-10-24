@@ -37,6 +37,7 @@ import { NativeTray } from "./native-tray.js";
 import { startPrompt } from "./prompt-machine.js";
 import { PromptWindow } from "./prompt-window.js";
 import { NativeSettings } from "./settings.js";
+import { soundPreviewEnabled } from "./sound-machine.js";
 
 export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
   function* makeDesktopRuntime(
@@ -327,6 +328,18 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           .pipe(Effect.tap((reply) => publishSettings(reply.settings)))
     );
     register(
+      desktopChannels.previewSound,
+      desktopWire.previewSound,
+      desktopWire.previewSoundReply,
+      ({ sound }) =>
+        promptWindow.preview(
+          sound,
+          settings.preferences.pipe(
+            Effect.map((current) => soundPreviewEnabled(current, sound))
+          )
+        )
+    );
+    register(
       desktopChannels.startup,
       desktopWire.startup,
       desktopWire.reply,
@@ -402,6 +415,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           desktopChannels.settings,
           desktopChannels.join,
           desktopChannels.preferences,
+          desktopChannels.previewSound,
           desktopChannels.startup,
         ]) {
           ipcMain.removeHandler(channel);

@@ -6,6 +6,8 @@ export interface PromptClientPort {
   readonly act: (message: string) => void;
   readonly read: () => Promise<string>;
   readonly rejected: () => void;
+  readonly soundReply: (message: string) => void;
+  readonly subscribeSound: (receive: (message: string) => void) => () => void;
   readonly subscribe: (receive: (message: string) => void) => () => void;
 }
 
@@ -48,6 +50,16 @@ export const createPromptBridge = (port: PromptClientPort): PromptBridge => {
 
       return Option.getOrElse(cached.view, () => decoded.value);
     },
+    onSound: (receive) =>
+      port.subscribeSound((message) => {
+        const decoded = Schema.decodeOption(promptWire.sound)(message);
+
+        if (Option.isSome(decoded)) {
+          receive(decoded.value);
+        } else {
+          port.rejected();
+        }
+      }),
     onView: (receive) =>
       port.subscribe((message) => {
         const decoded = Schema.decodeOption(promptWire.view)(message);
@@ -60,5 +72,14 @@ export const createPromptBridge = (port: PromptClientPort): PromptBridge => {
           port.rejected();
         }
       }),
+    soundReply: (reply) => {
+      const message = Schema.encodeOption(promptWire.soundReply)(reply);
+
+      if (Option.isSome(message)) {
+        port.soundReply(message.value);
+      } else {
+        port.rejected();
+      }
+    },
   } satisfies PromptBridge);
 };

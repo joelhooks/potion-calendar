@@ -25,6 +25,9 @@ const api = createPromptBridge({
     return message.value;
   },
   rejected,
+  soundReply: (message) => {
+    ipcRenderer.send(promptChannels.soundReply, message);
+  },
   subscribe: (receive) => {
     const listener: Parameters<typeof ipcRenderer.on>[1] = (_event, value) => {
       const message = Schema.decodeUnknownOption(Schema.String)(value);
@@ -40,6 +43,23 @@ const api = createPromptBridge({
 
     return () => {
       ipcRenderer.removeListener(promptChannels.view, listener);
+    };
+  },
+  subscribeSound: (receive) => {
+    const listener: Parameters<typeof ipcRenderer.on>[1] = (_event, value) => {
+      const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+      if (Option.isSome(message)) {
+        receive(message.value);
+      } else {
+        rejected();
+      }
+    };
+
+    ipcRenderer.on(promptChannels.sound, listener);
+
+    return () => {
+      ipcRenderer.removeListener(promptChannels.sound, listener);
     };
   },
 });

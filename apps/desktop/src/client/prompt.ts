@@ -6,6 +6,8 @@ import type {
 } from "@calendar/core/desktop-bridge";
 import { DateTime } from "effect";
 
+import { createSoundReceiver, createToneAudio } from "./sound.js";
+
 const api = window.potionPrompt;
 
 const root = document.querySelector("main");
@@ -77,6 +79,22 @@ const load = async (bridge: PromptBridge) => {
 
 if (api !== undefined) {
   const stop = api.onView(render);
+
+  const receiveSound = createSoundReceiver(createToneAudio(), (reply) => {
+    api.soundReply?.(reply);
+  });
+
+  const stopSound = api.onSound?.((request) => {
+    void receiveSound(request);
+  });
+
   void load(api);
-  window.addEventListener("pagehide", stop, { once: true });
+  window.addEventListener(
+    "pagehide",
+    () => {
+      stop();
+      stopSound?.();
+    },
+    { once: true }
+  );
 }

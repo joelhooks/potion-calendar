@@ -56,6 +56,22 @@ const bridge = createDesktopBridge({
 
     return message.value;
   },
+  // @effect-diagnostics-next-line asyncFunction:off -- Native sound preview remains an origin-fenced IPC Promise with a decoded text reply.
+  previewSound: async (request) => {
+    const value: unknown = await ipcRenderer.invoke(
+      desktopChannels.previewSound,
+      request
+    );
+
+    const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+    if (Option.isNone(message)) {
+      rejected();
+      throw new Error("Invalid sound preview reply");
+    }
+
+    return message.value;
+  },
   publishAgenda: (message) => {
     ipcRenderer.send(desktopChannels.agenda, message);
   },

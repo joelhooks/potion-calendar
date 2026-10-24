@@ -5,6 +5,7 @@ import {
 import type {
   DesktopBridge,
   DesktopPreferencesValue,
+  PromptSound,
 } from "@calendar/core/desktop-bridge";
 import { Effect, Schema } from "effect";
 
@@ -48,6 +49,23 @@ export const saveDesktopPreferences = Effect.fn(
     Effect.mapError(failure)
   );
 });
+
+export const previewDesktopSound = Effect.fn("Desktop.previewBrowserSound")(
+  function* previewDesktopSound(
+    bridge: DesktopBridge,
+    sound: typeof PromptSound.Type
+  ) {
+    if (bridge.previewSound === undefined || sound === "none") {
+      return;
+    }
+
+    yield* Effect.tryPromise({
+      catch: failure,
+      // @effect-diagnostics-next-line asyncFunction:off -- Only an explicit user setting change requests this isolated native preview.
+      try: async () => await bridge.previewSound?.(sound),
+    });
+  }
+);
 
 export const setDesktopStartup = Effect.fn("Desktop.setBrowserStartup")(
   function* setDesktopStartup(bridge: DesktopBridge, enabled: boolean) {

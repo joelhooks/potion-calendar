@@ -5,6 +5,7 @@ import { Option, Schema } from "effect";
 export interface RendererBridgePort {
   readonly getSettings: () => Promise<string>;
   readonly joinMeeting: (message: string) => Promise<string>;
+  readonly previewSound?: (message: string) => Promise<string>;
   readonly publishAgenda: (message: string) => void;
   readonly rejected: () => void;
   readonly savePreferences: (message: string) => Promise<string>;
@@ -89,6 +90,19 @@ export const createDesktopBridge = (
           listener(settings.value);
         }
       }),
+    // @effect-diagnostics-next-line asyncFunction:off -- A user-only preview crosses the same isolated native Promise boundary as preferences.
+    previewSound: async (sound) => {
+      const encoded = encode(desktopWire.previewSound, { sound });
+
+      if (Option.isNone(encoded) || port.previewSound === undefined) {
+        return false;
+      }
+
+      return reply(
+        desktopWire.previewSoundReply,
+        await port.previewSound(encoded.value)
+      );
+    },
     publishAgenda: (snapshot) => {
       const encoded = encode(desktopWire.agenda, snapshot);
 

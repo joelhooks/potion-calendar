@@ -78,6 +78,27 @@ export const desktopNotificationRows = <Message>(
                     actions.preferences({ ...preferences, promptMinutes }),
                   actions.rejected
                 ),
+                desktopChoice(
+                  h,
+                  "desktop-prompt-sound",
+                  "Play sound for upcoming meeting notification",
+                  preferences.promptSound,
+                  [
+                    ["none", "No sound"],
+                    ["blip", "Blip"],
+                    ["bell", "Bell"],
+                    ["tap", "Tap"],
+                  ],
+                  desktopBusy(state) ||
+                    !preferences.menuBar ||
+                    preferences.promptMinutes === null,
+                  (promptSound) =>
+                    actions.preferences(
+                      { ...preferences, promptSound },
+                      promptSound !== preferences.promptSound
+                    ),
+                  actions.rejected
+                ),
               ],
             }),
           ]

@@ -6,7 +6,10 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import type { DesktopUi } from "../client/desktop/model.js";
 
 export interface DesktopSettingsActions<Message> {
-  readonly preferences: (preferences: DesktopPreferencesValue) => Message;
+  readonly preferences: (
+    preferences: DesktopPreferencesValue,
+    previewSound?: boolean
+  ) => Message;
   readonly read: Message;
   readonly rejected: (message: string) => Message;
   readonly startup: (enabled: boolean) => Message;

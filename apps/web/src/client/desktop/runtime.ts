@@ -5,6 +5,7 @@ import { createEffectActor, createEffectLogic, join } from "@xstate/effect";
 import { Effect, Match, Option, Queue, Schema, Stream } from "effect";
 
 import {
+  previewDesktopSound,
   readDesktopSettings,
   saveDesktopPreferences,
   setDesktopStartup,
@@ -40,6 +41,16 @@ export const runDesktopRequest = Effect.fn("Desktop.runBrowserRequest")(
                   ),
                 Save: (value) =>
                   saveDesktopPreferences(native, value.preferences).pipe(
+                    Effect.tap((reply) =>
+                      value.previewSound === true &&
+                      reply.settings.preferences.promptSound ===
+                        value.preferences.promptSound
+                        ? previewDesktopSound(
+                            native,
+                            value.preferences.promptSound
+                          )
+                        : Effect.void
+                    ),
                     Effect.map((reply) =>
                       DesktopOutcome.cases.Ready.make({
                         error: Option.fromNullishOr(reply.error),

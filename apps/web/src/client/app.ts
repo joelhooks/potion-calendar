@@ -1521,9 +1521,10 @@ const updateCore = (
         Match.tagsExhaustive({
           Read: () =>
             DesktopRequest.cases.Read.make({ request: desktop.request }),
-          Save: ({ preferences }) =>
+          Save: ({ preferences, previewSound }) =>
             DesktopRequest.cases.Save.make({
               preferences,
+              previewSound,
               request: desktop.request,
             }),
           Startup: ({ enabled }) =>

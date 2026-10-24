@@ -10,7 +10,11 @@ export const RemoteDesktop = AsyncData.Schema(DesktopSettings, Schema.String);
 
 export const DesktopRequest = Schema.TaggedUnion({
   Read: { request: Schema.Int },
-  Save: { preferences: DesktopPreferences, request: Schema.Int },
+  Save: {
+    preferences: DesktopPreferences,
+    previewSound: Schema.optional(Schema.Boolean),
+    request: Schema.Int,
+  },
   Startup: { enabled: Schema.Boolean, request: Schema.Int },
 });
 

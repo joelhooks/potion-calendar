@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 export const AgendaKey = Schema.Struct({
   accountId: Schema.NonEmptyString,
@@ -81,6 +81,10 @@ export const GlobalShortcut = Schema.NullOr(
   )
 );
 
+export const PromptSound = Schema.Literals(["none", "blip", "bell", "tap"]);
+
+export const PlayablePromptSound = Schema.Literals(["blip", "bell", "tap"]);
+
 export const DesktopPreferences = Schema.Struct({
   includeAllDay: Schema.Boolean,
   includeDays: Schema.Literals([1, 2, 3, 4, 5, 6, 7, 14, 30]),
@@ -91,6 +95,9 @@ export const DesktopPreferences = Schema.Struct({
   menuShortcut: GlobalShortcut,
   previewMinutes: Schema.Literals([0, 15, 30, 60, 240, 480, 720, 1440, 10_080]),
   promptMinutes: Schema.NullOr(Schema.Literals([0, 1, 2, 3, 5])),
+  promptSound: PromptSound.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("blip"))
+  ),
   showTime: Schema.Boolean,
   showTitle: Schema.Boolean,
 });
@@ -151,9 +158,25 @@ export const PromptView = Schema.Struct({
   revision: Schema.Int,
 });
 
+export const PromptSoundRequest = Schema.TaggedUnion({
+  Cancel: { request: Schema.Int },
+  Load: { request: Schema.Int, sound: PlayablePromptSound },
+  Play: { request: Schema.Int, sound: PlayablePromptSound },
+});
+
+export const PromptSoundReply = Schema.Struct({
+  phase: Schema.Literals(["load", "play"]),
+  ready: Schema.Boolean,
+  request: Schema.Int,
+});
+
 export interface PromptBridge {
   readonly act: (action: typeof PromptAction.Type) => void;
   readonly getView: () => Promise<typeof PromptView.Type>;
+  readonly onSound?: (
+    receive: (request: typeof PromptSoundRequest.Type) => void
+  ) => () => void;
+  readonly soundReply?: (reply: typeof PromptSoundReply.Type) => void;
   readonly onView: (
     receive: (view: typeof PromptView.Type) => void
   ) => () => void;
@@ -162,11 +185,15 @@ export interface PromptBridge {
 export const promptChannels = {
   action: "potion:prompt:action:1",
   read: "potion:prompt:read:1",
+  sound: "potion:prompt:sound:1",
+  soundReply: "potion:prompt:sound-reply:1",
   view: "potion:prompt:view:1",
 };
 
 export const promptWire = {
   action: Schema.fromJsonString(PromptAction),
+  sound: Schema.fromJsonString(PromptSoundRequest),
+  soundReply: Schema.fromJsonString(PromptSoundReply),
   view: Schema.fromJsonString(PromptView),
 };
 
@@ -176,6 +203,8 @@ export const desktopWire = {
   join: Schema.fromJsonString(MeetingJoinRequest),
   joinReply: Schema.fromJsonString(MeetingJoinOutcome),
   preferences: Schema.fromJsonString(DesktopPreferences),
+  previewSound: Schema.fromJsonString(Schema.Struct({ sound: PromptSound })),
+  previewSoundReply: Schema.fromJsonString(Schema.Boolean),
   reply: Schema.fromJsonString(DesktopSettingsReply),
   settings: Schema.fromJsonString(DesktopSettings),
   startup: Schema.fromJsonString(StartupRequest),
@@ -186,6 +215,7 @@ export const desktopChannels = {
   agenda: "potion:desktop:agenda:1",
   join: "potion:desktop:join:1",
   preferences: "potion:desktop:preferences:1",
+  previewSound: "potion:desktop:preview-sound:1",
   settings: "potion:desktop:settings:1",
   settingsChanged: "potion:desktop:settings-changed:1",
   startup: "potion:desktop:startup:1",
@@ -227,6 +257,7 @@ export interface DesktopBridge {
   readonly onSettings: (
     listener: (settings: DesktopSettingsValue) => void
   ) => () => void;
+  readonly previewSound?: (sound: typeof PromptSound.Type) => Promise<boolean>;
   readonly publishAgenda: (snapshot: AgendaSnapshotValue) => void;
   readonly savePreferences: (
     preferences: DesktopPreferencesValue
@@ -246,6 +277,7 @@ export const defaultDesktopPreferences = (): DesktopPreferencesValue => ({
   menuShortcut: "Control+Command+K",
   previewMinutes: 720,
   promptMinutes: 1,
+  promptSound: "blip",
   showTime: true,
   showTitle: true,
 });

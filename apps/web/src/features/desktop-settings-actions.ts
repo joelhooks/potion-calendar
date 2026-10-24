@@ -16,10 +16,11 @@ export const desktopSettingsView = (
   ) => readonly Html[]
 ): readonly Html[] => {
   const actions: DesktopSettingsActions<AppMessage> = {
-    preferences: (preferences) =>
+    preferences: (preferences, previewSound) =>
       Message.RequestedDesktop({
         request: DesktopRequest.cases.Save.make({
           preferences,
+          previewSound,
           request: state.request + 1,
         }),
       }),

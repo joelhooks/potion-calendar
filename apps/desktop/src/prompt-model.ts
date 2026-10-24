@@ -10,6 +10,15 @@ const minuteMilliseconds = 60_000;
 export const promptIdentity = (key: AgendaKeyValue): string =>
   JSON.stringify([key.accountId, key.calendarId, key.eventId]);
 
+export const promptBatchIdentity = (
+  events: readonly AgendaEventValue[]
+): string =>
+  JSON.stringify(
+    events
+      .map((event) => JSON.stringify([promptIdentity(event.key), event.start]))
+      .toSorted()
+  );
+
 export interface PromptContext {
   readonly now: number;
   readonly pending: readonly AgendaEventValue[];
@@ -65,7 +74,8 @@ const due = (
 
 export const reconcilePrompts = (
   context: PromptContext,
-  input: Partial<PromptInput>
+  input: Partial<PromptInput>,
+  retained: readonly AgendaEventValue[] = context.visible
 ): PromptContext => {
   const next = { ...context, ...input };
   const remembered = new Map(context.remembered);
@@ -84,7 +94,7 @@ export const reconcilePrompts = (
 
   const pending = new Map<string, AgendaEventValue>();
 
-  for (const previous of context.visible) {
+  for (const previous of retained) {
     const current = byId.get(promptIdentity(previous.key));
 
     if (
@@ -122,7 +132,8 @@ export const presentedPrompts = (context: PromptContext): PromptContext => {
 
 export const dismissPrompt = (
   context: PromptContext,
-  key: AgendaKeyValue
+  key: AgendaKeyValue,
+  retained: readonly AgendaEventValue[] = context.visible
 ): PromptContext => {
   const remembered = new Map(context.remembered);
 
@@ -142,7 +153,8 @@ export const dismissPrompt = (
         (card) => promptIdentity(card.key) !== promptIdentity(key)
       ),
     },
-    {}
+    {},
+    retained.filter((card) => promptIdentity(card.key) !== promptIdentity(key))
   );
 };
 

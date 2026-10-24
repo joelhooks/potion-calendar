@@ -5,6 +5,10 @@ import { Arbitrary, Effect, Exit, Schema } from "effect";
 import { DesktopError } from "../src/config.js";
 import { createPromptBridge } from "../src/prompt-client.js";
 
+const unexpectedSound = (): never => {
+  throw new Error("View-only clients must not send or subscribe to sound work");
+};
+
 const revision = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 100_000, minimum: 1 }))
 );
@@ -38,6 +42,7 @@ it.effect.prop(
         rejected: () => {
           throw new Error("No rejection expected");
         },
+        soundReply: unexpectedSound,
         subscribe: (receive) => {
           listeners.add(receive);
 
@@ -45,6 +50,7 @@ it.effect.prop(
             listeners.delete(receive);
           };
         },
+        subscribeSound: unexpectedSound,
       });
 
       const stop = api.onView((view) => {
@@ -93,6 +99,7 @@ it.effect(
         rejected: () => {
           counts.rejected += 1;
         },
+        soundReply: unexpectedSound,
         subscribe: (receive) => {
           listeners.add(receive);
 
@@ -100,6 +107,7 @@ it.effect(
             listeners.delete(receive);
           };
         },
+        subscribeSound: unexpectedSound,
       });
 
       api.onView(() => {
