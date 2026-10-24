@@ -43,6 +43,7 @@ export const EditingCommand = Schema.TaggedUnion({
   Open: { request: EditorRequest },
   Rsvp: {
     event: CalendarEvent,
+    notePolicy: Schema.optional(Schema.Literal("omit")),
     response: Schema.Literals(["accepted", "declined", "tentative"]),
   },
   RsvpNote: { event: CalendarEvent, note: Schema.String },
@@ -170,10 +171,15 @@ export class EditingRuntime extends Context.Service<
                 Leave: () =>
                   deletion.dispatch(DeleteCommand.cases.Leaving.make({})),
                 Open: ({ request }) => send(editor, { request, type: "OPEN" }),
-                Rsvp: ({ event, response }) =>
-                  send(rsvp, { event: Option.some(event), type: "FOCUS" }).pipe(
-                    Effect.andThen(send(rsvp, { response, type: "CHOOSE" }))
-                  ),
+                Rsvp: ({ event, response, notePolicy }) =>
+                  notePolicy === "omit"
+                    ? send(rsvp, { event, response, type: "RESPOND" })
+                    : send(rsvp, {
+                        event: Option.some(event),
+                        type: "FOCUS",
+                      }).pipe(
+                        Effect.andThen(send(rsvp, { response, type: "CHOOSE" }))
+                      ),
                 RsvpNote: ({ event, note }) =>
                   send(rsvp, { event: Option.some(event), type: "FOCUS" }).pipe(
                     Effect.andThen(send(rsvp, { note, type: "NOTE" }))

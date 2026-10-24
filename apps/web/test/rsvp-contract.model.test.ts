@@ -19,7 +19,7 @@ it.effect(
         rsvpMachine.events
           .filter((event) => !event.startsWith("xstate."))
           .toSorted()
-      ).toEqual(["CHOOSE", "FOCUS", "NOTE"]);
+      ).toEqual(["CHOOSE", "FOCUS", "NOTE", "RESPOND"]);
       expect(rsvpMachine.states).not.toHaveProperty("prefix");
       expect(
         Schema.is(EditingCommand)(

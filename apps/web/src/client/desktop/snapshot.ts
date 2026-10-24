@@ -14,8 +14,10 @@ import { AsyncData } from "foldkit";
 
 import { mergeEquivalentEvents } from "../../layout/equivalent-events.js";
 import { displayEvent } from "../../layout/presentation.js";
+import { rsvpSelf } from "../../layout/rsvp-eligibility.js";
 import type { AppModel } from "../app.js";
 import { calendarKey } from "../calendar-state.js";
+import { responseIsBusy } from "../editing/response-availability.js";
 import { upcomingSelection } from "../upcoming/update.js";
 
 const minuteMilliseconds = 60_000;
@@ -88,7 +90,8 @@ const eventResponse = (
 const projectSavedEvent = (
   event: CalendarEventValue,
   zone: string,
-  calendarColor: string
+  calendarColor: string,
+  responseBusy: boolean
 ): Option.Option<AgendaEventValue> => {
   const responseStatus = eventResponse(event);
   const times = eventTimes(event, zone);
@@ -102,8 +105,9 @@ const projectSavedEvent = (
   }
 
   const title = event.title?.trim() ?? "";
+  const self = rsvpSelf(event);
 
-  return Option.some({
+  const projected: AgendaEventValue = {
     ...times.value,
     calendarColor,
     conferenceUrl: conferenceUrl(event),
@@ -116,7 +120,19 @@ const projectSavedEvent = (
     },
     responseStatus,
     title: title.length > 0 ? title : "Untitled event",
-  });
+  };
+
+  return Option.some(
+    self === undefined
+      ? projected
+      : {
+          ...projected,
+          rsvp: {
+            enabled: !responseBusy,
+            response: self.responseStatus ?? null,
+          },
+        }
+  );
 };
 
 const includedInPublication = (
@@ -220,7 +236,8 @@ export const agendaSnapshot = (
     const projected = projectSavedEvent(
       item.source,
       model.calendar.zone,
-      item.calendar.backgroundColor ?? "#64748b"
+      item.calendar.backgroundColor ?? "#64748b",
+      responseIsBusy(model)
     );
 
     return Option.isSome(projected) &&

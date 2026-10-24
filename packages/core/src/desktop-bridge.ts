@@ -33,6 +33,14 @@ export const AgendaEvent = Schema.Struct({
     "tentative",
     "needsAction",
   ]),
+  rsvp: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      response: Schema.NullOr(
+        Schema.Literals(["accepted", "declined", "tentative", "needsAction"])
+      ),
+    })
+  ),
   start: Schema.Finite,
   title: Schema.String,
 }).check(Schema.makeFilter((event) => event.end > event.start));
@@ -126,6 +134,10 @@ export const DesktopAction = Schema.TaggedUnion({
     page: Schema.Literals(["general", "menu-bar", "notifications"]),
   },
   RequestedJoinMeeting: {},
+  RespondToEvent: {
+    key: AgendaKey,
+    response: Schema.Literals(["accepted", "declined", "tentative"]),
+  },
   ShowEvent: { key: AgendaKey },
 });
 

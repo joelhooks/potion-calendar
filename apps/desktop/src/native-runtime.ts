@@ -164,6 +164,19 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                 }),
               RequestedJoinMeeting: () =>
                 pageAction(DesktopAction.cases.RequestedJoinMeeting.make({})),
+              RespondToEvent: (value) =>
+                pageAction(
+                  DesktopAction.cases.RespondToEvent.make({
+                    key: value.key,
+                    response: value.response,
+                  })
+                ).pipe(
+                  Effect.tapError((failure) =>
+                    Effect.sync(() => {
+                      dialog.showErrorBox("Could not respond", failure.message);
+                    })
+                  )
+                ),
               ShowEvent: (value) =>
                 Effect.sync(focus).pipe(
                   Effect.andThen(

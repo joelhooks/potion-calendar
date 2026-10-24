@@ -80,6 +80,7 @@ import {
   DesktopUi,
   initialDesktop,
 } from "./desktop/model.js";
+import { respondFromDesktop } from "./desktop/respond.js";
 import { desktopSelection } from "./desktop/selection.js";
 import { beginDesktopRequest, receiveDesktopNotice } from "./desktop/update.js";
 import { EditorView } from "./editing/editor-model.js";
@@ -1282,6 +1283,7 @@ const updateCore = (
               model,
               Message.RequestedJoinMeeting({ key: Option.none() })
             ),
+          RespondToEvent: (action) => respondFromDesktop(model, action),
           ShowEvent: ({ key }) => {
             const selected = desktopSelection(model, key);
 

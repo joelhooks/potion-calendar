@@ -7,6 +7,7 @@ import { DesktopError } from "./config.js";
 import { NativeIntent } from "./native-host.js";
 import type { NativeIntentValue, NativeView } from "./native-host.js";
 import { calendarDotPng, iconPng } from "./tray-icon.js";
+import { trayResponseMenu } from "./tray-response.js";
 
 const calendarFrame = (x: number, y: number): boolean =>
   x >= 4 &&
@@ -100,11 +101,9 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
           const rows: MenuItemConstructorOptions[] = [];
           let group = "";
 
-          for (const event of menuAgenda(
-            view.agenda,
-            view.preferences,
-            view.now
-          )) {
+          const agenda = menuAgenda(view.agenda, view.preferences, view.now);
+
+          for (const event of agenda) {
             const label = day(event.start);
 
             if (label !== group) {
@@ -133,6 +132,10 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
                 },
                 label: "Join",
               });
+            }
+
+            if (event === agenda[0]) {
+              actions.push(...trayResponseMenu(event, intent));
             }
 
             const response = Match.value(event.responseStatus).pipe(

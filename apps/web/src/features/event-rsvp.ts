@@ -1,4 +1,3 @@
-import { statusEventType } from "@calendar/calendar/contracts";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
@@ -9,17 +8,16 @@ import { EditorAction } from "../client/editing/editor-action.js";
 import { bindingHints } from "../client/keyboard/registry.js";
 import type { DisplayEvent } from "../layout/presentation.js";
 import { responseLabel } from "../layout/response-label.js";
+import { rsvpSelf } from "../layout/rsvp-eligibility.js";
 
 export const eventRsvp = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
   selected: DisplayEvent
 ): readonly Html[] => {
-  const self = selected.source.attendees?.find(
-    (person) => person.self === true
-  );
+  const self = rsvpSelf(selected.source);
 
-  if (self === undefined || statusEventType(selected.source.eventType)) {
+  if (self === undefined) {
     return [];
   }
 

@@ -1,13 +1,10 @@
-import {
-  CalendarEvent,
-  RsvpInput,
-  statusEventType,
-} from "@calendar/calendar/contracts";
+import { CalendarEvent, RsvpInput } from "@calendar/calendar/contracts";
 import { createEffectLogic, setupEffect } from "@xstate/effect";
 import { Effect, Option, Schema } from "effect";
 import { types } from "xstate";
 import type { SnapshotFrom } from "xstate";
 
+import { rsvpSelf } from "../../layout/rsvp-eligibility.js";
 import { eventKey } from "../calendar-state.js";
 import { CalendarEditingClient } from "./calendar-client.js";
 import { MutationFailure } from "./failure.js";
@@ -55,9 +52,7 @@ const respond = createEffectLogic({
 
 const canRespond = (context: Context): boolean =>
   Option.isSome(context.focused) &&
-  !statusEventType(context.focused.value.eventType) &&
-  context.focused.value.attendees?.some((person) => person.self === true) ===
-    true;
+  rsvpSelf(context.focused.value) !== undefined;
 
 interface RequestTransition {
   readonly context: Partial<Context>;
@@ -66,23 +61,25 @@ interface RequestTransition {
 
 const request = (
   context: Context,
-  response: typeof Response.Type
+  response: typeof Response.Type,
+  notePolicy?: "omit"
 ): RequestTransition => {
   const event = Schema.decodeUnknownSync(CalendarEvent)(
     Option.getOrUndefined(context.focused)
   );
 
+  const input: typeof RsvpInput.Type = {
+    accountId: event.accountId,
+    calendarId: event.calendarId,
+    eventId: event.eventId,
+    response,
+    sendUpdates: "none",
+  };
+
   const intent = RsvpIntent.make({
     event,
     id: context.sequence + 1,
-    request: {
-      accountId: event.accountId,
-      calendarId: event.calendarId,
-      eventId: event.eventId,
-      note: context.note,
-      response,
-      sendUpdates: "none",
-    },
+    request: notePolicy === "omit" ? input : { ...input, note: context.note },
   });
 
   return { context: { intent, sequence: intent.id }, target: "saving" };
@@ -108,6 +105,7 @@ export const rsvpMachine = setupEffect({
       CHOOSE: Schema.Struct({ response: Response }),
       FOCUS: Schema.Struct({ event: Schema.Option(CalendarEvent) }),
       NOTE: Schema.Struct({ note: Schema.String }),
+      RESPOND: Schema.Struct({ event: CalendarEvent, response: Response }),
     },
   },
 }).createMachine({
@@ -128,6 +126,14 @@ export const rsvpMachine = setupEffect({
       on: {
         CHOOSE: ({ context, event }) =>
           canRespond(context) ? request(context, event.response) : {},
+        RESPOND: ({ context, event }) =>
+          rsvpSelf(event.event) === undefined
+            ? {}
+            : request(
+                { ...context, focused: Option.some(event.event) },
+                event.response,
+                "omit"
+              ),
       },
     },
     saving: {

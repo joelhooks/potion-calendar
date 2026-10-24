@@ -32,6 +32,7 @@ export const NativeIntent = Schema.TaggedUnion({
   OpenWindow: {},
   Quit: {},
   RequestedJoinMeeting: {},
+  RespondToEvent: DesktopAction.cases.RespondToEvent.fields,
   ShowEvent: { key: AgendaKey },
   Stop: {},
   ToggleMenu: {},
