@@ -11,7 +11,6 @@ import { RemovalState } from "../client/settings-management/model.js";
 import { SettingsChange } from "../client/settings/model.js";
 import { defaultCreationCalendar } from "../client/settings/update.js";
 import { accountFailure } from "../layout/presentation.js";
-import { AccountSettingsRoute, printRoute } from "../layout/route.js";
 import { conferencingAccountSettings } from "./conferencing-account-settings.js";
 import {
   accountRemoval,
@@ -22,7 +21,7 @@ import {
 export const settingsCalendars = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
-  accountId?: string
+  accountId: string
 ): readonly Html[] => {
   const accounts =
     Option.getOrUndefined(AsyncData.getData(model.session))?.accounts ?? [];
@@ -90,54 +89,6 @@ export const settingsCalendars = (
       ]
     );
   };
-
-  if (accountId === undefined) {
-    return [
-      h.h1([], ["Calendars"]),
-      h.p(
-        [h.Class("settings-intro")],
-        [
-          "Choose which calendars appear here and change their colors. Open an account to set its default calendar or remove the account.",
-        ]
-      ),
-      ...accounts.map((account) =>
-        h.keyed("section")(
-          account.id,
-          [h.Class("settings-section")],
-          [
-            h.a(
-              [
-                h.Class("settings-account-link"),
-                h.Href(
-                  printRoute(
-                    AccountSettingsRoute.make({ accountId: account.id })
-                  )
-                ),
-              ],
-              [
-                h.strong([], [account.email]),
-                h.span([h.Class("muted")], ["Google Calendar →"]),
-              ]
-            ),
-            ...model.calendar.calendars
-              .filter((calendar) => calendar.accountId === account.id)
-              .map((calendar) => row(calendar, false)),
-            ...(account.disconnected
-              ? [
-                  h.p(
-                    [h.Class("muted")],
-                    ["Reconnect this account to load its calendars."]
-                  ),
-                ]
-              : []),
-          ]
-        )
-      ),
-      ...(accounts.length === 0
-        ? [h.p([], ["No connected Google accounts."])]
-        : []),
-    ];
-  }
 
   const removed = removedAccount(state, h, accountId);
 
@@ -216,8 +167,13 @@ export const settingsCalendars = (
       ? [
           h.p(
             [h.Class("settings-intro")],
-            ["Calendars for this account appear after you reconnect."]
+            [
+              calendars.length > 0
+                ? "Showing calendars saved before this account disconnected. Reconnect to update them."
+                : "Calendars for this account appear after you reconnect.",
+            ]
           ),
+          ...calendars.map((calendar) => row(calendar, false)),
         ]
       : [
           h.p(

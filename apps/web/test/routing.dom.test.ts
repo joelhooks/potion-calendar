@@ -14,9 +14,9 @@ import {
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { syncSearchRoute } from "../src/client/search/update.js";
 import {
+  AccountSettingsRoute,
   CalendarRoute,
   SearchRoute,
-  SettingsRoute,
   ShortcutsRoute,
   parseRoute,
 } from "../src/layout/route.js";
@@ -138,7 +138,7 @@ it.effect(
   "shortcuts opened from settings closes command state before navigation and Back preserves settings",
   () =>
     Effect.gen(function* settingsBack() {
-      const history = yield* historyFixture("/settings/calendars");
+      const history = yield* historyFixture("/settings/calendar/work");
       yield* history.dispatch(Message.KeyboardAction({ id: "commands" }));
       expect(history.get().keyboard.screen).toBe("commands");
       yield* history.dispatch(Message.KeyboardAction({ id: "shortcuts" }));
@@ -151,7 +151,7 @@ it.effect(
       yield* history.dispatch(Message.KeyboardClose());
       yield* Fiber.join(popped);
       expect(history.get().route).toEqual(
-        SettingsRoute.make({ page: "calendars" })
+        AccountSettingsRoute.make({ accountId: "work" })
       );
       expect(history.get().keyboard.screen).toBe("closed");
     })

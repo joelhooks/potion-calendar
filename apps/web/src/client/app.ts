@@ -202,6 +202,7 @@ import {
   SettingsManagement,
   initialSettingsManagement,
 } from "./settings-management/model.js";
+import { calendarSettingsTarget } from "./settings/calendar-route.js";
 import {
   ConferencingSettings,
   initialConferencingSettings,
@@ -632,10 +633,24 @@ const updateCore = (
         ),
       };
     },
-    BrowserUrlRequested: ({ request }) => ({
-      commands: [FollowRouteRequest({ request })],
-      model,
-    }),
+    BrowserUrlRequested: ({ request }) => {
+      if (Predicate.isTagged(request, "Internal")) {
+        const route = routeFromUrl(request.url);
+        const target = calendarSettingsTarget(model, route);
+
+        if (target !== route) {
+          return {
+            commands: [NavigateRoute({ replace: false, route: target })],
+            model,
+          };
+        }
+      }
+
+      return {
+        commands: [FollowRouteRequest({ request })],
+        model,
+      };
+    },
     BulkControl: ({ control, personId }) =>
       personId === undefined || Option.contains(model.person, personId)
         ? bulkControl(model, control)
@@ -1556,10 +1571,19 @@ const updateCore = (
         }),
       }),
     RequestedReminderSnooze: (result) => requestReminderSnooze(model, result),
-    RequestedRoute: ({ route, replace }) => ({
-      commands: [NavigateRoute({ replace, route })],
-      model: syncSearchRoute(closeKeyboard(model), route),
-    }),
+    RequestedRoute: ({ route, replace }) => {
+      const target = calendarSettingsTarget(model, route);
+
+      return {
+        commands: [
+          NavigateRoute({
+            replace: replace || target !== route,
+            route: target,
+          }),
+        ],
+        model: syncSearchRoute(closeKeyboard(model), target),
+      };
+    },
     RequestedRouteBack: () => ({
       commands: [BackRoute()],
       model: closeKeyboard(model),
@@ -1724,10 +1748,21 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     return { model };
   }
 
-  const received = withReminders(
-    model,
-    withUpcoming(model, updateCore(model, message, update), message)
-  );
+  const core = updateCore(model, message, update);
+  const target = calendarSettingsTarget(core.model, core.model.route);
+
+  const routed =
+    target === core.model.route
+      ? core
+      : {
+          commands: [
+            ...(core.commands ?? []),
+            NavigateRoute({ replace: true, route: target }),
+          ],
+          model: { ...core.model, route: target },
+        };
+
+  const received = withReminders(model, withUpcoming(model, routed, message));
 
   const updated =
     Option.isSome(received.model.timeZones.drag) &&

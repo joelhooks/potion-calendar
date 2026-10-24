@@ -10,7 +10,7 @@ import {
   RemoteDesktop,
 } from "../src/client/desktop/model.js";
 import { commandChoices } from "../src/client/keyboard/choices.js";
-import { SettingsRoute } from "../src/layout/route.js";
+import { AccountSettingsRoute } from "../src/layout/route.js";
 import {
   commandCatalogFixture,
   commandCatalogSettings,
@@ -253,7 +253,7 @@ it.effect(
       );
 
       expect(result.model.route).toEqual(
-        SettingsRoute.make({ page: "calendars" })
+        AccountSettingsRoute.make({ accountId: "work" })
       );
       expect(result.model.keyboard.screen).toBe("closed");
       expect(

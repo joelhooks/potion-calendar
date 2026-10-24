@@ -58,11 +58,9 @@ export const settingsPage = (
       return settingsNotifications(model, h);
     }
 
-    return settingsCalendars(
-      model,
-      h,
-      page === "calendar" ? accountId : undefined
-    );
+    return page === "calendar" && accountId !== undefined
+      ? settingsCalendars(model, h, accountId)
+      : [h.p([h.Role("status")], ["Opening calendar settings…"])];
   };
 
   return h.div(

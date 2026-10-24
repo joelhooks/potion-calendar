@@ -61,8 +61,14 @@ it.effect(
         },
         {
           id: "calendars",
-          model: { ...base, route: SettingsRoute.make({ page: "calendars" }) },
-          selector: ".settings-account-link",
+          model: update(
+            base,
+            Message.RequestedRoute({
+              replace: false,
+              route: SettingsRoute.make({ page: "calendars" }),
+            })
+          ).model,
+          selector: ".settings-calendar-row",
         },
         {
           id: "account",
@@ -123,6 +129,17 @@ it.effect(
           expect(document.querySelector(".toolbar")?.textContent).toBe(
             "Calendar"
           );
+        }
+
+        if (fixture.id === "calendars") {
+          expect(fixture.model.route).toEqual(
+            AccountSettingsRoute.make({ accountId: "work" })
+          );
+          expect(
+            document
+              .querySelector('.settings-account-nav[aria-current="page"]')
+              ?.getAttribute("href")
+          ).toBe("/settings/calendar/work");
         }
 
         if (fixture.id === "dark-commands") {
