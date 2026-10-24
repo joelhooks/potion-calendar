@@ -7,6 +7,7 @@ import { eventKey } from "../client/calendar-state.js";
 import { Message } from "../client/message.js";
 import type { AppMessage } from "../client/message.js";
 import { PrepareSearch } from "../client/search/commands.js";
+import { searchScope } from "../client/search/source.js";
 import { minuteInZone } from "../layout/geometry.js";
 import { clockLabel, dayLabel } from "../layout/presentation.js";
 import {
@@ -19,6 +20,7 @@ import {
 import { primarySelection } from "../layout/selection-set.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
 import { calendarFailureNotice } from "./search-failures.js";
+import { searchHistoryPages } from "./search-history-pages.js";
 import { searchPages } from "./search-pages.js";
 
 const searchRow = (
@@ -170,6 +172,8 @@ export const searchPanel = (
   return h.section(
     [
       h.Id("search-panel"),
+      h.DataAttribute("search-scope", searchScope(model)),
+      h.DataAttribute("search-revision", String(model.search.revision)),
       h.AriaLabel("Event search"),
       h.OnMount(PrepareSearch({ position: model.search.scroll })),
       h.Style({
@@ -247,6 +251,7 @@ export const searchPanel = (
           }),
         ],
         [
+          ...searchHistoryPages(model, h),
           ...[...problems, ...failures].map((line) =>
             h.p([h.DataAttribute("search-failure", "true")], [line])
           ),

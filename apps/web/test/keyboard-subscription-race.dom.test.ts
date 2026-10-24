@@ -41,7 +41,10 @@ const unusedRuntimes = Layer.mergeAll(
     dispatch: () => Effect.die("Keyboard stream must not dispatch editing"),
   }),
   Layer.succeed(SearchRuntime, {
+    dispatchPage: () => Effect.die("Keyboard stream must not page search"),
     observe: () => Stream.die("Keyboard stream must not run search"),
+    observePages: () =>
+      Stream.die("Keyboard stream must not start search pages"),
   })
 );
 

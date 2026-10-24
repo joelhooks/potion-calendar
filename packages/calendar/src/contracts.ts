@@ -323,6 +323,7 @@ export {
   SearchEventsOutput,
   SearchEventResult,
   SearchWindow,
+  SearchOlderCursor,
   SearchPageTarget,
   SearchContinuation,
 } from "./search-model.js";

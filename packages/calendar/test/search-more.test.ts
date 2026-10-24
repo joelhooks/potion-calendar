@@ -32,7 +32,7 @@ it.effect.prop(
           return response(200, { items: [timedEvent(`second-${id}`)] });
         }
 
-        return url.searchParams.has("timeMin")
+        return url.searchParams.get("maxResults") === "100"
           ? response(200, {
               items: [timedEvent(`first-${id}`)],
               nextPageToken: tokens[id],
@@ -93,7 +93,7 @@ it.effect.prop(
         const url = new URL(`https://fake.test${request.path}`);
         const id = url.pathname.includes("/a/") ? "a" : "b";
         expect(url.searchParams.get("pageToken")).toBe(tokens[id]);
-        expect(url.searchParams.get("maxResults")).toBe("100");
+        expect(url.searchParams.get("maxResults")).toBe("500");
         expect(url.searchParams.get("timeMin")).toBe(first.window.boundary);
         expect(url.searchParams.get("timeMax")).toBe(first.window.endExclusive);
         expect(url.searchParams.get("q")).toBe(searchInput.query);
@@ -126,7 +126,7 @@ it.effect(
         const id = url.pathname.includes("/a/") ? "a" : "b";
 
         if (!url.searchParams.has("pageToken")) {
-          return url.searchParams.has("timeMin")
+          return url.searchParams.get("maxResults") === "100"
             ? response(200, {
                 items: [timedEvent(`first-${id}`)],
                 nextPageToken: `next-${id}`,
@@ -237,6 +237,7 @@ it.effect.prop(
             window: {
               boundary: "2026-02-09T08:00:00.000Z",
               endExclusive: "2029-02-10T08:00:00.000Z",
+              historyStart: "2016-03-15T07:00:00.000Z",
             },
           },
         })

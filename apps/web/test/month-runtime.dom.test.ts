@@ -193,7 +193,9 @@ it.effect(
         resources: Layer.mergeAll(
           MonthRuntime.layerFor(monthViews),
           Layer.succeed(SearchRuntime, {
+            dispatchPage: () => Effect.die("Month must not page search"),
             observe: () => Stream.die("Month must not run search"),
+            observePages: () => Stream.die("Month must not start search pages"),
           }),
           unusedClipboardLayer,
           Layer.succeed(CalendarSearchClient, unexpectedSearchClient),

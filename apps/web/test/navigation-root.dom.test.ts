@@ -97,7 +97,10 @@ it.effect(
           unusedClipboardLayer,
           Layer.succeed(CalendarSearchClient, unexpectedSearchClient),
           Layer.succeed(SearchRuntime, {
+            dispatchPage: () => Effect.die("Navigation must not page search"),
             observe: () => Stream.die("Navigation must not search"),
+            observePages: () =>
+              Stream.die("Navigation must not start search pages"),
           }),
           Layer.succeed(
             EditingRuntime,

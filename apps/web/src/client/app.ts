@@ -168,6 +168,12 @@ import type { CalendarSearchClient } from "./search/client.js";
 import { BlurSearch } from "./search/commands.js";
 import { SearchUi, initialSearch } from "./search/model.js";
 import {
+  applySearchPage,
+  loadOlderSearch,
+  receiveSearchPage,
+} from "./search/page-update.js";
+import type { SearchRuntime } from "./search/runtime.js";
+import {
   blurSearch,
   clearSearch,
   loadMoreSearch,
@@ -279,7 +285,11 @@ export type AppModel = typeof Model.Type;
 type Result = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient | ClipboardRuntime | MonthRuntime
+  | EditingRuntime
+  | CalendarSearchClient
+  | SearchRuntime
+  | ClipboardRuntime
+  | MonthRuntime
 >;
 
 export const initialModel = (now: number, zone: string): AppModel => ({
@@ -597,6 +607,8 @@ const updateCore = (
   dispatch: (model: AppModel, message: AppMessage) => Result
 ): Result =>
   Message.match<Result>(message, {
+    ApplySearchPage: ({ anchor, notice }) =>
+      applySearchPage(model, notice, anchor),
     BrowserUrlChanged: ({ url }) => {
       const route = routeFromUrl(url);
       const closed = closeKeyboard(model);
@@ -1411,6 +1423,7 @@ const updateCore = (
         : result;
     },
     ReceivedSearch: ({ notice }) => receiveSearch(model, notice),
+    ReceivedSearchPage: ({ notice }) => receiveSearchPage(model, notice),
     ReceivedSession: ({ snapshot }) => {
       const initial = initialModel(model.calendar.now, model.timeZones.system);
 
@@ -1566,6 +1579,7 @@ const updateCore = (
     SearchEscape: () => ({ commands: [BlurSearch()], model }),
     SearchInput: ({ text }) => searchInput(model, text),
     SearchMore: () => loadMoreSearch(model),
+    SearchOlder: () => loadOlderSearch(model),
     SearchOpened: ({ query }) => searchOpen(model, query),
     SearchPrefetchFailed: ({ personId, revision, problem }) => ({
       model:
@@ -1582,6 +1596,9 @@ const updateCore = (
     SearchRetryCalendar: ({ accountId, calendarId }) =>
       retrySearchCalendar(model, { accountId, calendarId }),
     SearchRetryMore: () => retryMoreSearch(model),
+    SearchRetryOlder: () => loadOlderSearch(model, true),
+    SearchRetryOlderCalendar: ({ accountId, calendarId }) =>
+      loadOlderSearch(model, true, { accountId, calendarId }),
     SearchScroll: ({ position }) => ({
       model: Predicate.isTagged(model.route, "Search")
         ? {

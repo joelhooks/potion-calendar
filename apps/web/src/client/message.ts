@@ -36,6 +36,7 @@ import {
   ReminderSnoozeRestore,
 } from "./reminders/model.js";
 import { SearchNotice, SearchProblem } from "./search/model.js";
+import { SearchPageNotice, SearchScrollAnchor } from "./search/page-model.js";
 import { OccurrenceNotice } from "./selection-commands/model.js";
 import { ManagementChange } from "./settings-management/model.js";
 import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
@@ -45,6 +46,10 @@ import { TimeZoneAction } from "./time-zones/model.js";
 import { ZoneDragPreview } from "./zone-drag/model.js";
 
 export const Message = defineMessageUnion({
+  ApplySearchPage: {
+    anchor: Schema.Option(SearchScrollAnchor),
+    notice: SearchPageNotice.cases.Ready,
+  },
   BrowserUrlChanged: { url: Url },
   BrowserUrlRequested: { request: UrlRequest },
   BulkControl: {
@@ -214,6 +219,7 @@ export const Message = defineMessageUnion({
   ReceivedOccurrence: { notice: OccurrenceNotice },
   ReceivedPreferences: { person: Schema.String, preferences: SavedPreferences },
   ReceivedSearch: { notice: SearchNotice },
+  ReceivedSearchPage: { notice: SearchPageNotice },
   ReceivedSession: { snapshot: SessionSnapshot },
   ReceivedSystemSettings: { dark: Schema.Boolean, hour24: Schema.Boolean },
   ReceivedUpcoming: {
@@ -289,6 +295,7 @@ export const Message = defineMessageUnion({
   SearchEscape: {},
   SearchInput: { text: Schema.String },
   SearchMore: {},
+  SearchOlder: {},
   SearchOpened: { query: Schema.Option(Schema.String) },
   SearchPrefetchFailed: {
     personId: Schema.String,
@@ -298,6 +305,8 @@ export const Message = defineMessageUnion({
   SearchRetry: {},
   SearchRetryCalendar: CalendarRef.fields,
   SearchRetryMore: {},
+  SearchRetryOlder: {},
+  SearchRetryOlderCalendar: CalendarRef.fields,
   SearchScroll: { position: Schema.Finite },
   SearchSelect: { goTo: Schema.Boolean, key: Schema.String },
   SelectedRectangle: {

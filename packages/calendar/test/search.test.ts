@@ -124,20 +124,29 @@ it.effect.prop(
       expect(forward.searchParams.get("timeMin")).toBe(expected.boundary);
       expect(forward.searchParams.get("timeMax")).toBe(expected.end);
       expect(forward.searchParams.get("maxResults")).toBe("100");
-      expect(older.searchParams.has("timeMin")).toBe(false);
+      expect(older.searchParams.get("timeMin")).toBe(
+        DateTime.formatIso(
+          DateTime.subtract(
+            DateTime.makeZonedUnsafe(expected.boundary, {
+              timeZone: expected.timeZone,
+            }),
+            { days: 365 }
+          )
+        )
+      );
       expect(older.searchParams.get("timeMax")).toBe(expected.boundary);
       expect(older.searchParams.get("maxResults")).toBe("2500");
-      expect(result.window).toEqual({
+      expect(result.window).toMatchObject({
         boundary: expected.boundary,
         endExclusive: expected.end,
       });
-      expect(result.pageInfo).toEqual([
+      expect(result.pageInfo).toMatchObject([
         {
           accountId: "account",
           calendarId: "calendar",
           forwardHasMore: hasMore,
           forwardNextPageToken: hasMore ? "not-followed" : undefined,
-          olderHasMore: hasMore,
+          olderHasMore: true,
         },
       ]);
     })
@@ -304,7 +313,8 @@ it.effect.prop(
       const failed = calendars[failedIndex];
 
       const fake = yield* searchFixture((url) => {
-        const part = url.searchParams.has("timeMin") ? "forward" : "older";
+        const part =
+          url.searchParams.get("maxResults") === "100" ? "forward" : "older";
 
         if (
           url.pathname === `/calendars/${failed.calendarId}/events` &&

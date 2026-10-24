@@ -14,6 +14,20 @@ import {
   searchMoreProofScript,
 } from "./search-more-proof.js";
 
+const mutedForwardFooter = (html: string): string => {
+  const document = new DOMParser().parseFromString(html, "text/html");
+
+  const footer = document.querySelector("[data-search-page-controls]");
+
+  if (footer === null) {
+    throw new Error("Missing actual forward footer for its negative control");
+  }
+
+  footer.removeAttribute("aria-live");
+
+  return document.documentElement.outerHTML;
+};
+
 const fingerprint = Effect.fn("searchMoreFingerprint")(function* fingerprint(
   text: string
 ) {
@@ -96,10 +110,7 @@ it.effect(
 
             expect(() =>
               executeSearchMoreProofWithStandInBoxes(
-                exported.replace(
-                  'aria-live="polite"',
-                  'data-muted-live="polite"'
-                ),
+                mutedForwardFooter(exported),
                 width
               )
             ).toThrow("Search footer is not a polite status region");

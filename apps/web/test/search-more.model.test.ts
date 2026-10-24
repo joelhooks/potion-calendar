@@ -9,23 +9,30 @@ import { Match, Option, Schema } from "effect";
 import { Message, update } from "../src/client/app.js";
 import { SearchNotice, SearchProblem } from "../src/client/search/model.js";
 import { forwardSearchExhausted } from "../src/client/search/paging.js";
-import { searchTask } from "../src/client/search/source.js";
+import { searchQueryTask, searchTask } from "../src/client/search/source.js";
 import { refreshSearch } from "../src/client/search/update.js";
 import { SearchRoute } from "../src/layout/route.js";
 import { outsideSearchEvent, searchResponse } from "./search-fixture.js";
 import { loadedSearch } from "./search-more-fixture.js";
 
 it.prop(
-  "repeated load-more notices advance the actual subscription task at most once while a page is outstanding",
+  "repeated load-more notices dispatch one page without restarting the query-scoped subscriptions",
   [Schema.Array(Schema.Literals(["request"]))],
   ([triggers]) => {
     const initial = loadedSearch();
     let model = initial;
+    let dispatched = 0;
 
     for (const _trigger of triggers) {
-      ({ model } = update(model, Message.SearchMore()));
+      const next = update(model, Message.SearchMore());
+      dispatched +=
+        next.commands?.filter(
+          (command) => command.name === "DispatchSearchPage"
+        ).length ?? 0;
+      ({ model } = next);
       expect(model.search.phase).toBe("LoadingMore");
-      expect(model.search.revision).toBe(initial.search.revision + 1);
+      expect(model.search.revision).toBe(initial.search.revision);
+      expect(searchQueryTask(model)).toEqual(searchQueryTask(initial));
       expect(model.search.response).toEqual(initial.search.response);
       const task = Option.getOrThrow(searchTask(model));
       expect(task.request.continuation?.pages).toEqual([
@@ -37,9 +44,8 @@ it.prop(
       ]);
     }
 
-    expect(model.search.revision).toBe(
-      initial.search.revision + (triggers.length > 0 ? 1 : 0)
-    );
+    expect(dispatched).toBe(triggers.length > 0 ? 1 : 0);
+    expect(model.search.revision).toBe(initial.search.revision);
   }
 );
 
@@ -193,7 +199,7 @@ it.prop(
     expect(Option.getOrThrow(searchTask(retry)).request.continuation).toEqual(
       task.request.continuation
     );
-    expect(retry.search.revision).toBe(failed.search.revision + 1);
+    expect(retry.search.revision).toBe(failed.search.revision);
   }
 );
 

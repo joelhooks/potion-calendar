@@ -22,11 +22,12 @@ import { preferenceSnapshot } from "../settings/update.js";
 import { calendarVisible, chooseVisibility } from "../settings/visibility.js";
 import type { CalendarSearchClient } from "./client.js";
 import {
+  DispatchSearchPage,
   FocusSearch,
   PrefetchSearchDate,
   RestoreSearchScroll,
 } from "./commands.js";
-import { SearchProblem } from "./model.js";
+import { resetSearchPaging, SearchProblem } from "./model.js";
 import type { SearchNotice, SearchUi } from "./model.js";
 import {
   continuedSearchFailures,
@@ -35,9 +36,14 @@ import {
   matchingSearchWindow,
   mergeSearchPage,
 } from "./paging.js";
-import { searchScope, searchTaskScope } from "./source.js";
+import type { SearchRuntime } from "./runtime.js";
+import { searchQueryTask, searchScope, searchTaskScope } from "./source.js";
 
-type SearchResult = Update.Return<AppModel, AppMessage, CalendarSearchClient>;
+type SearchResult = Update.Return<
+  AppModel,
+  AppMessage,
+  CalendarSearchClient | SearchRuntime
+>;
 
 export const syncSearchRoute = (
   model: AppModel,
@@ -63,7 +69,7 @@ export const syncSearchRoute = (
     route,
     search: {
       ...model.search,
-      continuation: undefined,
+      ...resetSearchPaging(),
       continuationFailures:
         blank || !same ? [] : model.search.continuationFailures,
       menu: Option.none(),
@@ -94,7 +100,7 @@ export const searchInput = (model: AppModel, text: string): SearchResult => {
           : { ...model.calendar, selected: [] },
       search: {
         ...model.search,
-        continuation: undefined,
+        ...resetSearchPaging(),
         continuationFailures: blank ? [] : model.search.continuationFailures,
         menu: Option.none(),
         phase: blank ? "Idle" : "Debouncing",
@@ -283,7 +289,7 @@ export const refreshSearch = (model: AppModel): AppModel =>
         ...model,
         search: {
           ...model.search,
-          continuation: undefined,
+          ...resetSearchPaging(),
           phase: "Debouncing",
           problem: Option.none(),
           revision: model.search.revision + 1,
@@ -307,16 +313,29 @@ const beginSearchPage = (
     return { model };
   }
 
+  const task = searchQueryTask(model);
+
+  if (Option.isNone(task)) {
+    return { model };
+  }
+
+  const continuation = { pages, window: model.search.response.value.window };
+
   return {
+    commands: [
+      DispatchSearchPage({
+        direction: "forward",
+        page: { continuation, task: task.value },
+      }),
+    ],
     model: {
       ...model,
       search: {
         ...model.search,
-        continuation: { pages, window: model.search.response.value.window },
+        continuation,
         menu: Option.none(),
         phase: "LoadingMore",
         problem: Option.none(),
-        revision: model.search.revision + 1,
       },
     },
   };
@@ -327,9 +346,32 @@ export const loadMoreSearch = (model: AppModel): SearchResult => {
     return { model };
   }
 
+  const other = Option.getOrElse(model.search.reverseFailures, () => ({
+    accountFailures: [],
+    failures: [],
+  }));
+
+  const response = model.search.response.value;
+
   return beginSearchPage(
     model,
-    forwardSearchTargets(model.search.response.value)
+    forwardSearchTargets({
+      ...response,
+      accountFailures: response.accountFailures.filter(
+        (failure) =>
+          !other.accountFailures.some(
+            (item) => item.accountId === failure.accountId
+          )
+      ),
+      failures: response.failures.filter(
+        (failure) =>
+          !other.failures.some(
+            (item) =>
+              item.accountId === failure.accountId &&
+              item.calendarId === failure.calendarId
+          )
+      ),
+    })
   );
 };
 

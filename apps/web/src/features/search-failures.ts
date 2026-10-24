@@ -26,10 +26,16 @@ export const calendarFailureNotice = (
           h.DataAttribute("search-retry-calendar", key),
           h.AriaLabel(`Retry ${label}`),
           h.Disabled(
-            model.search.phase !== "Ready" ||
+            (failure.reverse
+              ? model.search.reversePhase === "LoadingMore"
+              : model.search.phase !== "Ready") ||
               model.search.responseScope !== searchScope(model)
           ),
-          h.OnClick(Message.SearchRetryCalendar({ accountId, calendarId })),
+          h.OnClick(
+            failure.reverse
+              ? Message.SearchRetryOlderCalendar({ accountId, calendarId })
+              : Message.SearchRetryCalendar({ accountId, calendarId })
+          ),
         ],
         ["Retry"]
       ),

@@ -111,10 +111,14 @@ it.effect(
       Effect.provideService(
         SearchRuntime,
         SearchRuntime.of({
+          dispatchPage: () =>
+            Effect.die("Upcoming fixture must not page search"),
           observe: () =>
             Stream.die(
               new Error("Upcoming fixture must not start event search")
             ),
+          observePages: () =>
+            Stream.die("Upcoming fixture must not start search pages"),
         })
       )
     )

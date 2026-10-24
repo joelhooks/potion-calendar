@@ -74,6 +74,7 @@ export const searchResponse = (
     window: {
       boundary: "2026-09-20T07:00:00Z",
       endExclusive: "2029-09-21T07:00:00Z",
+      historyStart: "2016-10-18T07:00:00Z",
     },
   });
 };

@@ -68,7 +68,7 @@ it.effect(
       const url = new URL(events[0]?.path ?? "", "https://fixture.test");
       expect(url.searchParams.get("pageToken")).toBe(pageToken);
       expect(url.searchParams.get("q")).toBe(searchPayload.query);
-      expect(url.searchParams.get("maxResults")).toBe("100");
+      expect(url.searchParams.get("maxResults")).toBe("500");
       expect(url.searchParams.get("timeMin")).toBe(initial.window.boundary);
       expect(url.searchParams.get("timeMax")).toBe(initial.window.endExclusive);
       expect(

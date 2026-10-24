@@ -121,7 +121,10 @@ export const mountZoneDragScene = Effect.fn("mountZoneDragScene")(
         unusedBrowserLayers,
         Layer.succeed(CalendarSearchClient, unexpectedSearchClient),
         Layer.succeed(SearchRuntime, {
+          dispatchPage: () => Effect.die("Zone dragging must not page search"),
           observe: () => Stream.die("Zone dragging must not start search"),
+          observePages: () =>
+            Stream.die("Zone dragging must not start search pages"),
         }),
         Layer.succeed(
           EditingRuntime,

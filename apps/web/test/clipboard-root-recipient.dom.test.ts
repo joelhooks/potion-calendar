@@ -19,6 +19,7 @@ import type { EditingCommand } from "../src/client/editing/runtime.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { unusedSearchLayer } from "./browser-runtime-fixture.js";
 import {
   clipboardClient,
   clipboardPoint,
@@ -246,6 +247,7 @@ it.effect.each(["copy", "cut"] as const)(
             })
           ),
           Effect.provideService(EditingRuntime, editing),
+          Effect.provide(unusedSearchLayer),
           Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
         );
       })

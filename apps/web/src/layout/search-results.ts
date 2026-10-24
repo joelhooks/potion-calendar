@@ -92,9 +92,17 @@ export const searchCalendarFailureNotices = (
 
     const label = `${title === "" ? "one calendar" : title}${email === "" ? "" : ` (${email})`}`;
 
-    const continuation = model.search.continuationFailures.some(
+    const forward = model.search.continuationFailures.some(
       (ref) => ref.accountId === accountId && ref.calendarId === calendarId
     );
+
+    const reverse =
+      Option.isSome(model.search.reverseFailures) &&
+      model.search.reverseFailures.value.failures.some(
+        (ref) => ref.accountId === accountId && ref.calendarId === calendarId
+      );
+
+    const continuation = forward || reverse;
 
     return {
       accountId,
@@ -104,6 +112,7 @@ export const searchCalendarFailureNotices = (
       line: continuation
         ? `Couldn't load more from ${label}.`
         : `Couldn't search ${label}.`,
+      reverse: reverse && !forward,
     };
   });
 

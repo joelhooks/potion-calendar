@@ -6,6 +6,12 @@ import { Calendar, CalendarEvent, CalendarRef, Range } from "./model.js";
 export const SearchWindow = Schema.Struct({
   boundary: Range.fields.start,
   endExclusive: Range.fields.end,
+  historyStart: Range.fields.start,
+});
+
+export const SearchOlderCursor = Schema.Struct({
+  pageToken: Schema.optional(Schema.NonEmptyString),
+  windowEnd: Range.fields.end,
 });
 
 export const SearchPageTarget = Schema.TaggedUnion({
@@ -14,6 +20,10 @@ export const SearchPageTarget = Schema.TaggedUnion({
     pageToken: Schema.NonEmptyString,
   },
   Initial: CalendarRef.fields,
+  Reverse: {
+    ...CalendarRef.fields,
+    ...SearchOlderCursor.fields,
+  },
 });
 
 export const SearchContinuation = Schema.Struct({
@@ -43,6 +53,7 @@ export const SearchEventsOutput = Schema.Struct({
       ...CalendarRef.fields,
       forwardHasMore: Schema.Boolean,
       forwardNextPageToken: Schema.optional(Schema.NonEmptyString),
+      olderCursor: Schema.optional(SearchOlderCursor),
       olderHasMore: Schema.optional(Schema.Boolean),
     })
   ),

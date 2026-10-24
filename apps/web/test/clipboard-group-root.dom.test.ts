@@ -29,6 +29,7 @@ import { DeletionWriter } from "../src/client/editing/delete-actor.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { unusedSearchLayer } from "./browser-runtime-fixture.js";
 import {
   groupClipboardFixture,
   groupNativeEvent,
@@ -307,6 +308,7 @@ const groupRootPath = Effect.fn("groupRootPath")(function* groupRootPath({
         commit: () => Effect.die("Group paste must not delete"),
       })
     ),
+    Effect.provide(unusedSearchLayer),
     Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
   );
 });

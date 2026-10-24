@@ -41,6 +41,30 @@ export const forwardSearchTargets = (
   );
 };
 
+export const reverseSearchTargets = (
+  response: Response
+): readonly (typeof SearchPageTarget.Type)[] => {
+  const failed = new Set(response.failures.map(refKey));
+
+  const accounts = new Set(
+    response.accountFailures.map((failure) => failure.accountId)
+  );
+
+  return response.pageInfo.flatMap((page) =>
+    page.olderCursor === undefined ||
+    failed.has(refKey(page)) ||
+    accounts.has(page.accountId)
+      ? []
+      : [
+          SearchPageTarget.cases.Reverse.make({
+            accountId: page.accountId,
+            calendarId: page.calendarId,
+            ...page.olderCursor,
+          }),
+        ]
+  );
+};
+
 export const failedSearchTarget = (
   response: Response,
   ref: CalendarRefValue
@@ -71,7 +95,8 @@ export const forwardSearchExhausted = (response: Response): boolean =>
 export const continuedSearchFailures = (
   previous: readonly CalendarRefValue[],
   response: Response,
-  continuation: Continuation
+  continuation: Continuation,
+  direction: "forward" | "reverse" = "forward"
 ): readonly CalendarRefValue[] => {
   const failures = new Map(previous.map((ref) => [refKey(ref), ref]));
 
@@ -84,7 +109,12 @@ export const continuedSearchFailures = (
       (page) => refKey(page) === refKey(failure)
     );
 
-    if (target !== undefined && SearchPageTarget.guards.Forward(target)) {
+    if (
+      target !== undefined &&
+      (direction === "forward"
+        ? SearchPageTarget.guards.Forward(target)
+        : SearchPageTarget.guards.Reverse(target))
+    ) {
       failures.set(refKey(failure), {
         accountId: failure.accountId,
         calendarId: failure.calendarId,
@@ -103,7 +133,9 @@ export const matchingSearchWindow = (
   previous.window.boundary === continuation.window.boundary &&
   previous.window.endExclusive === continuation.window.endExclusive &&
   page.window.boundary === continuation.window.boundary &&
-  page.window.endExclusive === continuation.window.endExclusive;
+  page.window.endExclusive === continuation.window.endExclusive &&
+  previous.window.historyStart === continuation.window.historyStart &&
+  page.window.historyStart === continuation.window.historyStart;
 
 export const mergeSearchPage = (
   previous: Response,
@@ -121,11 +153,31 @@ export const mergeSearchPage = (
   for (const incoming of page.pageInfo) {
     const before = pages.get(refKey(incoming));
 
-    pages.set(refKey(incoming), {
-      ...incoming,
-      forwardNextPageToken: incoming.forwardNextPageToken,
-      olderHasMore: incoming.olderHasMore ?? before?.olderHasMore,
-    });
+    const target = continuation.pages.find(
+      (item) => refKey(item) === refKey(incoming)
+    );
+
+    if (target === undefined) {
+      continue;
+    }
+
+    let merged = incoming;
+
+    if (SearchPageTarget.guards.Reverse(target)) {
+      merged = {
+        ...incoming,
+        forwardHasMore: before?.forwardHasMore ?? false,
+        forwardNextPageToken: before?.forwardNextPageToken,
+      };
+    } else if (SearchPageTarget.guards.Forward(target)) {
+      merged = {
+        ...incoming,
+        olderCursor: before?.olderCursor,
+        olderHasMore: before?.olderHasMore,
+      };
+    }
+
+    pages.set(refKey(incoming), merged);
   }
 
   const accounts = new Map(

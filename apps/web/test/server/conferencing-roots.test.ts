@@ -34,6 +34,7 @@ import { mutationReceived } from "../../src/client/editing/update.js";
 import { writeEditor } from "../../src/client/editing/write-editor.js";
 import { MonthRuntime } from "../../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../../src/client/search/client.js";
+import { SearchRuntime } from "../../src/client/search/runtime.js";
 import { DevelopmentRuntime } from "../../src/dev/native-runtime.js";
 import { view } from "../../src/features/app.js";
 import { dayFromIso, initialNavigation } from "../../src/layout/navigation.js";
@@ -345,6 +346,11 @@ layer(fixtureLayer, { excludeTestServices: true })(
               Layer.mergeAll(
                 unusedClipboardLayer,
                 Layer.succeed(CalendarSearchClient, unexpectedSearchClient),
+                SearchRuntime.layer.pipe(
+                  Layer.provide(
+                    Layer.succeed(CalendarSearchClient, unexpectedSearchClient)
+                  )
+                ),
                 CalendarEditingClient.layer("available"),
                 EditingRuntime.layer.pipe(
                   Layer.provide(CalendarEditingClient.layer("available")),

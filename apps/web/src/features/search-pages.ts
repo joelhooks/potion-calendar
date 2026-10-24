@@ -39,9 +39,6 @@ const searchPageState = (model: AppModel) => {
   const exhausted =
     response !== undefined && ready && forwardSearchExhausted(response);
 
-  const older =
-    response?.pageInfo.some((page) => page.olderHasMore === true) ?? false;
-
   const unknown =
     response?.pageInfo.some(
       (page) => page.forwardHasMore && page.forwardNextPageToken === undefined
@@ -53,7 +50,6 @@ const searchPageState = (model: AppModel) => {
     exhausted,
     failedMore,
     failedSearch,
-    older,
     ready,
     unknown,
   };
@@ -70,7 +66,6 @@ export const searchPages = (
     failedSearch,
     available,
     exhausted,
-    older,
     unknown,
   } = searchPageState(model);
 
@@ -92,7 +87,9 @@ export const searchPages = (
     response === undefined
       ? []
       : searchCalendarFailureNotices(response, model).flatMap((failure) =>
-          failure.continuation ? [calendarFailureNotice(model, failure, h)] : []
+          failure.continuation && !failure.reverse
+            ? [calendarFailureNotice(model, failure, h)]
+            : []
         );
 
   const problems =
@@ -125,9 +122,6 @@ export const searchPages = (
       ? [h.p([], ["Loading more"])]
       : []),
     ...(exhausted ? [h.p([], ["No more results"])] : []),
-    ...(older
-      ? [h.p([h.Class("muted")], ["Some older results aren't shown."])]
-      : []),
     ...(unknown
       ? [
           h.p(

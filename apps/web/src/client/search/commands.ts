@@ -3,6 +3,16 @@ import { Command, Mount, Render } from "foldkit";
 
 import { Message } from "../message.js";
 import { CalendarSearchClient, SearchPrefetch } from "./client.js";
+import { SearchTask } from "./model.js";
+import {
+  SearchDirection,
+  SearchPageNotice,
+  SearchPageTask,
+  SearchScrollAnchor,
+} from "./page-model.js";
+import { SearchRuntime } from "./runtime.js";
+import { measureSearchAnchor, restoreSearchAnchor } from "./scroll-anchor.js";
+import { searchTaskScope } from "./source.js";
 
 const focusInput = (root: ParentNode): void => {
   root
@@ -69,6 +79,63 @@ export const RestoreSearchScroll = Command.define("RestoreSearchScroll", {
 
       return yield* Effect.sync(() => {
         restoreScroll(document, position);
+
+        return Message.Navigated();
+      });
+    }),
+  messages: [Message.Navigated],
+});
+
+export const DispatchSearchPage = Command.define("DispatchSearchPage", {
+  args: { direction: SearchDirection, page: SearchPageTask },
+  execute: ({ direction, page }) =>
+    SearchRuntime.use((runtime) => runtime.dispatchPage(direction, page)).pipe(
+      Effect.match({
+        onFailure: (problem) =>
+          Message.ReceivedSearchPage({
+            notice: SearchPageNotice.cases.Failed.make({
+              direction,
+              page,
+              problem,
+            }),
+          }),
+        onSuccess: () => Message.Navigated(),
+      })
+    ),
+  messages: [Message.Navigated, Message.ReceivedSearchPage],
+});
+
+export const CaptureSearchPage = Command.define("CaptureSearchPage", {
+  args: { notice: SearchPageNotice.cases.Ready },
+  execute: ({ notice }) =>
+    Effect.gen(function* captureSearchPage() {
+      yield* Render.afterCommit;
+
+      return yield* Effect.sync(() =>
+        Message.ApplySearchPage({
+          anchor: Option.fromUndefinedOr(measureSearchAnchor(document)),
+          notice,
+        })
+      );
+    }),
+  messages: [Message.ApplySearchPage],
+});
+
+export const RestoreSearchAnchor = Command.define("RestoreSearchAnchor", {
+  args: { anchor: Schema.Option(SearchScrollAnchor), task: SearchTask },
+  execute: ({ anchor, task }) =>
+    Effect.gen(function* restoreSearchPageAnchor() {
+      yield* Render.afterCommit;
+
+      return yield* Effect.sync(() => {
+        const panel = document.querySelector<HTMLElement>("#search-panel");
+
+        if (
+          panel?.dataset.searchScope === searchTaskScope(task) &&
+          panel.dataset.searchRevision === String(task.revision)
+        ) {
+          restoreSearchAnchor(document, Option.getOrUndefined(anchor));
+        }
 
         return Message.Navigated();
       });

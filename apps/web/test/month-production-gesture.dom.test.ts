@@ -216,7 +216,11 @@ it.effect.each([false, true])(
           unusedBrowserLayers,
           Layer.succeed(CalendarSearchClient, unexpectedSearchClient),
           Layer.succeed(SearchRuntime, {
+            dispatchPage: () =>
+              Effect.die("No search paging in month gesture test"),
             observe: () => Stream.die("No search in month gesture test"),
+            observePages: () =>
+              Stream.die("No search page session in month gesture test"),
           }),
           Layer.succeed(
             EditingRuntime,

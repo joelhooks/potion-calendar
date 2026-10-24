@@ -39,6 +39,7 @@ import { view as appView } from "../src/features/app.js";
 import { dayFromIso, initialNavigation } from "../src/layout/navigation.js";
 import { visibleEvents } from "../src/layout/presentation.js";
 import { displayZone } from "../src/layout/time-zones.js";
+import { unusedSearchLayer } from "./browser-runtime-fixture.js";
 import {
   groupClipboardFixture,
   groupNativeEvent,
@@ -364,6 +365,7 @@ export const collectGroupArtifact = Effect.fn("test.collectGroupArtifact")(
           commit: () => Effect.die("Group paste artifacts must not delete"),
         })
       ),
+      Effect.provide(unusedSearchLayer),
       Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
     );
   },

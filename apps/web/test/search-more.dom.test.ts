@@ -79,7 +79,10 @@ it.effect(
       viewport.dispatchEvent(new Event("scroll"));
       const first = yield* Queue.take(arrived);
       expect(first.model.search.phase).toBe("LoadingMore");
-      expect(first.model.search.revision).toBe(initial.search.revision + 1);
+      expect(first.model.search.revision).toBe(initial.search.revision);
+      expect(first.commands?.map((command) => command.name)).toEqual([
+        "DispatchSearchPage",
+      ]);
       expect(first.model.search.response).toEqual(initial.search.response);
       viewport.dispatchEvent(new Event("scroll"));
       const repeated = yield* Queue.take(arrived);
@@ -166,9 +169,10 @@ it.effect(
           );
         }
 
-        expect(controls?.textContent).toContain(
-          "Some older results aren't shown."
-        );
+        expect(
+          document.querySelector("[data-search-history-controls]")?.textContent
+        ).toContain("Some older results aren't shown.");
+        expect(controls?.textContent).not.toMatch(/older|Searched back/iu);
       }
     })
 );
@@ -263,7 +267,9 @@ it.effect(
     Effect.gen(function* footerFailure() {
       const failed = partiallyFailedSearchPair();
       const pending = update(failed, Message.SearchMore());
-      expect(pending.commands ?? []).toHaveLength(0);
+      expect(pending.commands?.map((command) => command.name)).toEqual([
+        "DispatchSearchPage",
+      ]);
 
       for (const model of [failed, pending.model]) {
         const rendered = yield* renderToString(

@@ -6,6 +6,7 @@ import { GoogleCalendarClient } from "./google.js";
 import type { ListPageInput } from "./google.js";
 import type { CalendarValue } from "./model.js";
 import { calendarReadConcurrency } from "./read-concurrency.js";
+import { searchHistoryPage } from "./search-history.js";
 import { SearchPageTarget } from "./search-model.js";
 import type {
   SearchEventsInputValue,
@@ -47,6 +48,9 @@ const searchWindow = Effect.fn("searchWindow")(function* searchWindow(
   return {
     boundary: DateTime.formatIso(boundary),
     endExclusive: DateTime.formatIso(endExclusive),
+    historyStart: DateTime.formatIso(
+      DateTime.startOf(DateTime.subtract(local.value, { years: 10 }), "day")
+    ),
   };
 });
 
@@ -76,25 +80,33 @@ const searchCalendarPage = Effect.fn("searchCalendarPage")(
       singleEvents: true,
     } satisfies ListPageInput;
 
-    const forward = yield* google.listPage({
-      ...common,
-      maxResults: 100,
-      pageToken: SearchPageTarget.guards.Forward(target)
-        ? target.pageToken
-        : undefined,
-      timeMax: window.endExclusive,
-      timeMin: window.boundary,
-    });
+    const initial = SearchPageTarget.guards.Initial(target);
+    const reverse = SearchPageTarget.guards.Reverse(target);
 
-    const older = SearchPageTarget.guards.Initial(target)
-      ? yield* google.listPage({
+    const forward = reverse
+      ? undefined
+      : yield* google.listPage({
           ...common,
-          maxResults: 2500,
-          timeMax: window.boundary,
-        })
-      : undefined;
+          maxResults: initial ? 100 : 500,
+          pageToken: SearchPageTarget.guards.Forward(target)
+            ? target.pageToken
+            : undefined,
+          timeMax: window.endExclusive,
+          timeMin: window.boundary,
+        });
 
-    const token = forward.nextPageToken;
+    const older =
+      initial || reverse
+        ? yield* searchHistoryPage(
+            common,
+            window,
+            reverse ? target : { windowEnd: window.boundary },
+            input.timeZone,
+            initial
+          )
+        : undefined;
+
+    const token = forward?.nextPageToken;
     const hasMore = token !== undefined && token.length > 0;
 
     return {
@@ -103,13 +115,13 @@ const searchCalendarPage = Effect.fn("searchCalendarPage")(
         calendarId: calendar.calendarId,
         forwardHasMore: hasMore,
         forwardNextPageToken: hasMore ? token : undefined,
+        olderCursor: older?.cursor,
         olderHasMore:
-          older === undefined
-            ? undefined
-            : (older.nextPageToken?.length ?? 0) > 0,
+          older === undefined ? undefined : older.cursor !== undefined,
       },
-      results: [...forward.events, ...(older?.events ?? [])].flatMap((event) =>
-        Option.toArray(searchEventResult(calendar, event, input.timeZone))
+      results: [...(forward?.events ?? []), ...(older?.events ?? [])].flatMap(
+        (event) =>
+          Option.toArray(searchEventResult(calendar, event, input.timeZone))
       ),
     };
   }

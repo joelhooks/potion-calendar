@@ -23,6 +23,7 @@ import {
 } from "../src/client/editing/runtime.js";
 import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
+import { unusedSearchLayer } from "./browser-runtime-fixture.js";
 import {
   groupClipboardFixture,
   groupNativeEvent,
@@ -243,6 +244,7 @@ it.effect.prop(
                 }),
             })
           ),
+          Effect.provide(unusedSearchLayer),
           Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
         );
       })

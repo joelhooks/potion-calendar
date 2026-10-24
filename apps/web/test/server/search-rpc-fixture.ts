@@ -147,7 +147,7 @@ export const searchRpcFixture = Effect.fn("test.searchRpcFixture")(
 
           if (
             (yield* Ref.get(failedCalendars)).includes(calendarId) &&
-            !url.searchParams.has("timeMin")
+            url.searchParams.get("maxResults") === "2500"
           ) {
             return response(403);
           }
@@ -166,7 +166,7 @@ export const searchRpcFixture = Effect.fn("test.searchRpcFixture")(
           ];
 
           return (yield* Ref.get(paginated)) &&
-            url.searchParams.has("timeMin") &&
+            url.searchParams.get("maxResults") === "100" &&
             !url.searchParams.has("pageToken")
             ? response(200, { items, nextPageToken: "provider-page-2" })
             : response(200, { items });

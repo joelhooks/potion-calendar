@@ -7,7 +7,9 @@ assert(innerWidth===evidence.width,'Wrong viewport width');
 const panel=document.querySelector('#search-panel');
 const results=panel?.querySelector('#search-results');
 const controls=results?.querySelector('[data-search-page-controls="true"]');
-assert(panel&&results&&controls,'Missing actual search recipient');
+const history=results?.querySelector('[data-search-history-controls="true"]');
+assert(panel&&results&&controls&&history,'Missing actual directional search recipients');
+assert(results.firstElementChild===history,'Older history is not above the first dated section');
 assert(controls.getAttribute('role')==='status'&&controls.getAttribute('aria-live')==='polite','Search footer is not a polite status region');
 const rows=[...results.querySelectorAll('[data-search-event]')];
 assert(rows.length===evidence.rowCount&&rows.length>0,'Earlier search page was lost');
@@ -31,7 +33,8 @@ for(const retry of retries){
  assert(retry.closest('[data-search-page-controls]')===controls,'Continuation failure is outside the footer');
  assert(retry.parentElement?.dataset.searchFailure==='true','Retry is outside its failure recipient');
 }
-assert(controls.textContent.includes("Some older results aren't shown."),'Older bounded history was mislabeled');
+assert(history.textContent.includes("Some older results aren't shown."),'Older bounded history was mislabeled');
+assert(!/older|Searched back/i.test(controls.textContent),'Older-direction copy leaked into the forward footer');
 assert(!!results.querySelector('[data-search-failure="true"]')===partial,'Wrong partial failure copy');
 assert(!results.textContent.includes('Fake fixture page failure'),'Raw provider failure leaked');
 assert(!controls.querySelector('[autofocus]'),'Continuation steals focus');

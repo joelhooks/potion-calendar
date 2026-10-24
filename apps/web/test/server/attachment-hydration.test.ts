@@ -267,7 +267,11 @@ layer(fixtureLayer, { excludeTestServices: true })(
                       ),
                     },
                   ],
-                  window: { boundary: range.start, endExclusive: range.end },
+                  window: {
+                    boundary: range.start,
+                    endExclusive: range.end,
+                    historyStart: "2016-10-20T00:00:00Z",
+                  },
                 }),
               },
             },

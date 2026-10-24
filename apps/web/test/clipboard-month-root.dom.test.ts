@@ -20,6 +20,7 @@ import { EditingRuntime } from "../src/client/editing/runtime.js";
 import { MonthRuntime } from "../src/client/month/runtime.js";
 import { CalendarSearchClient } from "../src/client/search/client.js";
 import { visibleEvents } from "../src/layout/presentation.js";
+import { unusedSearchLayer } from "./browser-runtime-fixture.js";
 import { monthArtifactAnchor } from "./clipboard-group-artifact-fixture.js";
 import {
   groupClipboardFixture,
@@ -169,6 +170,7 @@ it.effect(
               commit: () => Effect.die("Month paste must not delete"),
             })
           ),
+          Effect.provide(unusedSearchLayer),
           Effect.provideService(CalendarSearchClient, unexpectedSearchClient)
         );
       })

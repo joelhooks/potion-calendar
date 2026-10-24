@@ -46,3 +46,11 @@ export const searchTask = (
         revision: model.search.revision,
       })
     : Option.none();
+
+export const searchQueryTask = (
+  model: AppModel
+): Option.Option<typeof SearchTask.Type> =>
+  Option.map(searchTask(model), (task) => ({
+    ...task,
+    request: { ...task.request, continuation: undefined },
+  }));

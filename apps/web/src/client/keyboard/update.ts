@@ -21,6 +21,7 @@ import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import type { MonthRuntime } from "../month/runtime.js";
 import type { CalendarSearchClient } from "../search/client.js";
+import type { SearchRuntime } from "../search/runtime.js";
 import {
   OccurrenceNotice,
   OccurrenceTask,
@@ -50,7 +51,11 @@ import { ColorOpening } from "./state.js";
 export type KeyboardResult = Update.Return<
   AppModel,
   AppMessage,
-  EditingRuntime | CalendarSearchClient | ClipboardRuntime | MonthRuntime
+  | EditingRuntime
+  | CalendarSearchClient
+  | SearchRuntime
+  | ClipboardRuntime
+  | MonthRuntime
 >;
 
 type Apply = (model: AppModel, message: AppMessage) => KeyboardResult;

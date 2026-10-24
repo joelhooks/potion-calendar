@@ -39,7 +39,11 @@ const domainFence = Layer.mergeAll(
   ),
   Layer.succeed(
     SearchRuntime,
-    SearchRuntime.of({ observe: () => Stream.fromEffect(unusedDomainWork) })
+    SearchRuntime.of({
+      dispatchPage: () => unusedDomainWork,
+      observe: () => Stream.fromEffect(unusedDomainWork),
+      observePages: () => Stream.fromEffect(unusedDomainWork),
+    })
   )
 );
 
