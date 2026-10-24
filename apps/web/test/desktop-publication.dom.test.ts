@@ -154,7 +154,25 @@ it.effect(
         Message.ReceivedUpcoming({
           personId: upcomingPerson,
           request: base.upcoming.request,
-          result: { events: [savedUpcomingEvent], versions: [] },
+          result: {
+            events: [
+              {
+                ...savedUpcomingEvent,
+                attachments: [
+                  {
+                    title: "Own app link",
+                    url: `${window.location.origin}/private-attachment`,
+                  },
+                  {
+                    title: "Saved external document",
+                    url: "https://files.example.test/saved",
+                  },
+                  { title: "Unsafe attachment", url: "file:///private/a" },
+                ],
+              },
+            ],
+            versions: [],
+          },
         })
       ).model;
 
@@ -177,6 +195,12 @@ it.effect(
       );
       expect(JSON.stringify(published)).not.toContain("Saved server value");
       expect(published[0]?.events[0]).not.toHaveProperty("attendees");
+      expect(published[0]?.events[0]?.attachments).toEqual([
+        {
+          title: "Saved external document",
+          url: "https://files.example.test/saved",
+        },
+      ]);
 
       const signedOut = update(model, Message.ClickedSignOut()).model;
       yield* subscriptions.desktopAgenda

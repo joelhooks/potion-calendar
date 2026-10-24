@@ -3,7 +3,10 @@ import type {
   CalendarEventValue,
   EventTimeValue,
 } from "@calendar/calendar/contracts";
-import { ConferenceUrl } from "@calendar/core/desktop-bridge";
+import {
+  ConferenceUrl,
+  eligiblePromptAttachments,
+} from "@calendar/core/desktop-bridge";
 import type {
   AgendaEventValue,
   AgendaSnapshotValue,
@@ -94,7 +97,8 @@ const projectSavedEvent = (
   zone: string,
   calendarColor: string,
   responseBusy: boolean,
-  ownEmails: readonly string[] | undefined
+  ownEmails: readonly string[] | undefined,
+  origin: string | undefined
 ): Option.Option<AgendaEventValue> => {
   const responseStatus = eventResponse(event);
   const times = eventTimes(event, zone);
@@ -117,6 +121,13 @@ const projectSavedEvent = (
 
   const projected: AgendaEventValue = {
     ...times.value,
+    attachments: eligiblePromptAttachments(
+      (event.attachments ?? []).map((attachment) => ({
+        title: attachment.title ?? "Attachment",
+        url: attachment.url,
+      })),
+      origin
+    ),
     calendarColor,
     conferenceUrl: conferenceUrl(event),
     hasLocation: (event.location?.trim().length ?? 0) > 0,
@@ -160,7 +171,8 @@ const includedInPublication = (
 
 export const agendaSnapshot = (
   model: AppModel,
-  preferences: DesktopPreferencesValue
+  preferences: DesktopPreferencesValue,
+  origin?: string
 ): AgendaSnapshotValue => {
   if (
     !preferences.menuBar ||
@@ -254,7 +266,8 @@ export const agendaSnapshot = (
       model.calendar.zone,
       item.calendar.backgroundColor ?? "#64748b",
       responseIsBusy(model),
-      ownEmails
+      ownEmails,
+      origin
     );
 
     return Option.isSome(projected) &&

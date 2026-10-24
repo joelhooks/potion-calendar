@@ -14,6 +14,8 @@ main {
 article {
   position: relative;
   touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
   transition: transform 160ms ease-out;
   padding: 12px;
   border: 1px solid light-dark(#d7dee5, #465361);
@@ -61,6 +63,33 @@ button:disabled {
   padding: 3px 7px;
   border-color: transparent;
   background: transparent;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+article:hover .dismiss,
+article:hover .menu-toggle,
+article:focus-within .dismiss,
+article:focus-within .menu-toggle,
+article[data-menu-open="true"] .dismiss,
+article[data-menu-open="true"] .menu-toggle {
+  opacity: 1;
+}
+.prompt-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+.prompt-attachments:empty {
+  display: none;
+}
+.prompt-attachments button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 .menu-toggle {
   margin-left: auto;
@@ -89,7 +118,9 @@ article[data-menu-open="true"] {
   transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  article {
+  article,
+  .dismiss,
+  .menu-toggle {
     transition: none;
   }
 }

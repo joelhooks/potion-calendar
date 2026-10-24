@@ -1,4 +1,25 @@
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
+
+export type Navigation = "window" | "browser" | "deny";
+
+export const navigation = (target: string, origin: string): Navigation => {
+  const url = URL.parse(target);
+
+  if (url === null || url.username !== "" || url.password !== "") {
+    return "deny";
+  }
+
+  if (
+    url.origin === origin &&
+    (url.protocol === "https:" || url.protocol === "http:")
+  ) {
+    return "window";
+  }
+
+  return url.protocol === "https:" || url.protocol === "mailto:"
+    ? "browser"
+    : "deny";
+};
 
 export const AgendaKey = Schema.Struct({
   accountId: Schema.NonEmptyString,
@@ -19,8 +40,30 @@ export const ConferenceUrl = Schema.String.check(
   })
 );
 
+export const PromptAttachment = Schema.Struct({
+  title: Schema.String,
+  url: Schema.String,
+});
+
+export const eligiblePromptAttachments = (
+  attachments: readonly (typeof PromptAttachment.Type)[],
+  origin?: string
+): readonly (typeof PromptAttachment.Type)[] =>
+  origin === undefined || !Predicate.isFunction(URL.parse?.bind(URL))
+    ? []
+    : attachments
+        .filter(
+          (attachment) =>
+            URL.parse(attachment.url)?.protocol === "https:" &&
+            navigation(attachment.url, origin) === "browser"
+        )
+        .slice(0, 20);
+
 export const AgendaEvent = Schema.Struct({
   allDay: Schema.Boolean,
+  attachments: Schema.optional(
+    Schema.Array(PromptAttachment).check(Schema.isMaxLength(20))
+  ),
   calendarColor: Schema.String,
   conferenceUrl: Schema.NullOr(ConferenceUrl),
   end: Schema.Finite,
@@ -149,9 +192,22 @@ export const DesktopAction = Schema.TaggedUnion({
   ShowEvent: { key: AgendaKey },
 });
 
-export const PromptAction = Schema.Struct({
-  action: Schema.Literals(["join", "show", "dismiss", "email", "snooze"]),
-  key: AgendaKey,
+export const PromptAction = Schema.Union([
+  Schema.Struct({
+    action: Schema.Literals(["join", "show", "dismiss", "email", "snooze"]),
+    key: AgendaKey,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("attachment"),
+    index: Schema.Int.check(Schema.isBetween({ maximum: 19, minimum: 0 })),
+    key: AgendaKey,
+    url: Schema.String,
+  }),
+]);
+
+export const PromptSize = Schema.Struct({
+  height: Schema.Finite,
+  revision: Schema.Int,
 });
 
 export const PromptView = Schema.Struct({
@@ -172,6 +228,7 @@ export const PromptSoundReply = Schema.Struct({
 });
 
 export interface PromptBridge {
+  readonly reportSize?: (size: typeof PromptSize.Type) => void;
   readonly act: (action: typeof PromptAction.Type) => void;
   readonly getView: () => Promise<typeof PromptView.Type>;
   readonly onSound?: (
@@ -186,6 +243,7 @@ export interface PromptBridge {
 export const promptChannels = {
   action: "potion:prompt:action:1",
   read: "potion:prompt:read:1",
+  size: "potion:prompt:size:1",
   sound: "potion:prompt:sound:1",
   soundReply: "potion:prompt:sound-reply:1",
   view: "potion:prompt:view:1",
@@ -193,6 +251,7 @@ export const promptChannels = {
 
 export const promptWire = {
   action: Schema.fromJsonString(PromptAction),
+  size: Schema.fromJsonString(PromptSize),
   sound: Schema.fromJsonString(PromptSoundRequest),
   soundReply: Schema.fromJsonString(PromptSoundReply),
   view: Schema.fromJsonString(PromptView),

@@ -1,4 +1,6 @@
-export type Navigation = "window" | "browser" | "deny";
+export { navigation } from "@calendar/core/desktop-bridge";
+
+export type { Navigation } from "@calendar/core/desktop-bridge";
 
 export const startsSystemSignIn = (
   target: string,
@@ -16,23 +18,4 @@ export const startsSystemSignIn = (
         url.origin === origin &&
         url.pathname === "/__fake-google/authorize"))
   );
-};
-
-export const navigation = (target: string, origin: string): Navigation => {
-  const url = URL.parse(target);
-
-  if (url === null || url.username !== "" || url.password !== "") {
-    return "deny";
-  }
-
-  if (
-    url.origin === origin &&
-    (url.protocol === "https:" || url.protocol === "http:")
-  ) {
-    return "window";
-  }
-
-  return url.protocol === "https:" || url.protocol === "mailto:"
-    ? "browser"
-    : "deny";
 };

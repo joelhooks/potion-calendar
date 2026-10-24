@@ -1,6 +1,6 @@
 import { defaultDesktopPreferences } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
-import { Arbitrary, Effect, Option, Schema } from "effect";
+import { Arbitrary, Effect, Option, Result, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
 import { initialModel, Message, update } from "../src/client/app.js";
@@ -64,6 +64,9 @@ it.effect.prop(
           result: { events: [savedUpcomingEvent], versions: [] },
         })
       ));
+      expect(
+        Result.isSuccess(Result.try(() => desktopDependencies(model)))
+      ).toBe(true);
       expect(desktopDependencies(model).snapshot.events).toHaveLength(1);
       expect(desktopDependencies(model).snapshot.events[0]?.title).toBe(
         savedUpcomingEvent.title
@@ -94,6 +97,9 @@ it.effect(
       ));
       const oldRequest = model.upcoming.request;
       ({ model } = update(model, Message.ClickedSignOut()));
+      expect(
+        Result.isSuccess(Result.try(() => desktopDependencies(model)))
+      ).toBe(true);
       expect(desktopDependencies(model).snapshot.events).toHaveLength(0);
       ({ model } = update(model, Message.ReceivedSession({ snapshot: null })));
       expect(AsyncData.getData(model.desktop.settings)).toEqual(

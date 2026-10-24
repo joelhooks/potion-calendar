@@ -5,6 +5,7 @@ import {
   DesktopAction,
   DesktopSettings,
   MeetingJoinRequest,
+  ConferenceUrl,
 } from "@calendar/core/desktop-bridge";
 import type {
   AgendaSnapshotValue,
@@ -29,6 +30,11 @@ export const NativeIntent = Schema.TaggedUnion({
   EmailPrompt: { key: AgendaKey },
   Join: { request: MeetingJoinRequest },
   MenuState: { value: Schema.Literals(["open", "closed"]) },
+  OpenPromptAttachment: {
+    index: Schema.Int,
+    key: AgendaKey,
+    url: ConferenceUrl,
+  },
   OpenSettings: { page: DesktopAction.cases.OpenSettings.fields.page },
   OpenWindow: {},
   Quit: {},
@@ -153,6 +159,13 @@ export const nativeHostMachine = (work: NativeHostWork) => {
                 ...context.queued.filter(
                   (queued) =>
                     queued._tag !== event.intent._tag ||
+                    (Predicate.isTagged(queued, "OpenPromptAttachment") &&
+                      Predicate.isTagged(
+                        event.intent,
+                        "OpenPromptAttachment"
+                      ) &&
+                      (queued.index !== event.intent.index ||
+                        queued.url !== event.intent.url)) ||
                     ("key" in queued &&
                       "key" in event.intent &&
                       (queued.key.accountId !== event.intent.key.accountId ||

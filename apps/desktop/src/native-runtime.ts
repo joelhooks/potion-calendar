@@ -2,6 +2,7 @@ import {
   DesktopAction,
   desktopChannels,
   desktopWire,
+  eligiblePromptAttachments,
 } from "@calendar/core/desktop-bridge";
 import type {
   DesktopActionValue,
@@ -38,6 +39,7 @@ import { navigation as classifyNavigation } from "./navigation.js";
 import { promptActionIntent } from "./prompt-action.js";
 import {
   emailPromptParticipants,
+  openPromptAttachment,
   requestPromptSnooze,
 } from "./prompt-actions.js";
 import { startPrompt } from "./prompt-machine.js";
@@ -170,6 +172,17 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                   Effect.asVoid
                 ),
               MenuState: () => Effect.void,
+              OpenPromptAttachment: (value) =>
+                openPromptAttachment(
+                  {
+                    action: "attachment",
+                    index: value.index,
+                    key: value.key,
+                    url: value.url,
+                  },
+                  view.agenda,
+                  openExternal
+                ),
               OpenSettings: (value) => windowActions.settings(value.page),
               OpenWindow: () => windowActions.open(),
               Quit: () =>
@@ -372,9 +385,18 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
 
       if (Option.isSome(decoded)) {
         runFork(
-          send(host.actor, { snapshot: decoded.value, type: "Agenda" }).pipe(
-            Effect.forkIn(scope)
-          )
+          send(host.actor, {
+            snapshot: {
+              events: decoded.value.events.map((item) => ({
+                ...item,
+                attachments: eligiblePromptAttachments(
+                  item.attachments ?? [],
+                  origin
+                ),
+              })),
+            },
+            type: "Agenda",
+          }).pipe(Effect.forkIn(scope))
         );
       } else {
         runFork(Effect.logWarning("Rejected desktop agenda payload"));

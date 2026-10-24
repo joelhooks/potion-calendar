@@ -9,6 +9,8 @@ import { initialTransition, transition } from "xstate";
 import type { EventFromLogic } from "xstate";
 
 import { promptEmailUrl } from "../prompt-email.js";
+import { attachmentControls } from "./prompt-attachments.js";
+import { createPromptMeasurement } from "./prompt-measurement.js";
 import { promptMenuPosition } from "./prompt-menu.js";
 import { promptSwipe } from "./prompt-swipe.js";
 import { createSoundReceiver, createToneAudio } from "./sound.js";
@@ -46,11 +48,11 @@ const card = (event: AgendaEventValue): HTMLElement => {
   });
   body.append(heading, time);
   actions.className = "actions";
-  article.append(body, actions);
+  article.append(body, attachmentControls(event, api), actions);
 
   const button = (
     label: string,
-    action: (typeof PromptAction.Type)["action"]
+    action: Exclude<(typeof PromptAction.Type)["action"], "attachment">
   ) => {
     const control = document.createElement("button");
     control.type = "button";
@@ -130,7 +132,10 @@ const card = (event: AgendaEventValue): HTMLElement => {
     { action: "snooze", label: "Snooze for 1 minute" },
     { action: "show", label: "Show event" },
   ] satisfies readonly {
-    readonly action: (typeof PromptAction.Type)["action"];
+    readonly action: Exclude<
+      (typeof PromptAction.Type)["action"],
+      "attachment"
+    >;
     readonly label: string;
   }[]) {
     const control = document.createElement("button");
@@ -306,6 +311,8 @@ const card = (event: AgendaEventValue): HTMLElement => {
   return article;
 };
 
+const measurement = createPromptMeasurement(root, api);
+
 const render = (view: typeof PromptView.Type) => {
   if (root === null) {
     return;
@@ -313,6 +320,7 @@ const render = (view: typeof PromptView.Type) => {
 
   root.replaceChildren(...view.events.map(card));
   root.querySelector("button")?.focus();
+  measurement.presented(view.revision);
 };
 
 // @effect-diagnostics-next-line asyncFunction:off -- This bounded native-page bootstrap reads one Promise from its isolated preload.
@@ -343,6 +351,7 @@ if (api !== undefined) {
     () => {
       stop();
       stopSound?.();
+      measurement.dispose();
     },
     { once: true }
   );

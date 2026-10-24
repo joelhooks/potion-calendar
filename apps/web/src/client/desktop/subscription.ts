@@ -14,7 +14,12 @@ export const desktopDependencies = (model: AppModel) => ({
   active: model.desktop.availability === "available",
   snapshot: Option.match(AsyncData.getData(model.desktop.settings), {
     onNone: (): AgendaSnapshotValue => ({ events: [] }),
-    onSome: (settings) => agendaSnapshot(model, settings.preferences),
+    onSome: (settings) =>
+      agendaSnapshot(
+        model,
+        settings.preferences,
+        typeof window === "undefined" ? undefined : window.location.origin
+      ),
   }),
 });
 

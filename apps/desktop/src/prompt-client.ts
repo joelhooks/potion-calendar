@@ -4,6 +4,7 @@ import { Option, Schema } from "effect";
 
 export interface PromptClientPort {
   readonly act: (message: string) => void;
+  readonly reportSize?: (message: string) => void;
   readonly read: () => Promise<string>;
   readonly rejected: () => void;
   readonly soundReply: (message: string) => void;
@@ -72,6 +73,15 @@ export const createPromptBridge = (port: PromptClientPort): PromptBridge => {
           port.rejected();
         }
       }),
+    reportSize: (size) => {
+      const message = Schema.encodeOption(promptWire.size)(size);
+
+      if (Option.isSome(message)) {
+        port.reportSize?.(message.value);
+      } else {
+        port.rejected();
+      }
+    },
     soundReply: (reply) => {
       const message = Schema.encodeOption(promptWire.soundReply)(reply);
 

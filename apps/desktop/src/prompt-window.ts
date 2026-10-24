@@ -17,6 +17,7 @@ import { BrowserWindow, ipcMain, screen, session } from "electron";
 
 import { DesktopError } from "./config.js";
 import type { PromptPresentation } from "./prompt-machine.js";
+import { promptFallbackHeight, promptMeasuredHeight } from "./prompt-size.js";
 import { previewWithSound, revealWithSound } from "./sound-machine.js";
 import { preparePromptSound } from "./sound-port.js";
 import type { PromptSoundPort } from "./sound-port.js";
@@ -149,12 +150,48 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
 
     ipcMain.on(promptChannels.action, actionListener);
 
+    const sizeListener: Parameters<typeof ipcMain.on>[1] = (event, value) => {
+      if (!trusted(event)) {
+        return;
+      }
+
+      const report = Schema.decodeUnknownOption(promptWire.size)(value);
+      const window = runSync(Ref.get(current));
+      const content = runSync(Ref.get(view));
+
+      if (
+        Option.isNone(report) ||
+        Option.isNone(window) ||
+        content.events.length === 0
+      ) {
+        return;
+      }
+
+      const bounds = window.value.getBounds();
+      const area = screen.getDisplayMatching(bounds).workArea;
+
+      const height = promptMeasuredHeight(
+        report.value,
+        content.revision,
+        bounds.height,
+        area.height,
+        bounds.height - window.value.getContentBounds().height
+      );
+
+      if (height !== undefined) {
+        window.value.setSize(380, height);
+      }
+    };
+
+    ipcMain.on(promptChannels.size, sizeListener);
+
     yield* Effect.addFinalizer(() =>
       dispose.pipe(
         Effect.andThen(
           Effect.sync(() => {
             ipcMain.removeHandler(promptChannels.read);
             ipcMain.removeListener(promptChannels.action, actionListener);
+            ipcMain.removeListener(promptChannels.size, sizeListener);
           })
         )
       )
@@ -292,7 +329,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
             const area = screen.getDisplayMatching(window.getBounds()).workArea;
             window.setSize(
               380,
-              Math.min(area.height, 70 + events.length * 100)
+              promptFallbackHeight(events.length, area.height)
             );
             const message = Schema.encodeOption(promptWire.view)(nextView);
 

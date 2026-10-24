@@ -25,6 +25,9 @@ const api = createPromptBridge({
     return message.value;
   },
   rejected,
+  reportSize: (message) => {
+    ipcRenderer.send(promptChannels.size, message);
+  },
   soundReply: (message) => {
     ipcRenderer.send(promptChannels.soundReply, message);
   },

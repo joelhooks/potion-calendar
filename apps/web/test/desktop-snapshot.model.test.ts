@@ -332,6 +332,59 @@ it.effect.prop(
     })
 );
 
+it.effect.prop(
+  "publishes only saved browser HTTPS attachment title/URL pairs, in order, capped at twenty",
+  {
+    count: Arbitrary.schema(
+      Schema.Int.check(Schema.isBetween({ maximum: 30, minimum: 0 }))
+    ),
+  },
+  ({ count }) =>
+    Effect.sync(() => {
+      const origin = "https://calendar.example.test";
+
+      const attachments = [
+        { title: "Same app", url: `${origin}/private` },
+        { title: "Unsafe file", url: "file:///private/a" },
+        { title: "Mail", url: "mailto:guest@example.test" },
+        { title: "HTTP", url: "http://files.example.test/a" },
+        {
+          title: "Credentials",
+          url: "https://user:secret@files.example.test/a",
+        },
+        ...Array.from({ length: count }, (_, index) => ({
+          iconUrl: "https://icons.example.test/private",
+          mimeType: "private/type",
+          title: `Saved ${index}`,
+          url: `https://files.example.test/${index}`,
+        })),
+      ];
+
+      const model = loaded([
+        { ...eventAt("attachment-publication", 1), attachments },
+      ]);
+
+      const [projected] = agendaSnapshot(model, preferences, origin).events;
+      expect(projected).toBeDefined();
+      expect(projected?.attachments).toEqual(
+        attachments.slice(5, 25).map((attachment) => ({
+          title: attachment.title,
+          url: attachment.url,
+        }))
+      );
+      expect(agendaSnapshot(model, preferences).events[0]?.attachments).toEqual(
+        []
+      );
+      expect(
+        agendaSnapshot(
+          loaded([{ ...eventAt("attachment-publication", 1) }]),
+          preferences,
+          origin
+        ).events[0]?.attachments
+      ).toEqual([]);
+    })
+);
+
 it.effect(
   "supports all-day opt-in, strips unsafe conferencing, and deduplicates saved ids",
   () =>
