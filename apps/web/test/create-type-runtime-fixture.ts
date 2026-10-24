@@ -9,7 +9,7 @@ import {
   timedEvent,
 } from "../../../packages/calendar/test/fake-google.js";
 import { Message, RemoteSession, update } from "../src/client/app.js";
-import type { AppModel } from "../src/client/app.js";
+import type { AppMessage, AppModel } from "../src/client/app.js";
 import { RemoteEvents } from "../src/client/calendar-state.js";
 import { CalendarEditingClient } from "../src/client/editing/calendar-client.js";
 import { DeletionWriter } from "../src/client/editing/delete-actor.js";
@@ -196,26 +196,29 @@ export const createTypeRuntimeFixture = Effect.fn("createTypeRuntimeFixture")(
       Effect.forkScoped
     );
 
-    const dispatch = Effect.fn("dispatchCreateTypeRoot")(function* dispatch(
-      action: typeof EditorAction.Type
-    ) {
-      const result = update(
-        yield* Ref.get(state),
-        Message.EditingAction({ action })
-      );
+    const dispatchMessage = Effect.fn("dispatchCreateTypeRoot")(
+      function* dispatchMessage(message: AppMessage) {
+        const result = update(yield* Ref.get(state), message);
 
-      yield* Ref.set(state, result.model);
+        yield* Ref.set(state, result.model);
 
-      for (const command of result.commands ?? []) {
-        if (command.name === "DispatchEditing") {
-          yield* command.effect.pipe(
-            Effect.provide(unusedBrowserLayers),
-            Effect.provideService(CalendarSearchClient, unexpectedSearchClient),
-            Effect.provideService(EditingRuntime, runtime)
-          );
+        for (const command of result.commands ?? []) {
+          if (command.name === "DispatchEditing") {
+            yield* command.effect.pipe(
+              Effect.provide(unusedBrowserLayers),
+              Effect.provideService(
+                CalendarSearchClient,
+                unexpectedSearchClient
+              ),
+              Effect.provideService(EditingRuntime, runtime)
+            );
+          }
         }
       }
-    });
+    );
+
+    const dispatch = (action: typeof EditorAction.Type) =>
+      dispatchMessage(Message.EditingAction({ action }));
 
     const editText = Effect.fn("editCreateTypeText")(function* editText(
       field: "title" | "startDate" | "endDate" | "startTime" | "endTime",
@@ -257,9 +260,11 @@ export const createTypeRuntimeFixture = Effect.fn("createTypeRuntimeFixture")(
       calendar,
       calendarReply,
       dispatch,
+      dispatchMessage,
       editText,
       model,
       queue,
+      runtime,
       saved,
       state,
     };

@@ -261,8 +261,9 @@ export const editAction = (
   action: typeof EditorAction.Type
 ): Result => {
   if (
-    BulkView.guards.Running(model.editing.bulk) ||
-    BulkView.guards.Undoing(model.editing.bulk)
+    (BulkView.guards.Running(model.editing.bulk) ||
+      BulkView.guards.Undoing(model.editing.bulk)) &&
+    !EditorAction.guards.UndoConversion(action)
   ) {
     return { model };
   }

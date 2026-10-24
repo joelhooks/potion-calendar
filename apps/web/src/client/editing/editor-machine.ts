@@ -9,7 +9,8 @@ import {
   editorNeedsConferenceReplacement,
 } from "./conferencing-draft.js";
 import { EditorAction } from "./editor-action.js";
-import { EditorView, RepeatForm } from "./editor-model.js";
+import { EditorView, EventDraft, RepeatForm } from "./editor-model.js";
+import type { ConversionNotice, EventDraftValue } from "./editor-model.js";
 import {
   EditorChangeResult,
   EditorLoadResult,
@@ -25,6 +26,7 @@ import { EditorInputFailure } from "./input-failure.js";
 import { loadEditorLogic } from "./load-editor.js";
 import { permissionsForEditor, prepareEditorLogic } from "./prepare-editor.js";
 import { statusInsertRefusal } from "./status-event-draft.js";
+import { typeConversionLogic } from "./type-conversion.js";
 import { writeEditorLogic } from "./write-editor.js";
 
 type EditorState =
@@ -37,6 +39,7 @@ type EditorState =
   | "validating"
   | "scope"
   | "removal"
+  | "routing"
   | "email"
   | "saving"
   | "failed";
@@ -44,6 +47,15 @@ type EditorState =
 interface EditorContext {
   readonly action: typeof EditorAction.Type | undefined;
   readonly custom: typeof RepeatForm.Type | undefined;
+  readonly conversion:
+    | {
+        readonly notice: typeof ConversionNotice.Type;
+        readonly before: EventDraftValue;
+        readonly after: EventDraftValue;
+      }
+    | undefined;
+  readonly conversionVersion: number;
+  readonly manualType: boolean;
   readonly error: string | undefined;
   readonly failure: typeof EditorFailure.Type | undefined;
   readonly mutation: typeof EditorMutation.Type | undefined;
@@ -59,6 +71,8 @@ interface Transition {
   readonly target?: EditorState;
 }
 
+const sameDraft = Schema.toEquivalence(EventDraft);
+
 const sessionFor = (context: EditorContext) =>
   Schema.decodeUnknownSync(LoadedEditor)(context.session);
 
@@ -73,12 +87,35 @@ const afterChoice = (context: EditorContext): Transition => ({
   target: planFor(context).emailNeeded ? "email" : "saving",
 });
 
+const undoConversion = (context: EditorContext, id: string): Transition => {
+  const { conversion, session } = context;
+
+  return conversion === undefined ||
+    session === undefined ||
+    conversion.notice.id !== id ||
+    !sameDraft(session.draft, conversion.after)
+    ? {}
+    : {
+        context: {
+          conversion: undefined,
+          manualType: true,
+          session: { ...session, draft: conversion.before },
+        },
+        reenter: true,
+        target: "editing",
+      };
+};
+
 const routeAction = (
   context: EditorContext,
   action: typeof EditorAction.Type
 ): Transition => {
   if (EditorAction.guards.Cancel(action)) {
-    return { target: "closed" };
+    return { context: { conversion: undefined }, target: "closed" };
+  }
+
+  if (EditorAction.guards.UndoConversion(action)) {
+    return undoConversion(context, action.id);
   }
 
   if (EditorAction.guards.SaveAsEvent(action)) {
@@ -157,7 +194,16 @@ const routeAction = (
   }
 
   return {
-    context: { action, error: undefined, failure: undefined },
+    context: {
+      action,
+      conversion: EditorAction.guards.EventTypeSelected(action)
+        ? undefined
+        : context.conversion,
+      error: undefined,
+      failure: undefined,
+      manualType:
+        context.manualType || EditorAction.guards.EventTypeSelected(action),
+    },
     reenter: true,
     target: "changing",
   };
@@ -168,20 +214,41 @@ const changed = (
   result: typeof EditorChangeResult.Type
 ): Transition => {
   const next = EditorChangeResult.match<EditorContext>(result, {
-    Changed: ({ session }) => ({ ...context, error: undefined, session }),
+    Changed: ({ session }) => ({
+      ...context,
+      conversion:
+        context.conversion !== undefined &&
+        sameDraft(session.draft, context.conversion.after)
+          ? context.conversion
+          : undefined,
+      error: undefined,
+      session,
+    }),
     Invalid: ({ message }) => ({ ...context, error: message }),
   });
 
-  const [action] = next.queue;
-  const queue = next.queue.slice(1);
+  return { context: next, target: "routing" };
+};
+
+const routeQueuedAction = (context: EditorContext): Transition => {
+  const [action] = context.queue;
+  const queue = context.queue.slice(1);
 
   if (action === undefined) {
-    return { context: { ...next, queue }, target: "editing" };
+    return { target: "editing" };
   }
 
-  const transition = routeAction({ ...next, queue }, action);
+  const transition = routeAction({ ...context, queue }, action);
 
-  return { ...transition, context: { ...next, queue, ...transition.context } };
+  return {
+    ...transition,
+    context: { queue, ...transition.context },
+    target:
+      transition.target === undefined ||
+      (transition.target === "editing" && queue.length > 0)
+        ? "routing"
+        : transition.target,
+  };
 };
 
 const prepared = (result: typeof EditorPlanResult.Type): Transition =>
@@ -191,7 +258,7 @@ const prepared = (result: typeof EditorPlanResult.Type): Transition =>
       target: "editing",
     }),
     Prepared: ({ plan }) => {
-      const context = { plan, session: plan.session };
+      const context = { conversion: undefined, plan, session: plan.session };
 
       if (
         plan.session.operation !== "delete" &&
@@ -261,6 +328,7 @@ export const eventEditorMachine = setupEffect({
     changeEditor: changeEditorLogic,
     loadEditor: loadEditorLogic,
     prepareEditor: prepareEditorLogic,
+    typeConversion: typeConversionLogic,
     writeEditor: writeEditorLogic,
   },
   schemas: {
@@ -273,9 +341,12 @@ export const eventEditorMachine = setupEffect({
 }).createMachine({
   context: {
     action: undefined,
+    conversion: undefined,
+    conversionVersion: 0,
     custom: undefined,
     error: undefined,
     failure: undefined,
+    manualType: false,
     mutation: undefined,
     plan: undefined,
     queue: [],
@@ -287,9 +358,12 @@ export const eventEditorMachine = setupEffect({
     OPEN: ({ event }) => ({
       context: {
         action: undefined,
+        conversion: undefined,
+        conversionVersion: 0,
         custom: undefined,
         error: undefined,
         failure: undefined,
+        manualType: false,
         mutation: undefined,
         plan: undefined,
         queue: [],
@@ -314,7 +388,7 @@ export const eventEditorMachine = setupEffect({
       on: {
         ACTION: ({ context, event }) =>
           EditorAction.guards.Cancel(event.action)
-            ? { target: "closed" }
+            ? { context: { conversion: undefined }, target: "closed" }
             : { context: { queue: [...context.queue, event.action] } },
       },
     },
@@ -341,6 +415,42 @@ export const eventEditorMachine = setupEffect({
       },
     },
     editing: {
+      invoke: {
+        input: ({ context }) => ({
+          manual: context.manualType,
+          session: sessionFor(context),
+        }),
+        onDone: ({ context, event }) => {
+          if (Option.isNone(event.output)) {
+            return {};
+          }
+
+          const session = event.output.value;
+          const target = session.draft.eventType;
+
+          if (target !== "focusTime" && target !== "outOfOffice") {
+            return {};
+          }
+
+          const conversionVersion = context.conversionVersion + 1;
+
+          return {
+            context: {
+              conversion: {
+                after: session.draft,
+                before: sessionFor(context).draft,
+                notice: {
+                  id: `${session.id}:conversion-${conversionVersion}`,
+                  target,
+                },
+              },
+              conversionVersion,
+              session,
+            },
+          };
+        },
+        src: "typeConversion",
+      },
       on: {
         ACTION: ({ context, event }) => routeAction(context, event.action),
       },
@@ -428,6 +538,9 @@ export const eventEditorMachine = setupEffect({
         },
       },
     },
+    routing: {
+      always: ({ context }) => routeQueuedAction(context),
+    },
     saving: {
       invoke: {
         input: ({ context }) => planFor(context),
@@ -506,6 +619,9 @@ export const projectEditor = (
   const session = sessionFor(context);
 
   const fields = {
+    conversion: snapshot.matches("editing")
+      ? context.conversion?.notice
+      : undefined,
     draft: session.draft,
     error: Option.fromUndefinedOr(
       context.error ??

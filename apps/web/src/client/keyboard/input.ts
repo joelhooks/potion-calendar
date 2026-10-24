@@ -1,6 +1,7 @@
 import { Option, Predicate } from "effect";
 
 import type { AppModel } from "../app.js";
+import { currentConversion } from "../editing/editor-model.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import { keyboardRegistry, sequencePrefixes } from "./registry.js";
@@ -140,7 +141,8 @@ export const keyboardMessage = (
 
   if (
     scope === "text" &&
-    !["Mod+k", "Mod+f", "Shift+Mod+Enter", "Control+r"].includes(token)
+    !["Mod+k", "Mod+f", "Shift+Mod+Enter", "Control+r"].includes(token) &&
+    !(token === "Mod+z" && currentConversion(model.editing.view) !== undefined)
   ) {
     return Option.none();
   }

@@ -35,6 +35,7 @@ export interface EditorProps<Message> {
   readonly timeFormat?: ResolvedTimeFormat;
   readonly theme?: "light" | "dark";
   readonly toast?: Html | undefined;
+  readonly footerNotice?: Html | undefined;
   readonly send: (action: typeof EditorAction.Type) => Message;
 }
 

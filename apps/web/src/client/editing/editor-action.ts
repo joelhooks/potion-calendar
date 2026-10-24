@@ -69,4 +69,5 @@ export const EditorAction = Schema.TaggedUnion({
   ToggleAllDay: {},
   ToggleDefaultReminders: {},
   Undo: { id: Schema.String },
+  UndoConversion: { id: Schema.String },
 });

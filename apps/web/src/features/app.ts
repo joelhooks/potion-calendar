@@ -9,7 +9,10 @@ import { BulkView } from "../client/bulk/model.js";
 import { bulkDeleteSelection } from "../client/bulk/selection.js";
 import { PrepareClipboardDialogs } from "../client/clipboard/dialog-mount.js";
 import { PrepareEditingDialogs } from "../client/editing/dialog-mount.js";
-import { EditorView } from "../client/editing/editor-model.js";
+import {
+  currentConversion,
+  EditorView,
+} from "../client/editing/editor-model.js";
 import { PrepareGestures } from "../client/editing/gesture-mount.js";
 import { PrepareKeyboard } from "../client/keyboard/mount.js";
 import { bindingHints } from "../client/keyboard/registry.js";
@@ -39,6 +42,7 @@ import { selectionCommandStatus } from "./selection-command-status.js";
 import { settingsPage } from "./settings.js";
 import { shortcutsPage } from "./shortcuts-page.js";
 import { monthGrid, timeGrid } from "./time-grid.js";
+import { typeConversionToast } from "./type-conversion-toast.js";
 import { undoToast } from "./undo-toast.js";
 import { upcomingMeetingPanel } from "./upcoming-meeting.js";
 
@@ -58,16 +62,45 @@ const editingLayers = (
       personId: Option.getOrUndefined(model.person),
     });
 
-  const toast =
+  const conversion = currentConversion(model.editing.view);
+
+  const deletion =
     latest === undefined ||
     Option.isSome(bulkDeleteSelection(model, latest.intent.id))
       ? undefined
-      : undoToast(h, { intent: latest.intent, send });
+      : undoToast(h, {
+          intent: latest.intent,
+          send,
+          stacked: conversion !== undefined,
+        });
+
+  const toast =
+    conversion === undefined
+      ? deletion
+      : h.div(
+          [
+            h.Style({
+              "align-self": "flex-end",
+              "box-sizing": "border-box",
+              display: "flex",
+              "flex-direction": "column",
+              "flex-shrink": "0",
+              gap: "12px",
+              "max-width": "100%",
+              position: "static",
+            }),
+          ],
+          [
+            typeConversionToast(h, conversion, send),
+            ...(deletion === undefined ? [] : [deletion]),
+          ]
+        );
 
   return [
     ...editorDialogs(h, {
       calendars: model.calendar.calendars,
       chooseTimeZone: Message.KeyboardAction({ id: "event-zone" }),
+      footerNotice: conversion === undefined ? undefined : toast,
       initialFocus: model.keyboard.focus,
       locationMaps: model.settings.locationMaps,
       model: model.editing.view,
@@ -76,7 +109,7 @@ const editingLayers = (
       send,
       theme: resolvedTheme(model),
       timeFormat: resolvedTimeFormat(model),
-      toast,
+      toast: conversion === undefined ? toast : undefined,
     }),
   ];
 };

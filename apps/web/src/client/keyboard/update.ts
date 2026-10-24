@@ -14,7 +14,7 @@ import { eventKey } from "../calendar-state.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
 import { SavePreferences, ScrollToSelection } from "../commands.js";
 import { EditorAction } from "../editing/editor-action.js";
-import { EditorView } from "../editing/editor-model.js";
+import { currentConversion, EditorView } from "../editing/editor-model.js";
 import type { EditingRuntime } from "../editing/runtime.js";
 import { editAction } from "../editing/update.js";
 import { Message } from "../message.js";
@@ -220,6 +220,15 @@ const selectionAction = (
 ): KeyboardResult => {
   switch (id) {
     case "undo": {
+      const conversion = currentConversion(model.editing.view);
+
+      if (conversion !== undefined) {
+        return editAction(
+          model,
+          EditorAction.cases.UndoConversion.make({ id: conversion.id })
+        );
+      }
+
       if ((bulkSummary(model)?.undo.length ?? 0) > 0) {
         return apply(model, Message.BulkControl({ control: "undo" }));
       }

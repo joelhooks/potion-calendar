@@ -85,7 +85,13 @@ export const EditorPermissions = Schema.Struct({
   inviteGuests: Schema.Boolean,
 });
 
+export const ConversionNotice = Schema.Struct({
+  id: Schema.String,
+  target: Schema.Literals(["focusTime", "outOfOffice"]),
+});
+
 const editorFields = {
+  conversion: Schema.optional(ConversionNotice),
   draft: EventDraft,
   error: Schema.Option(Schema.String),
   kind: Schema.Literals(["create", "edit", "duplicate"]),
@@ -115,3 +121,6 @@ export const EditorView = Schema.TaggedUnion({
 export type EventDraftValue = typeof EventDraft.Type;
 
 export type EditorViewValue = typeof EditorView.Type;
+
+export const currentConversion = (view: EditorViewValue) =>
+  EditorView.guards.Editing(view) ? view.conversion : undefined;

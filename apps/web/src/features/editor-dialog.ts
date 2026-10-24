@@ -12,6 +12,7 @@ export interface EditorDialogProps<Message> {
   readonly confirmLabel: string;
   readonly dismissOnly?: boolean;
   readonly extra?: Html | undefined;
+  readonly footerNotice?: Html | undefined;
   readonly id: string;
   readonly initialFocus: string;
   readonly label: string;
@@ -80,6 +81,7 @@ export const editorDialog = <Message>(
             ],
             props.body
           ),
+          ...(props.footerNotice === undefined ? [] : [props.footerNotice]),
           h.footer(
             [h.Class("editor-footer")],
             [

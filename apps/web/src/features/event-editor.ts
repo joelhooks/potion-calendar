@@ -169,6 +169,7 @@ const editorForm = <Message>(
       EditorView.guards.ConfirmConferencing(props.model)
         ? undefined
         : props.toast,
+    footerNotice: props.footerNotice,
     id: "event-editor-dialog",
     initialFocus: initialEditorFocus(props),
     label: titles[props.model.kind],

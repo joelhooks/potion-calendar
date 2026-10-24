@@ -14,7 +14,7 @@ import { BulkView } from "../bulk/model.js";
 import { eventKey } from "../calendar-state.js";
 import { DesktopRequest } from "../desktop/model.js";
 import { EditorAction } from "../editing/editor-action.js";
-import { EditorView } from "../editing/editor-model.js";
+import { currentConversion, EditorView } from "../editing/editor-model.js";
 import {
   instantDeleteEligible,
   instantSaveEligible,
@@ -624,6 +624,7 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
   ),
   row("undo", "Undo", ["Mod+z"], "General", "Event", special("undo"), {
     availability: (model) =>
+      currentConversion(model.editing.view) !== undefined ||
       model.editing.deletes.some((mark) => mark.phase === "pending")
         ? "enabled"
         : "disabled",
