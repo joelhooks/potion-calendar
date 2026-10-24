@@ -26,6 +26,7 @@ import type { DesktopError } from "./config.js";
 export const NativeIntent = Schema.TaggedUnion({
   ClosedPrompt: {},
   DismissPrompt: { key: AgendaKey },
+  EmailPrompt: { key: AgendaKey },
   Join: { request: MeetingJoinRequest },
   MenuState: { value: Schema.Literals(["open", "closed"]) },
   OpenSettings: { page: DesktopAction.cases.OpenSettings.fields.page },
@@ -34,6 +35,7 @@ export const NativeIntent = Schema.TaggedUnion({
   RequestedJoinMeeting: {},
   RespondToEvent: DesktopAction.cases.RespondToEvent.fields,
   ShowEvent: { key: AgendaKey },
+  SnoozePrompt: { key: AgendaKey },
   Stop: {},
   ToggleMenu: {},
 });
@@ -149,7 +151,13 @@ export const nativeHostMachine = (work: NativeHostWork) => {
             context: {
               queued: [
                 ...context.queued.filter(
-                  (queued) => queued._tag !== event.intent._tag
+                  (queued) =>
+                    queued._tag !== event.intent._tag ||
+                    ("key" in queued &&
+                      "key" in event.intent &&
+                      (queued.key.accountId !== event.intent.key.accountId ||
+                        queued.key.calendarId !== event.intent.key.calendarId ||
+                        queued.key.eventId !== event.intent.key.eventId))
                 ),
                 event.intent,
               ],

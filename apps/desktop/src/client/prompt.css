@@ -12,6 +12,9 @@ main {
   padding: 12px;
 }
 article {
+  position: relative;
+  touch-action: pan-y;
+  transition: transform 160ms ease-out;
   padding: 12px;
   border: 1px solid light-dark(#d7dee5, #465361);
   border-radius: 8px;
@@ -45,4 +48,48 @@ button:focus-visible {
 }
 button:disabled {
   opacity: 0.5;
+}
+[data-prompt-body] {
+  cursor: pointer;
+}
+[data-prompt-body]:focus-visible {
+  outline: 2px solid #5486b0;
+  outline-offset: 2px;
+}
+.dismiss,
+.menu-toggle {
+  padding: 3px 7px;
+  border-color: transparent;
+  background: transparent;
+}
+.menu-toggle {
+  margin-left: auto;
+}
+.prompt-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  z-index: 2;
+  padding: 4px;
+  border: 1px solid light-dark(#aab7c4, #637587);
+  border-radius: 6px;
+  background: light-dark(#fff, #263544);
+  box-shadow: 0 3px 12px #0003;
+}
+.prompt-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  text-align: left;
+}
+article[data-dragging="true"],
+article[data-menu-open="true"] {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  article {
+    transition: none;
+  }
 }

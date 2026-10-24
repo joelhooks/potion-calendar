@@ -27,6 +27,7 @@ export const AgendaEvent = Schema.Struct({
   hasLocation: Schema.Boolean,
   hasParticipants: Schema.Boolean,
   key: AgendaKey,
+  participantEmails: Schema.optional(Schema.Array(Schema.String)),
   responseStatus: Schema.Literals([
     "accepted",
     "declined",
@@ -149,7 +150,7 @@ export const DesktopAction = Schema.TaggedUnion({
 });
 
 export const PromptAction = Schema.Struct({
-  action: Schema.Literals(["join", "show", "dismiss"]),
+  action: Schema.Literals(["join", "show", "dismiss", "email", "snooze"]),
   key: AgendaKey,
 });
 

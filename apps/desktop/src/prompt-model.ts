@@ -25,6 +25,10 @@ export interface PromptContext {
   readonly preferences: DesktopPreferencesValue;
   readonly remembered: ReadonlyMap<string, number>;
   readonly snapshot: AgendaSnapshotValue;
+  readonly snoozed: ReadonlyMap<
+    string,
+    { readonly start: number; readonly until: number }
+  >;
   readonly visible: readonly AgendaEventValue[];
 }
 
@@ -37,6 +41,7 @@ export const initialPrompt = (input: PromptInput): PromptContext => ({
   ...input,
   pending: [],
   remembered: new Map(),
+  snoozed: new Map(),
   visible: [],
 });
 
@@ -72,6 +77,34 @@ const due = (
   );
 };
 
+const reconcileSnoozes = (
+  context: PromptContext,
+  byId: ReadonlyMap<string, AgendaEventValue>
+) => {
+  const pending = new Map<string, AgendaEventValue>();
+  const snoozed = new Map(context.snoozed);
+
+  for (const [identity, snooze] of snoozed) {
+    const current = byId.get(identity);
+
+    if (current !== undefined && current.start !== snooze.start) {
+      snoozed.delete(identity);
+    } else if (context.now >= snooze.until) {
+      snoozed.delete(identity);
+
+      if (
+        current !== undefined &&
+        eligibleMeeting(current, context.preferences) &&
+        !expired(current, context.now)
+      ) {
+        pending.set(identity, current);
+      }
+    }
+  }
+
+  return { pending, snoozed };
+};
+
 export const reconcilePrompts = (
   context: PromptContext,
   input: Partial<PromptInput>,
@@ -92,7 +125,7 @@ export const reconcilePrompts = (
     }
   }
 
-  const pending = new Map<string, AgendaEventValue>();
+  const { pending, snoozed } = reconcileSnoozes(next, byId);
 
   for (const previous of retained) {
     const current = byId.get(promptIdentity(previous.key));
@@ -100,6 +133,7 @@ export const reconcilePrompts = (
     if (
       current !== undefined &&
       current.start === previous.start &&
+      !snoozed.has(promptIdentity(current.key)) &&
       eligibleMeeting(current, next.preferences) &&
       !expired(current, next.now)
     ) {
@@ -110,6 +144,7 @@ export const reconcilePrompts = (
   for (const event of byId.values()) {
     if (
       !remembered.has(promptIdentity(event.key)) &&
+      !snoozed.has(promptIdentity(event.key)) &&
       eligibleMeeting(event, next.preferences) &&
       due(event, next.preferences, next.now)
     ) {
@@ -117,7 +152,7 @@ export const reconcilePrompts = (
     }
   }
 
-  return { ...next, pending: [...pending.values()], remembered };
+  return { ...next, pending: [...pending.values()], remembered, snoozed };
 };
 
 export const presentedPrompts = (context: PromptContext): PromptContext => {
@@ -128,6 +163,45 @@ export const presentedPrompts = (context: PromptContext): PromptContext => {
   }
 
   return { ...context, remembered, visible: context.pending };
+};
+
+export const snoozePrompt = (
+  context: PromptContext,
+  key: AgendaKeyValue,
+  now: number,
+  retained: readonly AgendaEventValue[] = context.visible
+): PromptContext => {
+  const identity = promptIdentity(key);
+
+  const event = [...context.pending, ...context.visible].find(
+    (card) => promptIdentity(card.key) === identity
+  );
+
+  if (event === undefined) {
+    return context;
+  }
+
+  const remembered = new Map(context.remembered);
+  remembered.delete(identity);
+
+  const snoozed = new Map([
+    ...context.snoozed,
+    [identity, { start: event.start, until: now + minuteMilliseconds }],
+  ]);
+
+  return reconcilePrompts(
+    {
+      ...context,
+      now,
+      remembered,
+      snoozed,
+      visible: context.visible.filter(
+        (card) => promptIdentity(card.key) !== identity
+      ),
+    },
+    {},
+    retained.filter((card) => promptIdentity(card.key) !== identity)
+  );
 };
 
 export const dismissPrompt = (
@@ -145,10 +219,14 @@ export const dismissPrompt = (
     remembered.set(promptIdentity(key), event.start);
   }
 
+  const snoozed = new Map(context.snoozed);
+  snoozed.delete(promptIdentity(key));
+
   return reconcilePrompts(
     {
       ...context,
       remembered,
+      snoozed,
       visible: context.visible.filter(
         (card) => promptIdentity(card.key) !== promptIdentity(key)
       ),

@@ -34,6 +34,12 @@ import { NativeIntentEvent } from "./native-intent-event.js";
 import { runNativeJoin } from "./native-join.js";
 import { nativeSettingsPort } from "./native-settings.js";
 import { NativeTray } from "./native-tray.js";
+import { navigation as classifyNavigation } from "./navigation.js";
+import { promptActionIntent } from "./prompt-action.js";
+import {
+  emailPromptParticipants,
+  requestPromptSnooze,
+} from "./prompt-actions.js";
 import { startPrompt } from "./prompt-machine.js";
 import { PromptWindow } from "./prompt-window.js";
 import { NativeSettings } from "./settings.js";
@@ -106,22 +112,27 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
 
     const windowActions = mainWindowActions(focus, pageAction);
 
+    const openExternal = (url: string) =>
+      classifyNavigation(url, origin) === "browser"
+        ? Effect.tryPromise({
+            catch: (cause) =>
+              new DesktopError({
+                cause,
+                message: "The meeting could not be opened",
+              }),
+            // @effect-diagnostics-next-line asyncFunction:off -- Electron's external URL opener is an accepted OS handoff, not a completed conference join.
+            try: async () => {
+              await shell.openExternal(url);
+            },
+          })
+        : Effect.fail(
+            new DesktopError({ message: "External URL is not permitted" })
+          );
+
     const join = Effect.fn("Desktop.joinMeeting")(function* join(
       request: MeetingJoinRequestValue
     ) {
-      const result = yield* runNativeJoin(request, (url) =>
-        Effect.tryPromise({
-          catch: (cause) =>
-            new DesktopError({
-              cause,
-              message: "The meeting could not be opened",
-            }),
-          // @effect-diagnostics-next-line asyncFunction:off -- Electron's external URL opener is an accepted OS handoff, not a completed conference join.
-          try: async () => {
-            await shell.openExternal(url);
-          },
-        })
-      );
+      const result = yield* runNativeJoin(request, openExternal);
 
       if (Predicate.isTagged(result, "Requested")) {
         yield* send(prompt, { key: request.key, type: "Dismiss" });
@@ -142,6 +153,8 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
               ClosedPrompt: () => send(prompt, { type: "Closed" }),
               DismissPrompt: (value) =>
                 send(prompt, { key: value.key, type: "Dismiss" }),
+              EmailPrompt: (value) =>
+                emailPromptParticipants(value.key, view.agenda, openExternal),
               Join: (value) =>
                 join(value.request).pipe(
                   Effect.tap((result) =>
@@ -189,6 +202,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                     send(prompt, { key: value.key, type: "Dismiss" })
                   )
                 ),
+              SnoozePrompt: (value) => requestPromptSnooze(prompt, value.key),
               Stop: () => Effect.void,
               ToggleMenu: () => tray.toggle(view.menuState),
             }),
@@ -464,26 +478,10 @@ export class DesktopRuntime extends Context.Service<
               }),
               PromptWindow.layer(
                 (action, event) => {
-                  if (
-                    action.action === "join" &&
-                    event.conferenceUrl !== null
-                  ) {
-                    intent(
-                      NativeIntent.cases.Join.make({
-                        request: {
-                          conferenceUrl: event.conferenceUrl,
-                          key: event.key,
-                        },
-                      })
-                    );
-                  } else if (action.action === "show") {
-                    intent(
-                      NativeIntent.cases.ShowEvent.make({ key: event.key })
-                    );
-                  } else if (action.action === "dismiss") {
-                    intent(
-                      NativeIntent.cases.DismissPrompt.make({ key: event.key })
-                    );
+                  const value = promptActionIntent(action, event);
+
+                  if (value !== undefined) {
+                    intent(value);
                   }
                 },
                 () => {

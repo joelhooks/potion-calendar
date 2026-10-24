@@ -12,6 +12,8 @@ import type {
 import { DateTime, Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
+import { participantEmail } from "../../layout/email-participants.js";
+import type { ParticipantEmail } from "../../layout/email-participants.js";
 import { mergeEquivalentEvents } from "../../layout/equivalent-events.js";
 import { displayEvent } from "../../layout/presentation.js";
 import { rsvpSelf } from "../../layout/rsvp-eligibility.js";
@@ -91,7 +93,8 @@ const projectSavedEvent = (
   event: CalendarEventValue,
   zone: string,
   calendarColor: string,
-  responseBusy: boolean
+  responseBusy: boolean,
+  ownEmails: readonly string[] | undefined
 ): Option.Option<AgendaEventValue> => {
   const responseStatus = eventResponse(event);
   const times = eventTimes(event, zone);
@@ -107,6 +110,11 @@ const projectSavedEvent = (
   const title = event.title?.trim() ?? "";
   const self = rsvpSelf(event);
 
+  const email: ParticipantEmail =
+    ownEmails === undefined
+      ? { kind: "disabled" }
+      : participantEmail(event, ownEmails);
+
   const projected: AgendaEventValue = {
     ...times.value,
     calendarColor,
@@ -118,6 +126,7 @@ const projectSavedEvent = (
       calendarId: event.calendarId,
       eventId: event.eventId,
     },
+    participantEmails: email.kind === "ready" ? email.recipients : [],
     responseStatus,
     title: title.length > 0 ? title : "Untitled event",
   };
@@ -222,6 +231,13 @@ export const agendaSnapshot = (
   const session = Option.getOrUndefined(AsyncData.getData(model.session));
   const accounts = session?.accounts ?? [];
 
+  const ownEmails =
+    session === undefined ||
+    session === null ||
+    !Option.contains(model.person, session.user.id)
+      ? undefined
+      : [session.user.email, ...accounts.map((account) => account.email)];
+
   const primary =
     accounts.find((account) => account.email === session?.user.email)?.id ??
     accounts[0]?.id;
@@ -237,7 +253,8 @@ export const agendaSnapshot = (
       item.source,
       model.calendar.zone,
       item.calendar.backgroundColor ?? "#64748b",
-      responseIsBusy(model)
+      responseIsBusy(model),
+      ownEmails
     );
 
     return Option.isSome(projected) &&

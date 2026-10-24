@@ -10,10 +10,11 @@ import type {
 } from "@calendar/core/desktop-bridge";
 import {
   createEffectActor,
+  createEffectEventStreamLogic,
   createEffectLogic,
   setupEffect,
 } from "@xstate/effect";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema, Stream } from "effect";
 import { types } from "xstate";
 import type { EventFromLogic } from "xstate";
 
@@ -26,6 +27,7 @@ import {
   promptBatchIdentity,
   promptIdentity,
   reconcilePrompts,
+  snoozePrompt,
 } from "./prompt-model.js";
 import type { PromptContext, PromptInput } from "./prompt-model.js";
 
@@ -60,6 +62,19 @@ export interface PromptWork {
   ) => Effect.Effect<void, DesktopError>;
 }
 
+const snoozed = (
+  context: PromptContext,
+  key: AgendaEventValue["key"],
+  now: number,
+  retained: readonly AgendaEventValue[] = context.visible
+) => {
+  const next = snoozePrompt(context, key, now, retained);
+
+  return next === context
+    ? {}
+    : { context: next, reenter: true, target: "#desktopPrompt" };
+};
+
 export const promptMachine = (work: PromptWork) => {
   const present = createEffectLogic({
     effect: ({
@@ -77,8 +92,22 @@ export const promptMachine = (work: PromptWork) => {
 
   const close = createEffectLogic({ effect: work.close });
 
+  const snoozeClock = createEffectEventStreamLogic(
+    ({ input }: { readonly input: readonly number[] }) =>
+      Stream.fromIterable(input).pipe(
+        Stream.mapEffect((until) =>
+          Effect.gen(function* waitForSnooze() {
+            const now = yield* Clock.currentTimeMillis;
+            yield* Effect.sleep(Math.max(0, until - now));
+
+            return { now: yield* Clock.currentTimeMillis, type: "Tick" };
+          })
+        )
+      )
+  );
+
   return setupEffect({
-    actors: { close, present },
+    actors: { close, present, snoozeClock },
     schemas: {
       context: types<PromptContext>(),
       events: {
@@ -91,6 +120,7 @@ export const promptMachine = (work: PromptWork) => {
           snapshot: AgendaSnapshot,
         }),
         Settings: Schema.Struct({ preferences: DesktopPreferences }),
+        Snooze: Schema.Struct({ key: AgendaKey, now: Schema.Finite }),
         Tick: Schema.Struct({ now: Schema.Finite }),
       },
       input: types<PromptInput>(),
@@ -99,6 +129,15 @@ export const promptMachine = (work: PromptWork) => {
     context: ({ input }) => reconcilePrompts(initialPrompt(input), {}),
     id: "desktopPrompt",
     initial: "evaluating",
+    invoke: {
+      input: ({ context }) =>
+        [
+          ...new Set(
+            [...context.snoozed.values()].map((snooze) => snooze.until)
+          ),
+        ].toSorted((a, b) => a - b),
+      src: "snoozeClock",
+    },
     on: {
       Agenda: ({ context, event }) =>
         reconciled(context, { snapshot: event.snapshot }, false),
@@ -123,6 +162,7 @@ export const promptMachine = (work: PromptWork) => {
         ),
       Settings: ({ context, event }) =>
         reconciled(context, { preferences: event.preferences }, false),
+      Snooze: ({ context, event }) => snoozed(context, event.key, event.now),
       Tick: ({ context, event }) =>
         reconciled(context, { now: event.now }, false),
     },
@@ -200,6 +240,8 @@ export const promptMachine = (work: PromptWork) => {
             ),
           Settings: ({ context, event }) =>
             reconciled(context, { preferences: event.preferences }, true),
+          Snooze: ({ context, event }) =>
+            snoozed(context, event.key, event.now, context.pending),
           Tick: ({ context, event }) =>
             reconciled(context, { now: event.now }, true),
         },

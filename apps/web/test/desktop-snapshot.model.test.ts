@@ -3,7 +3,12 @@ import { defaultDesktopPreferences } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { Arbitrary, DateTime, Effect, Option, Schema } from "effect";
 
-import { Message, update } from "../src/client/app.js";
+import {
+  initialModel,
+  Message,
+  RemoteSession,
+  update,
+} from "../src/client/app.js";
 import { RemoteEvents } from "../src/client/calendar-state.js";
 import { agendaSnapshot } from "../src/client/desktop/snapshot.js";
 import { EditorView } from "../src/client/editing/editor-model.js";
@@ -14,6 +19,7 @@ import {
   upcomingKeys,
   upcomingNow,
   upcomingPerson,
+  upcomingSession,
 } from "./upcoming-fixture.js";
 
 const hour = 60 * 60_000;
@@ -168,7 +174,7 @@ it.effect("publishes an Always preview beyond a one-day menu", () =>
 );
 
 it.effect(
-  "projects saved participants only and does not send descriptions, addresses or emails",
+  "projects saved participants only and does not publish drafts or descriptions",
   () =>
     Effect.sync(() => {
       const initial = loaded([savedUpcomingEvent]);
@@ -213,6 +219,115 @@ it.effect(
       expect(JSON.stringify(snapshot)).not.toContain("draft-only@example.test");
       expect(JSON.stringify(snapshot)).not.toContain(
         savedUpcomingEvent.description
+      );
+    })
+);
+
+it.effect(
+  "publishes only permitted saved participant emails, excluding self, resources and duplicate addresses",
+  () =>
+    Effect.sync(() => {
+      const event = {
+        ...eventAt("email-recipients", 1),
+        attendees: [
+          { email: "PERSON@example.test" },
+          { email: "other-self@example.test", self: true },
+          { email: "room@example.test", resource: true },
+          { email: "guest+tag@example.test" },
+          { email: "GUEST+TAG@example.test" },
+          { email: "second@example.test" },
+        ],
+      };
+
+      const snapshot = agendaSnapshot(loaded([event]), preferences);
+      expect(snapshot.events[0]?.participantEmails).toEqual([
+        "guest+tag@example.test",
+        "second@example.test",
+      ]);
+      expect(JSON.stringify(snapshot)).not.toContain("other-self@example.test");
+      expect(JSON.stringify(snapshot)).not.toContain("room@example.test");
+    })
+);
+
+it.effect(
+  "email publication requires the matching session and excludes every linked-account email",
+  () =>
+    Effect.sync(() => {
+      const model = loaded([
+        {
+          ...eventAt("email-session", 1),
+          attendees: [
+            { email: "alias@example.test" },
+            { email: "guest@example.test" },
+          ],
+        },
+      ]);
+
+      const session = {
+        ...upcomingSession,
+        accounts: [
+          ...upcomingSession.accounts,
+          { disconnected: false, email: "alias@example.test", id: "personal" },
+        ],
+      };
+
+      const linked = {
+        ...model,
+        session: RemoteSession.Success({ data: session }),
+      };
+
+      expect(
+        agendaSnapshot(linked, preferences).events[0]?.participantEmails
+      ).toEqual(["guest@example.test"]);
+
+      const missing = {
+        ...linked,
+        session: initialModel(upcomingNow, "UTC").session,
+      };
+
+      expect(
+        agendaSnapshot(missing, preferences).events[0]?.participantEmails
+      ).toEqual([]);
+
+      const wrong = {
+        ...linked,
+        session: RemoteSession.Success({
+          data: { ...session, user: { ...session.user, id: "another-person" } },
+        }),
+      };
+
+      expect(
+        agendaSnapshot(wrong, preferences).events[0]?.participantEmails
+      ).toEqual([]);
+    })
+);
+
+it.effect.prop(
+  "the desktop email projection preserves the web privacy and event-type rules",
+  {
+    hidden: Arbitrary.schema(Schema.Boolean),
+    omitted: Arbitrary.schema(Schema.Boolean),
+    ordinary: Arbitrary.schema(Schema.Boolean),
+    ownOrganizer: Arbitrary.schema(Schema.Boolean),
+  },
+  ({ hidden, omitted, ordinary, ownOrganizer }) =>
+    Effect.sync(() => {
+      const event: CalendarEventValue = {
+        ...eventAt("email-privacy", 1),
+        attendees: [{ email: "guest@example.test" }],
+        attendeesOmitted: omitted,
+        eventType: ordinary ? "default" : "outOfOffice",
+        guestsCanSeeOtherGuests: !hidden,
+        organizer: { email: "organizer@example.test", self: ownOrganizer },
+      };
+
+      expect(
+        agendaSnapshot(loaded([event]), preferences).events[0]
+          ?.participantEmails
+      ).toEqual(
+        ordinary && !omitted && (!hidden || ownOrganizer)
+          ? ["guest@example.test"]
+          : []
       );
     })
 );
