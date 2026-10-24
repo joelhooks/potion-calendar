@@ -17,6 +17,7 @@ import { BrowserWindow, ipcMain, screen, session } from "electron";
 
 import { DesktopError } from "./config.js";
 import type { PromptPresentation } from "./prompt-machine.js";
+import { resizePromptWindow, revealPromptWindow } from "./prompt-placement.js";
 import { promptFallbackHeight, promptMeasuredHeight } from "./prompt-size.js";
 import { previewWithSound, revealWithSound } from "./sound-machine.js";
 import { preparePromptSound } from "./sound-port.js";
@@ -179,7 +180,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       );
 
       if (height !== undefined) {
-        window.value.setSize(380, height);
+        resizePromptWindow(window.value, height, area);
       }
     };
 
@@ -327,9 +328,10 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
         try: () => {
           if (!window.isDestroyed()) {
             const area = screen.getDisplayMatching(window.getBounds()).workArea;
-            window.setSize(
-              380,
-              promptFallbackHeight(events.length, area.height)
+            resizePromptWindow(
+              window,
+              promptFallbackHeight(events.length, area.height),
+              area
             );
             const message = Schema.encodeOption(promptWire.view)(nextView);
 
@@ -365,7 +367,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
             }),
           try: () => {
             if (!window.isDestroyed()) {
-              window.showInactive();
+              revealPromptWindow(window, screen);
             }
           },
         }),
