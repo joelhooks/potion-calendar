@@ -6,8 +6,11 @@ import type {
   NotificationPermission,
 } from "./model.js";
 import type { NotificationPortService } from "./port.js";
+import { serviceWorkerNotifications } from "./worker-notifications.js";
 
 const channel = "calendar-reminder-notification";
+
+const warmChannel = "calendar-reminder-worker-register";
 
 const handleKey = (personId: string, id: string) =>
   JSON.stringify([personId, id]);
@@ -23,12 +26,26 @@ export const browserNotifications = (): NotificationPortService => {
     { readonly personId: string; readonly notification: Notification }
   >();
 
-  const connected = new Set<string>();
+  const connected = new Map<string, symbol>();
+
+  const attempts = new Map<
+    string,
+    { readonly personId: string; readonly token: symbol }
+  >();
+
+  const worker = serviceWorkerNotifications((event) => {
+    window.dispatchEvent(new CustomEvent(channel, { detail: event }));
+  });
 
   const close = Effect.fn("BrowserNotifications.close")(function* close(
     personId: string,
     ids: readonly string[]
   ) {
+    for (const id of ids) {
+      attempts.delete(handleKey(personId, id));
+    }
+
+    yield* worker.close(personId, ids);
     yield* Effect.sync(() => {
       for (const id of ids) {
         const key = handleKey(personId, id);
@@ -43,6 +60,48 @@ export const browserNotifications = (): NotificationPortService => {
     content: NotificationContentValue
   ) {
     if (!connected.has(content.personId)) {
+      return yield* new NotificationFailure({ reason: "inactive" });
+    }
+
+    if (browserPermission() !== "granted") {
+      return yield* new NotificationFailure({ reason: "permission" });
+    }
+
+    if (
+      content.card?.snoozedUntil === undefined &&
+      content.candidate.end <= (yield* Clock.currentTimeMillis)
+    ) {
+      return yield* new NotificationFailure({ reason: "expired" });
+    }
+
+    const connection = connected.get(content.personId);
+    const operationKey = handleKey(content.personId, content.id);
+    const token = Symbol(content.id);
+    attempts.set(operationKey, { personId: content.personId, token });
+
+    const current = () =>
+      connected.get(content.personId) === connection &&
+      connection !== undefined &&
+      attempts.get(operationKey)?.token === token;
+
+    const shown = yield* worker.show(content, current);
+
+    if (!current()) {
+      return yield* new NotificationFailure({ reason: "inactive" });
+    }
+
+    if (shown) {
+      const key = handleKey(content.personId, content.id);
+      const old = handles.get(key);
+      handles.delete(key);
+      old?.notification.close();
+
+      return yield* Effect.void;
+    }
+
+    yield* worker.close(content.personId, [content.id]);
+
+    if (!current()) {
       return yield* new NotificationFailure({ reason: "inactive" });
     }
 
@@ -170,36 +229,82 @@ export const browserNotifications = (): NotificationPortService => {
               }
             };
 
-            return Effect.acquireRelease(
-              Effect.sync(() => {
-                connected.add(personId);
-                window.addEventListener(channel, receive);
-                window.addEventListener("focus", permission);
-                permission();
-              }),
-              () =>
-                Effect.sync(() => {
-                  connected.delete(personId);
-                  window.removeEventListener(channel, receive);
-                  window.removeEventListener("focus", permission);
+            const receiveWorker = worker.receive.bind(worker, personId);
 
-                  for (const [key, handle] of handles) {
-                    if (handle.personId === personId) {
-                      handle.notification.close();
-                      handles.delete(key);
+            return Effect.gen(function* observeBrowserNotifications() {
+              const registrations = yield* Queue.unbounded<true>();
+
+              const warm = () => {
+                if (browserPermission() === "granted") {
+                  Queue.offerUnsafe(registrations, true);
+                }
+              };
+
+              yield* Stream.fromQueue(registrations).pipe(
+                Stream.runForEach(() => worker.prepare),
+                Effect.forkScoped
+              );
+
+              const serviceWorkers =
+                typeof navigator === "undefined"
+                  ? undefined
+                  : navigator.serviceWorker;
+
+              return yield* Effect.acquireRelease(
+                Effect.sync(() => {
+                  connected.set(personId, Symbol(personId));
+                  serviceWorkers?.addEventListener("message", receiveWorker);
+                  window.addEventListener(channel, receive);
+                  window.addEventListener("focus", permission);
+                  window.addEventListener(warmChannel, warm);
+                  permission();
+                  warm();
+                }),
+                () =>
+                  Effect.gen(function* releaseNotifications() {
+                    connected.delete(personId);
+
+                    for (const [key, attempt] of attempts) {
+                      if (attempt.personId === personId) {
+                        attempts.delete(key);
+                      }
                     }
-                  }
-                })
-            ).pipe(Effect.andThen(Effect.never));
+
+                    serviceWorkers?.removeEventListener(
+                      "message",
+                      receiveWorker
+                    );
+                    yield* worker.disconnect(personId);
+                    window.removeEventListener(channel, receive);
+                    window.removeEventListener("focus", permission);
+                    window.removeEventListener(warmChannel, warm);
+
+                    for (const [key, handle] of handles) {
+                      if (handle.personId === personId) {
+                        handle.notification.close();
+                        handles.delete(key);
+                      }
+                    }
+                  })
+              ).pipe(Effect.andThen(Effect.never));
+            });
           }),
     requestPermission: Effect.suspend(() =>
       typeof Notification === "undefined"
-        ? Effect.succeed("unsupported")
+        ? Effect.succeed<typeof NotificationPermission.Type>("unsupported")
         : Effect.tryPromise({
             catch: () => new NotificationFailure({ reason: "permission" }),
             // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
             try: () => Notification.requestPermission(),
           })
+    ).pipe(
+      Effect.tap((permission) =>
+        Effect.sync(() => {
+          if (permission === "granted" && typeof window !== "undefined") {
+            window.dispatchEvent(new Event(warmChannel));
+          }
+        })
+      )
     ),
     show,
   };

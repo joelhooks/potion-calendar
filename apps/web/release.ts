@@ -32,6 +32,7 @@ export const releaseFingerprint = Effect.gen(function* releaseFingerprint() {
 
   const files = [
     "index.html",
+    "reminder-worker-build.ts",
     "package.json",
     "vite.config.ts",
     "release.ts",

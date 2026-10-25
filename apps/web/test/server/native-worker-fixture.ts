@@ -14,7 +14,8 @@ import {
 export const nativeWorkerFixture = Effect.fn("test.nativeWorkerFixture")(
   function* nativeWorkerFixture(
     origin?: string,
-    outboundService?: (request: Request) => Response | Promise<Response>
+    outboundService?: (request: Request) => Response | Promise<Response>,
+    reminderWorker?: string
   ) {
     const entry: string = new URL("../../src/server/worker.ts", import.meta.url)
       .pathname;
@@ -50,6 +51,18 @@ export const nativeWorkerFixture = Effect.fn("test.nativeWorkerFixture")(
             serviceBindings: {
               ASSETS: (request: Request) => {
                 const path = new URL(request.url).pathname;
+
+                if (
+                  path === "/reminder-worker.js" &&
+                  reminderWorker !== undefined
+                ) {
+                  return new Response(reminderWorker, {
+                    headers: {
+                      "cache-control": "public, max-age=31536000",
+                      "content-type": "text/plain",
+                    },
+                  });
+                }
 
                 return path === "/" || path.startsWith("/assets/")
                   ? new Response("fixture")

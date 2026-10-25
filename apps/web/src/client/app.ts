@@ -157,6 +157,7 @@ import {
   observeReminder,
   requestReminders,
 } from "./reminders/update.js";
+import { actOnWorkerNotification } from "./reminders/worker-actions.js";
 import {
   BackRoute,
   FollowRouteRequest,
@@ -1097,6 +1098,10 @@ const updateCore = (
         : { model },
     Navigated: () => ({ model }),
     ObservedNotification: ({ event, now }) => {
+      if (NotificationEvent.guards.Action(event)) {
+        return actOnWorkerNotification(model, event, dispatch);
+      }
+
       if (!NotificationEvent.guards.Clicked(event)) {
         return observeReminder(model, event, now);
       }

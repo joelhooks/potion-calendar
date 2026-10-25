@@ -5,8 +5,8 @@ import { expireCalendarRanges } from "@calendar/database/calendar-cache";
 import { googlePushRepository } from "@calendar/database/google-push";
 import { Effect, Result } from "effect";
 
-import { isDocumentRoute } from "../layout/route.js";
 import { createBackend } from "./backend.js";
+import { serveCalendarAsset } from "./calendar-assets.js";
 import { syncConnectedCalendars } from "./calendar-cron.js";
 import type { CalendarEnvironment } from "./calendar-environment.js";
 import { calendarAuthConfig } from "./calendar-origin.js";
@@ -198,23 +198,11 @@ export const calendarWorker = (
       }
     }
 
-    const documentRoute = isDocumentRoute(url.pathname);
-
-    if (
-      !url.pathname.startsWith("/assets/") &&
-      (!documentRoute || !["GET", "HEAD"].includes(request.method))
-    ) {
-      return new Response("Not found", { headers, status: 404 });
-    }
-
-    const response = await environment.ASSETS.fetch(
-      documentRoute ? new Request(new URL("/", url), request) : request
+    return await serveCalendarAsset(
+      request,
+      environment.ASSETS,
+      new Headers(headers)
     );
-
-    return new Response(request.method === "HEAD" ? null : response.body, {
-      headers: new Headers([...response.headers, ...Object.entries(headers)]),
-      status: response.status,
-    });
   },
   // @effect-diagnostics-next-line asyncFunction:off -- Cloudflare invokes scheduled events through its native Promise boundary.
   async scheduled(

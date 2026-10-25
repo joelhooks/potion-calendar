@@ -3,6 +3,7 @@ import { Option } from "effect";
 import type { AppModel, update } from "../app.js";
 import type { Message } from "../message.js";
 import { reminderOccurrence, resolveReminderCard } from "./action-machine.js";
+import { browserReminderActions } from "./browser-actions.js";
 import {
   CloseReminderNotifications,
   DeliverReminderNotification,
@@ -60,9 +61,19 @@ export const commitReminders = (
                 notification.card === undefined ||
                 state.context.permission === "granted"
             )
-            .map((notification) =>
-              DeliverReminderNotification({ notification })
-            ),
+            .map((notification) => {
+              const browserActions = browserReminderActions(
+                { ...model, reminders: state },
+                notification
+              );
+
+              return DeliverReminderNotification({
+                notification:
+                  browserActions === undefined
+                    ? notification
+                    : { ...notification, browserActions },
+              });
+            }),
         ]
       : [],
     model: {

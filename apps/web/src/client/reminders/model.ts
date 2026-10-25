@@ -1,6 +1,10 @@
 import { Calendar, CalendarEvent } from "@calendar/calendar/contracts";
 import { Match, Option, Schema } from "effect";
 
+import { ReminderNotificationAction } from "./worker-protocol.js";
+
+export { ReminderNotificationAction } from "./worker-protocol.js";
+
 export const NotificationPermission = Schema.Literals([
   "default",
   "denied",
@@ -99,7 +103,11 @@ export const ReminderCard = Schema.Struct({
   state: Schema.Literals(["active", "resolved"]),
 });
 
+export const notificationTag = (personId: string, identity: string): string =>
+  JSON.stringify([personId, identity]);
+
 export const NotificationContent = Schema.Struct({
+  browserActions: Schema.optional(Schema.Array(ReminderNotificationAction)),
   candidate: ReminderCandidate,
   card: Schema.optional(ReminderCard),
   id: Schema.String,
@@ -110,6 +118,12 @@ export const NotificationContent = Schema.Struct({
 export type NotificationContentValue = typeof NotificationContent.Type;
 
 export const NotificationEvent = Schema.TaggedUnion({
+  Action: {
+    action: ReminderNotificationAction,
+    id: Schema.String,
+    personId: Schema.String,
+    tag: Schema.String,
+  },
   Clicked: { notification: NotificationContent },
   Closed: { id: Schema.String, personId: Schema.String },
   Failed: { id: Schema.String, personId: Schema.String },
