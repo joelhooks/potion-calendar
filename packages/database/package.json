@@ -36,6 +36,11 @@
       "import": "./dist/d1.js",
       "default": "./dist/d1.js"
     },
+    "./profile": {
+      "types": "./src/profile.ts",
+      "import": "./dist/profile.js",
+      "default": "./dist/profile.js"
+    },
     "./google-push": {
       "types": "./src/google-push.ts",
       "import": "./dist/google-push.js",

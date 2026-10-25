@@ -72,6 +72,14 @@ export const verificationOwnerMigration = readFileSync(
   "utf-8"
 );
 
+export const primaryAccountMigration = readFileSync(
+  new URL(
+    "../../../../packages/database/migrations/calendar/0009_primary_calendar_account.sql",
+    import.meta.url
+  ),
+  "utf-8"
+);
+
 export const makeD1Instance = () =>
   new Miniflare({
     compatibilityDate: "2026-07-30",
@@ -139,6 +147,7 @@ export const d1Fixture = Effect.gen(function* d1Fixture() {
       settingsMigration,
       conferencingMigration,
       unsupportedPushMigration,
+      primaryAccountMigration,
     ]
       .join("\n")
       .split(";"),

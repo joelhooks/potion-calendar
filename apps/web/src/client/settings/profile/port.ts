@@ -1,12 +1,6 @@
 import type { ProfileName } from "@calendar/auth/contracts";
-import type { SessionSnapshot } from "@calendar/core/contracts";
+import type { SavedProfile, SessionSnapshot } from "@calendar/core/contracts";
 import { Context, Effect, Schema } from "effect";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "effect/http";
 import { RpcClient } from "effect/rpc";
 
 import { browserGroup, protocol } from "../../rpc.js";
@@ -16,11 +10,17 @@ export class ProfileFailure extends Schema.TaggedError<ProfileFailure>()(
   {}
 ) {}
 
+export interface ProfileSaveContext {
+  readonly proof: string;
+  readonly primaryAccountId?: string;
+}
+
 export interface ProfilePortService {
   readonly read: Effect.Effect<typeof SessionSnapshot.Type, ProfileFailure>;
   readonly save: (
-    name: typeof ProfileName.Type
-  ) => Effect.Effect<typeof ProfileName.Type, ProfileFailure>;
+    name: typeof ProfileName.Type,
+    context: ProfileSaveContext
+  ) => Effect.Effect<typeof SavedProfile.Type, ProfileFailure>;
 }
 
 const browserProfile = (): ProfilePortService => ({
@@ -31,26 +31,20 @@ const browserProfile = (): ProfilePortService => ({
   }).pipe(
     Effect.provide(protocol),
     Effect.scoped,
-    Effect.mapError(() => new ProfileFailure())
+    Effect.catchCause(() => Effect.fail(new ProfileFailure()))
   ),
   save: Effect.fn("Profile.save")(
-    function* saveProfile(name: typeof ProfileName.Type) {
-      const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient);
+    function* saveProfile(
+      name: typeof ProfileName.Type,
+      context: ProfileSaveContext
+    ) {
+      const client = yield* RpcClient.make(browserGroup);
 
-      const response = yield* client.execute(
-        HttpClientRequest.post("/auth/update-user").pipe(
-          HttpClientRequest.bodyJsonUnsafe({ name })
-        )
-      );
-
-      yield* HttpClientResponse.schemaBodyJson(
-        Schema.Struct({ status: Schema.Literal(true) })
-      )(response);
-
-      return name;
+      return yield* client.saveProfile({ name, ...context });
     },
-    Effect.provide(FetchHttpClient.layer),
-    Effect.mapError(() => new ProfileFailure())
+    Effect.provide(protocol),
+    Effect.scoped,
+    Effect.catchCause(() => Effect.fail(new ProfileFailure()))
   ),
 });
 

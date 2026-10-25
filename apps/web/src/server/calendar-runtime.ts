@@ -22,6 +22,7 @@ import type {
   CalendarFailureValue,
   SyncResultValue,
 } from "@calendar/calendar";
+import type { profileRepository } from "@calendar/database/profile";
 import { BrowserCrypto } from "@effect/platform-browser";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
@@ -39,6 +40,10 @@ export type CalendarRuntime =
 
 export interface CalendarBackendOptions {
   readonly tokenMode?: "refresh" | "cached-only";
+  readonly saveProfile?: (
+    personId: string,
+    input: Parameters<ReturnType<typeof profileRepository>["save"]>[0]
+  ) => ReturnType<ReturnType<typeof profileRepository>["save"]>;
   readonly deleteAccount?: (
     personId: string
   ) => Effect.Effect<void, CalendarFailureValue>;

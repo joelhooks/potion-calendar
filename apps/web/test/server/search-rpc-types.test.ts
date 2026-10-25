@@ -24,7 +24,7 @@ type CurrentClient = Effect.Success<typeof currentClient>;
 
 it("existing browser methods keep their exact input, output, and failure types", () => {
   expectTypeOf<
-    Omit<CurrentClient, "searchEvents" | "deleteAccount">
+    Omit<CurrentClient, "searchEvents" | "deleteAccount" | "saveProfile">
   >().toEqualTypeOf<Omit<PreviousClient, "searchEvents">>();
 });
 

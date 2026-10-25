@@ -19,6 +19,7 @@ import { projectEditingEvents } from "./editing-events.js";
 import { mergeEquivalentEvents } from "./equivalent-events.js";
 import { minuteInZone, nearFullDay } from "./geometry.js";
 import { dayInZone, partsFromDay, visibleDays } from "./navigation.js";
+import { primaryAccountId } from "./primary-account.js";
 import { selectedSearchResult } from "./search-results.js";
 import { primarySelection } from "./selection-set.js";
 import { clockLabel } from "./time-format.js";
@@ -213,9 +214,7 @@ const selectedUpcomingCopies = (
   const session = Option.getOrUndefined(AsyncData.getData(model.session));
   const accounts = session?.accounts ?? [];
 
-  const primaryAccount =
-    accounts.find((account) => account.email === session?.user.email)?.id ??
-    accounts[0]?.id;
+  const primaryAccount = primaryAccountId(session);
 
   const candidates = model.calendar.mergeDuplicates
     ? mergeEquivalentEvents(
@@ -320,9 +319,7 @@ export const visibleEvents = (model: AppModel): readonly DisplayEvent[] => {
   const session = Option.getOrUndefined(snapshot);
   const accounts = session?.accounts ?? [];
 
-  const primaryAccount =
-    accounts.find((account) => account.email === session?.user.email)?.id ??
-    accounts[0]?.id;
+  const primaryAccount = primaryAccountId(session);
 
   const searchSelected = selectedSearchResult(model);
 

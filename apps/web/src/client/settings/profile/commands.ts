@@ -26,17 +26,27 @@ export const profileRequestLogic = createEffectLogic({
                 ProfileReply.cases.Loaded.make({ snapshot }),
             })
           ),
-        Save: ({ name }): Effect.Effect<typeof ProfileReply.Type> =>
-          port.save(name).pipe(
-            Effect.match({
-              onFailure: () =>
-                ProfileReply.cases.Failed.make({
-                  message: profileSaveFailureMessage,
-                }),
-              onSuccess: (saved) =>
-                ProfileReply.cases.Saved.make({ name: saved }),
-            })
-          ),
+        Save: ({
+          name,
+          primaryAccountId,
+          proof,
+        }): Effect.Effect<typeof ProfileReply.Type> =>
+          port
+            .save(
+              name,
+              primaryAccountId === undefined
+                ? { proof }
+                : { primaryAccountId, proof }
+            )
+            .pipe(
+              Effect.match({
+                onFailure: () =>
+                  ProfileReply.cases.Failed.make({
+                    message: profileSaveFailureMessage,
+                  }),
+                onSuccess: (saved) => ProfileReply.cases.Saved.make(saved),
+              })
+            ),
       })
     ),
   schemas: { input: ProfileWork, output: ProfileReply },

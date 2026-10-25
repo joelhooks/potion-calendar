@@ -18,7 +18,9 @@ const profileStyles = `
 .profile-identity-copy { min-width:0; overflow-wrap:anywhere; }
 .profile-identity-copy p { color:var(--muted); margin-top:4px; }
 .settings-profile-form { box-sizing:border-box; width:100%; }
-.settings-profile-form input { min-height:44px; }
+.settings-profile-form input,.settings-profile-form select { min-height:44px; }
+.settings-profile-primary { display:flex; flex-direction:column; gap:8px; margin:20px 0; min-width:0; }
+.settings-profile-primary select { box-sizing:border-box; width:100%; max-width:100%; }
 .settings-profile-form .settings-dialog-actions { justify-content:flex-start; flex-wrap:wrap; }
 .settings-profile-form button,.settings-profile-discard button { min-height:44px; }
 .settings-profile-form [role=status] { color:var(--muted); }
@@ -120,6 +122,55 @@ export const settingsProfile = (
           onNone: () => [],
           onSome: (message) => [error(message, "profile-name-error")],
         }),
+        ...(state.accounts.length > 1
+          ? [
+              h.div(
+                [h.Class("settings-profile-primary")],
+                [
+                  h.label(
+                    [h.For("profile-primary-account")],
+                    ["Primary account to log in"]
+                  ),
+                  h.select(
+                    [
+                      h.Id("profile-primary-account"),
+                      h.Name("primaryAccountId"),
+                      h.Disabled(busy),
+                      h.AriaDescribedBy("profile-primary-help"),
+                      h.OnChange((accountId) =>
+                        send(ProfileChange.cases.Primary.make({ accountId }))
+                      ),
+                    ],
+                    state.accounts.map((account) =>
+                      h.option(
+                        [
+                          h.Value(account.id),
+                          h.Selected(
+                            Option.contains(
+                              state.draftPrimaryAccountId,
+                              account.id
+                            )
+                          ),
+                          h.Disabled(account.disconnected),
+                        ],
+                        [
+                          account.disconnected
+                            ? `${account.email} (Reconnect required)`
+                            : account.email,
+                        ]
+                      )
+                    )
+                  ),
+                  h.p(
+                    [h.Id("profile-primary-help"), h.Class("muted")],
+                    [
+                      "Choose your primary linked Google account. Your other linked accounts can still sign in.",
+                    ]
+                  ),
+                ]
+              ),
+            ]
+          : []),
         ...Option.match(state.error, {
           onNone: () => [],
           onSome: (message) => [error(message, "profile-save-error")],
@@ -128,7 +179,17 @@ export const settingsProfile = (
           ? [h.p([h.Role("status")], ["Loading profile…"])]
           : []),
         ...(state.mode === "saving"
-          ? [h.p([h.Role("status")], ["Saving your name…"])]
+          ? [
+              h.p(
+                [h.Role("status")],
+                [
+                  Option.getOrUndefined(state.draftPrimaryAccountId) ===
+                  Option.getOrUndefined(state.savedPrimaryAccountId)
+                    ? "Saving your name…"
+                    : "Saving your profile…",
+                ]
+              ),
+            ]
           : []),
         ...(state.mode === "load-failed"
           ? [

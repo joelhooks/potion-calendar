@@ -44,6 +44,12 @@ const seed = Effect.fn("deleteAccount.seed")(function* seed(
       [account, account, "google", person]
     );
 
+    yield* execute(
+      database,
+      'UPDATE "user" SET "primaryCalendarAccountId" = ? WHERE id = ?',
+      [account, person]
+    );
+
     for (const suffix of ["browser", "desktop"]) {
       yield* execute(
         database,

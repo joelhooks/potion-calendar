@@ -80,7 +80,7 @@ it.effect.each([390, 430])(
 
       const runtime = yield* mountProfileRuntime(base, {
         read: Effect.succeed(profileSnapshot(base)),
-        save: Effect.succeed,
+        save: (name) => Effect.succeed({ name, primaryAccountId: null }),
       });
 
       yield* profileDomReady(
@@ -136,7 +136,7 @@ it.effect.each([900, 1440])(
 
       yield* mountProfileRuntime(base, {
         read: Effect.succeed(profileSnapshot(base)),
-        save: Effect.succeed,
+        save: (name) => Effect.succeed({ name, primaryAccountId: null }),
       });
 
       const conferencing = Option.getOrThrow(

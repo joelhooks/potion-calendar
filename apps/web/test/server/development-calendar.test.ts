@@ -23,6 +23,14 @@ it.effect(
       const response = yield* Effect.promise(backend.bind(undefined, request));
       const body: unknown = yield* Effect.promise(response.json.bind(response));
 
+      const frames = yield* Schema.decodeUnknownEffect(
+        Schema.NonEmptyArray(
+          Schema.Struct({ exit: Schema.Struct({ _tag: Schema.String }) })
+        )
+      )(body);
+
+      expect(frames[0].exit._tag).toBe("Success");
+
       const replies = yield* Schema.decodeUnknownEffect(
         Schema.Array(
           Schema.Struct({

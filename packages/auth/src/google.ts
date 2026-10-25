@@ -17,6 +17,11 @@ export {
   verifyAccountDeletionProof,
 } from "./account-deletion-proof.js";
 
+export {
+  profileUpdateProof,
+  verifyProfileUpdateProof,
+} from "./profile-proof.js";
+
 export const googleScopes = [
   "openid",
   "email",
@@ -256,7 +261,16 @@ export const googleAuthOptions = (
     ],
     secret: config.secret,
     trustedOrigins: [config.baseURL],
-    user: { deleteUser: { enabled: false } },
+    user: {
+      additionalFields: {
+        primaryCalendarAccountId: {
+          input: false,
+          required: false,
+          type: "string",
+        },
+      },
+      deleteUser: { enabled: false },
+    },
   }) satisfies BetterAuthOptions;
 
 export const createGoogleAuth = (

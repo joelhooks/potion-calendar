@@ -1,6 +1,7 @@
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 
+import { primaryAccountId } from "../../layout/primary-account.js";
 import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { reminderCandidates } from "./candidates.js";
@@ -14,9 +15,7 @@ export const acceptedReminderCandidates = (model: AppModel) => {
   const session = Option.getOrUndefined(AsyncData.getData(model.session));
   const accounts = session?.accounts ?? [];
 
-  const primaryAccount =
-    accounts.find((account) => account.email === session?.user.email)?.id ??
-    accounts[0]?.id;
+  const primaryAccount = primaryAccountId(session);
 
   const live = liveSnoozeIdentities(model.reminders.context);
 

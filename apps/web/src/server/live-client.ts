@@ -4,6 +4,7 @@ import type {
   CalendarRefValue,
 } from "@calendar/calendar";
 import type { PushDeliveryValue } from "@calendar/database/google-push";
+import { profileRepository } from "@calendar/database/profile";
 import type { DurableObjectNamespace } from "@cloudflare/workers-types";
 import { Effect, Schema } from "effect";
 
@@ -166,6 +167,12 @@ export const liveCalendarOptions = (
     }),
     deleteAccount: live.deleteAccount,
     maintain: live.reconcile,
+    saveProfile: (personId, input) =>
+      profileRepository(
+        environment.DB,
+        personId,
+        environment.ALLOWED_EMAILS
+      ).save(input),
     settingsFor: (personId) =>
       calendarSettingsFor(environment.DB, personId, {
         notify: () =>

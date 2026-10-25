@@ -2,6 +2,7 @@ import { normalizeProfileName } from "@calendar/auth/contracts";
 import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
 
+import { primaryAccountId } from "../../../layout/primary-account.js";
 import type { AppModel, update } from "../../app.js";
 import { Message } from "../../message.js";
 import type { AppMessage } from "../../message.js";
@@ -134,16 +135,26 @@ export const updateProfile = (
   if (profile.sequence !== previous.sequence && profile.mode === "saving") {
     return Option.match(normalizeProfileName(profile.draft), {
       onNone: () => ({ model }),
-      onSome: (name) => ({
-        commands: [
-          RunProfileRequest({
-            personId,
-            sequence: profile.sequence,
-            work: ProfileWork.cases.Save.make({ name }),
-          }),
-        ],
-        model: next,
-      }),
+      onSome: (name) => {
+        const primary = Option.getOrUndefined(profile.draftPrimaryAccountId);
+        const fields = { name, proof: profile.proof };
+
+        const work =
+          primary === undefined ||
+          primary === Option.getOrUndefined(profile.savedPrimaryAccountId)
+            ? ProfileWork.cases.Save.make(fields)
+            : ProfileWork.cases.Save.make({
+                ...fields,
+                primaryAccountId: primary,
+              });
+
+        return {
+          commands: [
+            RunProfileRequest({ personId, sequence: profile.sequence, work }),
+          ],
+          model: next,
+        };
+      },
     });
   }
 
@@ -184,7 +195,12 @@ export const completeProfile = (
       model: {
         ...model,
         profile: stepProfile(state, {
+          accounts: reply.snapshot.accounts,
           name: reply.snapshot.user.name,
+          primaryAccountId: Option.fromNullishOr(
+            primaryAccountId(reply.snapshot)
+          ),
+          proof: reply.snapshot.profileUpdateProof ?? "",
           type: "Loaded",
         }),
         session: AsyncData.Success({ data: reply.snapshot }),
@@ -195,19 +211,38 @@ export const completeProfile = (
   if (Predicate.isTagged(reply, "Saved") && state.mode === "saving") {
     const snapshot = Option.getOrUndefined(AsyncData.getData(model.session));
 
-    const session =
+    let { session } = model;
+
+    if (
       snapshot !== undefined &&
       snapshot !== null &&
       snapshot.user.id === personId
-        ? AsyncData.Success({
-            data: { ...snapshot, user: { ...snapshot.user, name: reply.name } },
-          })
-        : model.session;
+    ) {
+      const renamed = { ...snapshot.user, name: reply.name };
+
+      const user =
+        reply.primaryAccountId === undefined
+          ? renamed
+          : { ...renamed, primaryAccountId: reply.primaryAccountId };
+
+      session = AsyncData.Success({ data: { ...snapshot, user } });
+    }
 
     return {
       model: {
         ...model,
-        profile: stepProfile(state, { name: reply.name, type: "Saved" }),
+        profile: stepProfile(state, {
+          name: reply.name,
+          primaryAccountId:
+            reply.primaryAccountId === undefined
+              ? state.draftPrimaryAccountId
+              : Option.fromNullishOr(
+                  primaryAccountId(
+                    Option.getOrUndefined(AsyncData.getData(session))
+                  )
+                ),
+          type: "Saved",
+        }),
         session,
       },
     };

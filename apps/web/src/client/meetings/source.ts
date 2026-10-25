@@ -3,6 +3,7 @@ import type { AgendaKeyValue } from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 
+import { primaryAccountId } from "../../layout/primary-account.js";
 import type { AppModel } from "../app.js";
 import { meetingCandidates } from "./candidates.js";
 
@@ -51,9 +52,7 @@ export const savedMeetings = (model: AppModel) => {
     calendars: model.calendar.calendars,
     events: Option.isSome(saved) ? saved.value.events : [],
     hidden: model.calendar.hidden,
-    primaryAccount:
-      accounts.find((account) => account.email === session?.user.email)?.id ??
-      accounts[0]?.id,
+    primaryAccount: primaryAccountId(session),
     zone: model.calendar.zone,
   });
 };

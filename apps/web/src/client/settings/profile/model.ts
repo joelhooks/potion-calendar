@@ -1,5 +1,5 @@
 import { normalizeProfileName, ProfileName } from "@calendar/auth/contracts";
-import { SessionSnapshot } from "@calendar/core/contracts";
+import { AccountSummary, SessionSnapshot } from "@calendar/core/contracts";
 import { Option, Predicate, Schema } from "effect";
 import { UrlRequest } from "foldkit/navigation";
 
@@ -15,7 +15,9 @@ export const ProfileExit = Schema.TaggedUnion({
 });
 
 export const ProfileUi = Schema.Struct({
+  accounts: Schema.Array(AccountSummary),
   draft: Schema.String,
+  draftPrimaryAccountId: Schema.Option(Schema.String),
   error: Schema.Option(Schema.String),
   exit: Schema.Option(ProfileExit),
   mode: Schema.Literals([
@@ -28,7 +30,9 @@ export const ProfileUi = Schema.Struct({
     "confirming",
   ]),
   personId: Schema.Option(Schema.String),
+  proof: Schema.String,
   savedName: Schema.String,
+  savedPrimaryAccountId: Schema.Option(Schema.String),
   sequence: Schema.Int,
   validation: Schema.Option(Schema.String),
 });
@@ -37,28 +41,40 @@ export const ProfileChange = Schema.TaggedUnion({
   Continue: {},
   Discard: {},
   Name: { value: Schema.String },
+  Primary: { accountId: Schema.String },
   Retry: {},
   Save: {},
 });
 
 export const ProfileWork = Schema.TaggedUnion({
   Read: {},
-  Save: { name: ProfileName },
+  Save: {
+    name: ProfileName,
+    primaryAccountId: Schema.optionalKey(Schema.NonEmptyString),
+    proof: Schema.String,
+  },
 });
 
 export const ProfileReply = Schema.TaggedUnion({
   Failed: { message: Schema.String },
   Loaded: { snapshot: SessionSnapshot },
-  Saved: { name: ProfileName },
+  Saved: {
+    name: ProfileName,
+    primaryAccountId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  },
 });
 
 export const initialProfile = (sequence = 0): typeof ProfileUi.Type => ({
+  accounts: [],
   draft: "",
+  draftPrimaryAccountId: Option.none(),
   error: Option.none(),
   exit: Option.none(),
   mode: "idle",
   personId: Option.none(),
+  proof: "",
   savedName: "",
+  savedPrimaryAccountId: Option.none(),
   sequence,
   validation: Option.none(),
 });
@@ -66,9 +82,14 @@ export const initialProfile = (sequence = 0): typeof ProfileUi.Type => ({
 export const profileRoute = (route: typeof Route.Type): boolean =>
   Predicate.isTagged(route, "Settings") && route.page === "profile";
 
+export const profileValuesDirty = (state: typeof ProfileUi.Type): boolean =>
+  state.draft !== state.savedName ||
+  Option.getOrUndefined(state.draftPrimaryAccountId) !==
+    Option.getOrUndefined(state.savedPrimaryAccountId);
+
 export const profileDirty = (state: typeof ProfileUi.Type): boolean =>
   (state.mode === "editing" || state.mode === "confirming") &&
-  state.draft !== state.savedName;
+  profileValuesDirty(state);
 
 export const profileNameError = (draft: string): Option.Option<string> =>
   Option.isSome(normalizeProfileName(draft))

@@ -1,4 +1,8 @@
-import { allowedEmail, accountDeletionProof } from "@calendar/auth/google";
+import {
+  allowedEmail,
+  accountDeletionProof,
+  profileUpdateProof,
+} from "@calendar/auth/google";
 import type { GoogleAuth, GoogleAuthConfig } from "@calendar/auth/google";
 import { googleTokensFor } from "@calendar/auth/google-tokens";
 import {
@@ -31,6 +35,7 @@ import {
   SessionUnavailable,
   sessionContract,
   deleteAccountContract,
+  saveProfileContract,
 } from "@calendar/core/contracts";
 import { Cause, Effect, Layer, Option, Predicate, Schema } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
@@ -45,6 +50,7 @@ import { calendarForRequest } from "./calendar-runtime.js";
 import type { CalendarBackendOptions } from "./calendar-runtime.js";
 import { CalendarSynchronization } from "./calendar-synchronization.js";
 import { deleteCurrentAccount } from "./delete-account-rpc.js";
+import { saveCurrentProfile } from "./profile-rpc.js";
 
 const readFailureFor = (
   refs: readonly CalendarRefValue[],
@@ -89,10 +95,19 @@ export const createBackend = (
 
       const tokens = yield* googleTokensFor(auth, current.user.id, config);
 
+      const primary = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          primaryCalendarAccountId: Schema.optional(
+            Schema.NullOr(Schema.String)
+          ),
+        })
+      )(current.user);
+
       const user = {
         email: current.user.email,
         id: current.user.id,
         name: current.user.name,
+        primaryAccountId: primary.primaryCalendarAccountId ?? null,
       };
 
       const image = Schema.decodeUnknownOption(Schema.String)(
@@ -105,6 +120,10 @@ export const createBackend = (
           current.session.token
         ),
         accounts: yield* tokens.accounts(),
+        profileUpdateProof: yield* profileUpdateProof(
+          config.secret,
+          current.session.token
+        ),
         user: Option.match(image, {
           onNone: () => user,
           onSome: (value) => ({ ...user, image: value }),
@@ -117,6 +136,9 @@ export const createBackend = (
 
   const rpc = toRpc([
     session,
+    implement(saveProfileContract, (input) =>
+      saveCurrentProfile(auth, config, headers, input, options?.saveProfile)
+    ),
     implement(deleteAccountContract, (input) =>
       deleteCurrentAccount(
         auth,

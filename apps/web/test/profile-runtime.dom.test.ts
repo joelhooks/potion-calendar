@@ -46,7 +46,7 @@ const enterProfile = Effect.fn("test.enterProfile")(function* enterProfile(
       ...snapshot,
       user: { ...snapshot.user, name: "Persisted Person" },
     }),
-    save: Effect.succeed,
+    save: (name) => Effect.succeed({ name, primaryAccountId: null }),
   });
 
   const anchor = profileRuntimeRoot()?.querySelector<HTMLAnchorElement>(
@@ -88,7 +88,7 @@ it.effect.each([900, 390])(
           ...snapshot,
           user: { ...snapshot.user, name: "Persisted Person" },
         }),
-        save: Effect.succeed,
+        save: (name) => Effect.succeed({ name, primaryAccountId: null }),
       });
 
       const push = vi.spyOn(window.history, "pushState");
@@ -215,7 +215,14 @@ it.effect.each(["success", "failure"] as const)(
         read: Effect.succeed(profileSnapshot(base)),
         save: (name) =>
           Queue.offer(entered, name).pipe(
-            Effect.andThen(Deferred.await(completion))
+            Effect.andThen(
+              Deferred.await(completion).pipe(
+                Effect.map((savedName) => ({
+                  name: savedName,
+                  primaryAccountId: null,
+                }))
+              )
+            )
           ),
       });
 
@@ -290,7 +297,14 @@ it.effect(
         read: Effect.succeed(profileSnapshot(base)),
         save: (name) =>
           Queue.offer(entered, name).pipe(
-            Effect.andThen(Deferred.await(completion))
+            Effect.andThen(
+              Deferred.await(completion).pipe(
+                Effect.map((savedName) => ({
+                  name: savedName,
+                  primaryAccountId: null,
+                }))
+              )
+            )
           ),
       });
 
@@ -358,7 +372,7 @@ it.effect(
 
       const runtime = yield* mountProfileRuntime(base, {
         read: Effect.succeed(profileSnapshot(base)),
-        save: Effect.succeed,
+        save: (name) => Effect.succeed({ name, primaryAccountId: null }),
       });
 
       const pristine = new Event("beforeunload", { cancelable: true });

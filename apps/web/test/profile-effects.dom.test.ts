@@ -1,4 +1,7 @@
-import { ProfileUpdateInput } from "@calendar/auth/contracts";
+import {
+  ProfileUpdateRefused,
+  SaveProfileInput,
+} from "@calendar/core/contracts";
 import { expect, it } from "@effect/vitest";
 import { Effect, Fiber, Queue, Result, Schema, Stream } from "effect";
 import { FetchHttpClient } from "effect/http";
@@ -11,10 +14,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const Envelope = Schema.TaggedStruct("Request", {
+  id: Schema.Union([Schema.String, Schema.Int]),
+  payload: SaveProfileInput,
+  tag: Schema.Literal("saveProfile"),
+});
+
+const Success = Schema.TaggedStruct("Success", { value: Schema.Json });
+
+const Fail = Schema.TaggedStruct("Fail", { error: ProfileUpdateRefused });
+
+const Failure = Schema.TaggedStruct("Failure", { cause: Schema.Array(Fail) });
+
+const ResponseExit = Schema.TaggedStruct("Exit", {
+  exit: Schema.Union([Success, Failure]),
+  requestId: Schema.Union([Schema.String, Schema.Int]),
+});
+
 const suppliedFetch = (
   requests: Request[],
   status: number,
-  body: Readonly<Record<string, boolean>>
+  acknowledged: boolean
 ) => {
   // @effect-diagnostics-next-line asyncFunction:off -- The supplied native fetch reads the actual request body but sends no network traffic.
   const fetcher: typeof globalThis.fetch = async (input, init) => {
@@ -23,53 +43,86 @@ const suppliedFetch = (
         ? input
         : new Request(new URL(String(input), "https://calendar.test"), init);
 
-    requests.push(request);
-    await request.clone().text();
+    requests.push(request.clone());
+    const raw: unknown = await request.json();
 
-    return Response.json(body, { status });
+    const frames = Schema.decodeUnknownSync(Schema.NonEmptyArray(Envelope))(
+      Array.isArray(raw) ? raw : [raw]
+    );
+
+    return Response.json(
+      frames.map((frame) =>
+        ResponseExit.make({
+          exit:
+            status === 200
+              ? Success.make({
+                  value: acknowledged
+                    ? {
+                        name: frame.payload.name,
+                        primaryAccountId:
+                          frame.payload.primaryAccountId ?? null,
+                      }
+                    : {},
+                })
+              : Failure.make({
+                  cause: [Fail.make({ error: new ProfileUpdateRefused() })],
+                }),
+          requestId: frame.id,
+        })
+      ),
+      { status }
+    );
   };
 
   return fetcher;
 };
 
 it.effect(
-  "the native profile writer sends exactly one name-only POST to the existing auth endpoint",
+  "the browser profile writer sends exactly one atomic name and primary-account RPC without a caller-supplied person",
   () =>
     Effect.gen(function* profileHttpRecipient() {
       const requests: Request[] = [];
       const port = yield* ProfilePort;
 
       const saved = yield* port
-        .save("Saved Person")
+        .save("Saved Person", {
+          primaryAccountId: "account-b",
+          proof: "a".repeat(64),
+        })
         .pipe(
           Effect.provideService(
             FetchHttpClient.Fetch,
-            suppliedFetch(requests, 200, { status: true })
+            suppliedFetch(requests, 200, true)
           )
         );
 
-      expect(saved).toBe("Saved Person");
+      expect(saved).toEqual({
+        name: "Saved Person",
+        primaryAccountId: "account-b",
+      });
       expect(requests).toHaveLength(1);
       const [request] = requests;
       expect(request?.method).toBe("POST");
       expect(
         new URL(request?.url ?? "https://calendar.test/missing").pathname
-      ).toBe("/auth/update-user");
+      ).toBe("/rpc/");
       expect(request?.headers.get("content-type")).toContain(
         "application/json"
       );
       expect(request).toBeDefined();
 
       if (request !== undefined) {
-        const body = yield* Effect.promise(request.json.bind(request)).pipe(
-          Effect.flatMap(
-            Schema.decodeUnknownEffect(ProfileUpdateInput, {
-              onExcessProperty: "error",
-            })
-          )
-        );
+        const raw: unknown = yield* Effect.promise(request.json.bind(request));
 
-        expect(body).toEqual({ name: "Saved Person" });
+        const body = yield* Schema.decodeUnknownEffect(
+          Schema.NonEmptyArray(Envelope)
+        )(Array.isArray(raw) ? raw : [raw]);
+
+        expect(body[0].payload).toEqual({
+          name: "Saved Person",
+          primaryAccountId: "account-b",
+          proof: "a".repeat(64),
+        });
       }
     })
 );
@@ -82,11 +135,11 @@ it.effect.each([503, 200])(
       const port = yield* ProfilePort;
 
       const result = yield* port
-        .save("Saved Person")
+        .save("Saved Person", { proof: "a".repeat(64) })
         .pipe(
           Effect.provideService(
             FetchHttpClient.Fetch,
-            suppliedFetch(requests, status, {})
+            suppliedFetch(requests, status, false)
           ),
           Effect.result
         );
