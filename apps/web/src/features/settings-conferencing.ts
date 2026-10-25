@@ -266,7 +266,7 @@ export const settingsConferencing = (
                     )
                   ),
                 ],
-                [account.email, " →"]
+                [account.email, h.span([h.AriaHidden(true)], [" →"])]
               )
             )),
       ]

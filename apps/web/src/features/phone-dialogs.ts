@@ -112,6 +112,10 @@ export const phoneDialogCss = `
     min-height: 44px;
   }
 
+  .phone-sheet-body a.settings-account-link {
+    display: flex;
+  }
+
   .editor-dialog label:has(input[type="checkbox"], input[type="radio"]),
   .phone-sheet-body label:has(input[type="checkbox"], input[type="radio"]) {
     display: inline-flex;

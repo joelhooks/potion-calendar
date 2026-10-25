@@ -1,0 +1,53 @@
+import { attachSettingsStrip } from "../src/client/settings/strip.js";
+
+export const accountLinksProof = String.raw`(() => {
+  const requireFact = (ok, message) => { if (!ok) throw Error(message); };
+  const evidence = JSON.parse(document.querySelector('#account-links-evidence').textContent);
+  const phone = document.querySelector('#phone-settings-dialog');
+  requireFact(evidence.width <= 640 ? phone !== null : phone === null, 'Settings shell differs from the viewport');
+  phone?.showModal();
+  const focused = document.activeElement;
+  const release = (${attachSettingsStrip.toString()})(document.body);
+  requestAnimationFrame(() => {
+    requireFact(innerWidth === evidence.width && innerHeight === 900, 'Unexpected account row viewport');
+    requireFact(document.documentElement.scrollWidth <= innerWidth, 'Account rows widened the viewport');
+    requireFact(phone === null || (phone.open && phone.matches(':modal')), 'Settings sheet is not a native modal');
+    const links = [...(phone ?? document).querySelectorAll('.settings-account-link')];
+    requireFact(links.length === evidence.emails.length && links.length === 2, 'Expected two independent account links');
+    let previousBottom = null;
+    const geometry = links.map((link, index) => {
+      const section = link.closest('section');
+      requireFact(section, 'Account row has no section');
+      const sectionStyle = getComputedStyle(section);
+      const sectionBox = section.getBoundingClientRect();
+      const left = sectionBox.left + section.clientLeft + parseFloat(sectionStyle.paddingLeft || '0');
+      const right = sectionBox.left + section.clientLeft + section.clientWidth - parseFloat(sectionStyle.paddingRight || '0');
+      const style = getComputedStyle(link);
+      const box = link.getBoundingClientRect();
+      requireFact(style.display === 'flex' && style.justifyContent === 'space-between', 'Account link is not a separated flex row');
+      requireFact(box.height >= 44, 'Account row is below the touch height');
+      requireFact(Math.abs(box.left - left) <= 0.5 && Math.abs(box.right - right) <= 0.5, 'Account link does not span its section');
+      requireFact(previousBottom === null || box.top >= previousBottom - 0.5, 'Account links are side by side or overlap');
+      previousBottom = box.bottom;
+      const arrow = link.querySelector(':scope > span[aria-hidden="true"]');
+      requireFact(arrow?.textContent.trim() === '→', 'Decorative arrow is not independently hidden');
+      requireFact(link.childNodes.length === 2 && link.firstChild.nodeType === Node.TEXT_NODE && link.firstChild.textContent === evidence.emails[index], 'Accessible account label differs from the email');
+      const range = document.createRange();
+      range.selectNodeContents(link.firstChild);
+      const emailBox = range.getBoundingClientRect();
+      const arrowBox = arrow.getBoundingClientRect();
+      const contentLeft = box.left + link.clientLeft + parseFloat(style.paddingLeft || '0');
+      const contentRight = box.left + link.clientLeft + link.clientWidth - parseFloat(style.paddingRight || '0');
+      requireFact(Math.abs(emailBox.left - contentLeft) <= 0.5 && Math.abs(arrowBox.right - contentRight) <= 0.5, 'Email and arrow are not at opposite ends');
+      requireFact(emailBox.right <= arrowBox.left, 'Email overlaps the arrow');
+      requireFact(link.getAttribute('href').startsWith('/settings/calendar/'), 'Account link lost its calendar destination');
+      return { email: evidence.emails[index], href: link.getAttribute('href'), display: style.display, left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height, sectionLeft: left, sectionRight: right, emailLeft: emailBox.left, emailRight: emailBox.right, arrowLeft: arrowBox.left, arrowRight: arrowBox.right };
+    });
+    requireFact(document.activeElement === focused, 'Account row proof moved focus');
+    document.querySelector('#account-links-geometry').textContent = JSON.stringify({ width: innerWidth, theme: evidence.theme, geometry, focusUnchanged: true });
+    document.documentElement.dataset.accountLinksProof = 'pass';
+    document.documentElement.dataset.accountRowsStacked = 'pass';
+    document.documentElement.dataset.fixtureReady = 'account-links';
+    release();
+  });
+})();`;
