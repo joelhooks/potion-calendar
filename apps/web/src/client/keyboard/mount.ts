@@ -7,6 +7,7 @@ import { attachPhoneShell } from "../phone-shell/mount.js";
 import type { PhoneShellMessage } from "../phone-shell/mount.js";
 import { attachPhoneRouteSheets } from "../phone-shell/route-dialogs.js";
 import type { PhoneRouteMessage } from "../phone-shell/route-dialogs.js";
+import { attachSettingsStrip } from "../settings/strip.js";
 
 const cancelKeyboard =
   (
@@ -110,11 +111,26 @@ export const PrepareKeyboard = Mount.defineStream("PrepareKeyboard", {
             }
           );
 
-          return { cancel, disposePhoneRoutes, disposePhoneShell, observer };
+          const disposeSettingsStrip = attachSettingsStrip(element);
+
+          return {
+            cancel,
+            disposePhoneRoutes,
+            disposePhoneShell,
+            disposeSettingsStrip,
+            observer,
+          };
         }),
-        ({ observer, cancel, disposePhoneShell, disposePhoneRoutes }) =>
+        ({
+          observer,
+          cancel,
+          disposePhoneShell,
+          disposePhoneRoutes,
+          disposeSettingsStrip,
+        }) =>
           Effect.sync(() => {
             observer.disconnect();
+            disposeSettingsStrip();
             disposePhoneRoutes();
             disposePhoneShell();
             element.removeEventListener("cancel", cancel, true);
