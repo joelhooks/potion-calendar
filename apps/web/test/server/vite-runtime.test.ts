@@ -15,7 +15,7 @@ import {
   nativeViteFixture,
 } from "./native-vite-fixture.js";
 
-const rpc = (port: number) =>
+const rpc = (port: number, expectedAccounts = 2) =>
   Effect.gen(function* firstSession() {
     const client = yield* HttpClient.HttpClient;
 
@@ -35,7 +35,7 @@ const rpc = (port: number) =>
       rpcValue(SessionSnapshot)
     )(response);
 
-    expect(session[0].exit.value?.accounts).toHaveLength(2);
+    expect(session[0].exit.value?.accounts).toHaveLength(expectedAccounts);
   });
 
 const desktopRoute = (port: number) =>
@@ -158,6 +158,18 @@ it.live(
       expect(retired.listening).toBe(false);
       expect(retired.address()).toBeNull();
     })
+);
+
+it.live(
+  "a native Vite capture can seed one identity without linking the second review person",
+  () =>
+    Effect.gen(function* isolatedCapturePerson() {
+      const { address } = yield* nativeViteFixture({
+        initialEmails: ["joel@example.test"],
+      });
+
+      yield* rpc(address.port, 1);
+    }).pipe(Effect.provide(FetchHttpClient.layer))
 );
 
 it.live(

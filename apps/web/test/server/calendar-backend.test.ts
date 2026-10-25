@@ -31,7 +31,7 @@ import { syncConnectedCalendars } from "../../src/server/calendar-cron.js";
 import { calendarForPerson } from "../../src/server/calendar-runtime.js";
 import { d1CalendarStore } from "../../src/server/calendar-store.js";
 import { rpcDocument, rpcValue, rpcFailure } from "./calendar-rpc.js";
-import { d1Fixture } from "./d1-fixture.js";
+import { d1Fixture, seedCalendarCacheOwners } from "./d1-fixture.js";
 
 it.effect(
   "development calendar RPC serves realistic ranges and persists edits",
@@ -273,6 +273,7 @@ const twoPeople = Effect.gen(function* twoPeople() {
     );
 
   const database = yield* d1Fixture;
+  yield* seedCalendarCacheOwners(database, [first.personId, second.personId]);
 
   const googleHttp = yield* fakeCalendarGoogle([
     ...firstAccounts,

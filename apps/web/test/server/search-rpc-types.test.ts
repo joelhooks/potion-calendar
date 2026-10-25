@@ -1,6 +1,7 @@
 import { calendarContracts } from "@calendar/calendar/contracts";
 import { toRpcGroup } from "@calendar/capability/rpc-group";
 import { sessionContract } from "@calendar/core/contracts";
+import type { DeleteAccountInput } from "@calendar/core/contracts";
 import type { Effect } from "effect";
 import { RpcClient } from "effect/rpc";
 import { expectTypeOf, it } from "vitest";
@@ -22,8 +23,14 @@ type PreviousClient = Effect.Success<typeof previousClient>;
 type CurrentClient = Effect.Success<typeof currentClient>;
 
 it("existing browser methods keep their exact input, output, and failure types", () => {
-  expectTypeOf<Omit<CurrentClient, "searchEvents">>().toEqualTypeOf<
-    Omit<PreviousClient, "searchEvents">
+  expectTypeOf<
+    Omit<CurrentClient, "searchEvents" | "deleteAccount">
+  >().toEqualTypeOf<Omit<PreviousClient, "searchEvents">>();
+});
+
+it("account deletion infers its explicit session-bound confirmation without a selected owner", () => {
+  expectTypeOf<Parameters<CurrentClient["deleteAccount"]>[0]>().toEqualTypeOf<
+    typeof DeleteAccountInput.Type
   >();
 });
 

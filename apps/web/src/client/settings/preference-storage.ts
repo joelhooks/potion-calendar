@@ -26,6 +26,11 @@ const read = (person: string): typeof SavedPreferences.Type =>
     )
   );
 
+export const clearPreferences = (person: string) =>
+  Effect.try(() => {
+    localStorage.removeItem(preferenceKey(person));
+  });
+
 export const readPreferences = Effect.fn("readPreferences")(
   function* readPreferences(person: string) {
     return yield* Effect.try(() => read(person));

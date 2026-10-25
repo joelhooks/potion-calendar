@@ -1,4 +1,4 @@
-import { allowedEmail } from "@calendar/auth/google";
+import { allowedEmail, accountDeletionProof } from "@calendar/auth/google";
 import type { GoogleAuth, GoogleAuthConfig } from "@calendar/auth/google";
 import { googleTokensFor } from "@calendar/auth/google-tokens";
 import {
@@ -27,7 +27,11 @@ import type {
 } from "@calendar/calendar";
 import { implement } from "@calendar/capability/implement";
 import { toRpc } from "@calendar/capability/rpc";
-import { SessionUnavailable, sessionContract } from "@calendar/core/contracts";
+import {
+  SessionUnavailable,
+  sessionContract,
+  deleteAccountContract,
+} from "@calendar/core/contracts";
 import { Cause, Effect, Layer, Option, Predicate, Schema } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
@@ -40,6 +44,7 @@ import type { SearchAccountFailure } from "../search-contract.js";
 import { calendarForRequest } from "./calendar-runtime.js";
 import type { CalendarBackendOptions } from "./calendar-runtime.js";
 import { CalendarSynchronization } from "./calendar-synchronization.js";
+import { deleteCurrentAccount } from "./delete-account-rpc.js";
 
 const readFailureFor = (
   refs: readonly CalendarRefValue[],
@@ -95,6 +100,10 @@ export const createBackend = (
       );
 
       return {
+        accountDeletionProof: yield* accountDeletionProof(
+          config.secret,
+          current.session.token
+        ),
         accounts: yield* tokens.accounts(),
         user: Option.match(image, {
           onNone: () => user,
@@ -104,8 +113,20 @@ export const createBackend = (
     }).pipe(Effect.mapError(() => new SessionUnavailable()))
   );
 
+  const committedCookies = new Headers();
+
   const rpc = toRpc([
     session,
+    implement(deleteAccountContract, (input) =>
+      deleteCurrentAccount(
+        auth,
+        config,
+        headers,
+        input.proof,
+        options?.deleteAccount,
+        committedCookies
+      )
+    ),
     implement(getAccountConferencingDefault.contract, (input) =>
       calendarForRequest(
         auth,
@@ -348,7 +369,7 @@ export const createBackend = (
     ),
   ]);
 
-  return HttpRouter.toWebHandler(
+  const router = HttpRouter.toWebHandler(
     RpcServer.layerHttp({
       group: rpc.group,
       path: "/rpc",
@@ -360,4 +381,33 @@ export const createBackend = (
     ),
     { disableLogger: true }
   );
+
+  return {
+    ...router,
+    // @effect-diagnostics-next-line asyncFunction:off -- The non-framed JSON RPC projection finishes its handlers before this native HTTP response is returned.
+    handler: async (...args: Parameters<typeof router.handler>) => {
+      const response = await router.handler(...args);
+
+      const status =
+        committedCookies.get("x-calendar-deletion-status") === "409"
+          ? 409
+          : response.status;
+
+      const cookies = committedCookies.getSetCookie();
+      committedCookies.delete("x-calendar-deletion-status");
+      committedCookies.delete("set-cookie");
+
+      if (cookies.length === 0 && status === response.status) {
+        return response;
+      }
+
+      const responseHeaders = new Headers(response.headers);
+
+      for (const cookie of cookies) {
+        responseHeaders.append("set-cookie", cookie);
+      }
+
+      return new Response(response.body, { headers: responseHeaders, status });
+    },
+  };
 };

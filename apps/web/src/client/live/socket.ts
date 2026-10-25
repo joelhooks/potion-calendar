@@ -18,6 +18,13 @@ import type { Cause } from "effect";
 
 import { LiveFrame, LiveNotice } from "./protocol.js";
 import type { LiveNoticeValue } from "./protocol.js";
+import { clearEndedSessionStorage, liveSessionExists } from "./session.js";
+
+const SocketClosure = Schema.Struct({
+  code: Schema.Int,
+  connected: Schema.Boolean,
+  reason: Schema.String,
+});
 
 export interface LiveSocket {
   readonly addEventListener: WebSocket["addEventListener"];
@@ -27,7 +34,11 @@ export interface LiveSocket {
 
 class SocketSession extends Context.Service<
   SocketSession,
-  { readonly observe: Effect.Effect<boolean> }
+  {
+    readonly observe: Effect.Effect<typeof SocketClosure.Type>;
+    readonly sessionExists: Effect.Effect<boolean>;
+    readonly end: (deleted: boolean) => Effect.Effect<void>;
+  }
 >()("@calendar/web/SocketSession") {}
 
 const observe = createEffectLogic({
@@ -40,21 +51,57 @@ const reconnect = createEffectLogic({
   schemas: { input: Schema.Struct({ attempts: Schema.Int }) },
 });
 
+const checkSession = createEffectLogic({
+  effect: SocketSession.use((service) => service.sessionExists),
+});
+
+const endSession = createEffectLogic({
+  effect: ({ input }) =>
+    SocketSession.use((service) => service.end(input.deleted)),
+  schemas: { input: Schema.Struct({ deleted: Schema.Boolean }) },
+});
+
 export const liveSocketMachine = setupEffect({
-  actors: { observe, reconnect },
-  schemas: { context: Schema.Struct({ attempts: Schema.Int }) },
+  actors: { checkSession, endSession, observe, reconnect },
+  schemas: {
+    context: Schema.Struct({ attempts: Schema.Int, deleted: Schema.Boolean }),
+  },
 }).createMachine({
-  context: { attempts: 0 },
+  context: { attempts: 0, deleted: false },
   initial: "observing",
   states: {
+    checkingSession: {
+      invoke: {
+        onDone: ({ event }) => ({
+          target: event.output ? "retrying" : "ending",
+        }),
+        src: "checkSession",
+      },
+    },
+    ended: { type: "final" },
+    ending: {
+      invoke: {
+        input: ({ context }) => ({ deleted: context.deleted }),
+        onDone: { target: "ended" },
+        src: "endSession",
+      },
+    },
     observing: {
       invoke: {
-        onDone: {
-          context: ({ context, event }) => ({
-            attempts: event.output ? 0 : Math.min(5, context.attempts + 1),
-          }),
-          target: "retrying",
-        },
+        onDone: ({ context, event }) => ({
+          context: {
+            attempts: event.output.connected
+              ? 0
+              : Math.min(5, context.attempts + 1),
+            deleted:
+              event.output.code === 1008 &&
+              event.output.reason === "Account deleted",
+          },
+          target:
+            event.output.code === 1008 || !event.output.connected
+              ? "checkingSession"
+              : "retrying",
+        }),
         src: "observe",
       },
     },
@@ -95,14 +142,16 @@ const receiveLiveFrame =
   };
 
 export const liveSocketStream = (
-  connect: () => LiveSocket = browserSocket
+  personId: string,
+  connect: () => LiveSocket = browserSocket,
+  sessionExists: Effect.Effect<boolean> = liveSessionExists
 ): Stream.Stream<LiveNoticeValue> =>
   Stream.callback<LiveNoticeValue>((queue) =>
     Effect.gen(function* liveObserver() {
       const message = receiveLiveFrame(queue);
 
       const observeSocket = Effect.gen(function* observeConnection() {
-        const ended = yield* Deferred.make<boolean>();
+        const ended = yield* Deferred.make<typeof SocketClosure.Type>();
         let connected = false;
 
         const opened = () => {
@@ -110,8 +159,22 @@ export const liveSocketStream = (
           Queue.offerUnsafe(queue, LiveNotice.cases.Reconnected.make({}));
         };
 
-        const closed = () => {
-          Deferred.doneUnsafe(ended, Effect.succeed(connected));
+        const closed = (event: CloseEvent) => {
+          Deferred.doneUnsafe(
+            ended,
+            Effect.succeed({
+              code: event.code,
+              connected,
+              reason: event.reason,
+            })
+          );
+        };
+
+        const failed = () => {
+          Deferred.doneUnsafe(
+            ended,
+            Effect.succeed({ code: 1006, connected, reason: "" })
+          );
         };
 
         yield* Effect.acquireRelease(
@@ -119,7 +182,7 @@ export const liveSocketStream = (
             const socket = connect();
             socket.addEventListener("open", opened);
             socket.addEventListener("close", closed);
-            socket.addEventListener("error", closed);
+            socket.addEventListener("error", failed);
             socket.addEventListener("message", message);
 
             return socket;
@@ -128,7 +191,7 @@ export const liveSocketStream = (
             Effect.sync(() => {
               socket.removeEventListener("open", opened);
               socket.removeEventListener("close", closed);
-              socket.removeEventListener("error", closed);
+              socket.removeEventListener("error", failed);
               socket.removeEventListener("message", message);
               socket.close();
             })
@@ -142,7 +205,21 @@ export const liveSocketStream = (
         yield* watchActor("calendarLiveSocket", actor);
         // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- An unexpected socket actor crash is a defect, never a provider failure.
         yield* join(actor).pipe(Effect.orDie);
-      }).pipe(Effect.provideService(SocketSession, { observe: observeSocket }));
+      }).pipe(
+        Effect.provideService(SocketSession, {
+          end: (deleted) =>
+            Effect.gen(function* endLiveSession() {
+              yield* clearEndedSessionStorage(personId);
+              yield* Queue.offer(
+                queue,
+                LiveNotice.cases.SessionEnded.make({ deleted })
+              );
+            }),
+          observe: observeSocket,
+          sessionExists,
+        })
+      );
+      yield* Queue.end(queue);
     })
   );
 

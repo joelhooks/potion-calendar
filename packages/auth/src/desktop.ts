@@ -24,7 +24,7 @@ export interface DesktopHandoffStore {
     identifier: string,
     grant: DesktopGrant,
     now: number
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   readonly consume: (
     identifier: string,
     now: number
@@ -53,19 +53,25 @@ export const desktopHandoffStore = (
   },
   // @effect-diagnostics-next-line asyncFunction:off -- Better Auth invokes this D1 adapter through its native Promise plugin boundary.
   issue: async (identifier, grant, now) => {
-    await database
-      .prepare(
-        'INSERT INTO verification (id, identifier, value, "expiresAt", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?)'
-      )
-      .bind(
-        identifier,
-        identifier,
-        JSON.stringify(grant),
-        now + 120_000,
-        now,
-        now
-      )
-      .run();
+    try {
+      await database
+        .prepare(
+          'INSERT INTO verification (id, identifier, value, "expiresAt", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?)'
+        )
+        .bind(
+          identifier,
+          identifier,
+          JSON.stringify(grant),
+          now + 120_000,
+          now,
+          now
+        )
+        .run();
+
+      return true;
+    } catch {
+      return false;
+    }
   },
 });
 
@@ -111,11 +117,17 @@ export const desktopHandoff = (
         // @effect-diagnostics-next-line globalDate:off -- Better Auth uses wall-clock epoch milliseconds for its persistent verification and session deadlines.
         const now = Date.now();
 
-        await store.issue(
+        const stored = await store.issue(
           await identifierFor(token),
           { personId: current.user.id, sessionToken: current.session.token },
           now
         );
+
+        if (!stored) {
+          throw context.error("FORBIDDEN", {
+            message: "Desktop sign-in refused",
+          });
+        }
 
         return await context.json({ token });
       }

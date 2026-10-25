@@ -11,6 +11,7 @@ import { LiveOutput, LiveWork } from "./live-work.js";
 const Owner = { personId: Schema.NonEmptyString };
 
 export const LiveCommand = Schema.Union([
+  Schema.TaggedStruct("DeleteAccount", Owner),
   Schema.TaggedStruct("Sync", { ...Owner, ref: CalendarRef }),
   Schema.TaggedStruct("Push", {
     ...Owner,

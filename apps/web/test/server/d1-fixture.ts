@@ -1,7 +1,10 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- The D1 fixture loads the checked-in calendar migration.
 import { readFileSync } from "node:fs";
 
-import type { DurableObjectNamespace } from "@cloudflare/workers-types";
+import type {
+  D1Database,
+  DurableObjectNamespace,
+} from "@cloudflare/workers-types";
 import { Cause, Effect } from "effect";
 import { Miniflare } from "miniflare";
 
@@ -61,6 +64,14 @@ export const settingsFenceMigration = readFileSync(
   "utf-8"
 );
 
+export const verificationOwnerMigration = readFileSync(
+  new URL(
+    "../../../../packages/database/migrations/calendar/0008_verification_owner_fence.sql",
+    import.meta.url
+  ),
+  "utf-8"
+);
+
 export const makeD1Instance = () =>
   new Miniflare({
     compatibilityDate: "2026-07-30",
@@ -93,6 +104,23 @@ export const liveNamespaceFixture = Effect.gen(
   }
 );
 
+export const seedCalendarCacheOwners = Effect.fn(
+  "test.seedCalendarCacheOwners"
+)(function* seedCalendarCacheOwners(
+  database: D1Database,
+  people: readonly string[]
+) {
+  const statements = people.map((personId) =>
+    database
+      .prepare(
+        "INSERT INTO user (id, name, email, \"emailVerified\", \"createdAt\", \"updatedAt\") VALUES (?, 'Cache owner', ?, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"
+      )
+      .bind(personId, `${personId}@cache.example.test`)
+  );
+
+  yield* Effect.promise(database.batch.bind(database, statements));
+});
+
 export const d1Fixture = Effect.gen(function* d1Fixture() {
   const miniflare = yield* Effect.acquireRelease(
     Effect.sync(makeD1Instance),
@@ -115,6 +143,7 @@ export const d1Fixture = Effect.gen(function* d1Fixture() {
       .join("\n")
       .split(";"),
     ...settingsFenceMigration.split("\n"),
+    ...verificationOwnerMigration.split("\n"),
   ].flatMap((statement) => {
     const sql = statement.trim();
 

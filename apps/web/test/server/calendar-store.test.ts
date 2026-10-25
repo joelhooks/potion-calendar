@@ -10,7 +10,7 @@ import {
   calendarRangeTtlMs,
   calendarRangeCacheByteLimit,
 } from "../../src/server/calendar-store.js";
-import { d1Fixture } from "./d1-fixture.js";
+import { d1Fixture, seedCalendarCacheOwners } from "./d1-fixture.js";
 import {
   nativeHistoryStore,
   runNativeStoreHistory,
@@ -18,6 +18,12 @@ import {
 } from "./store-history-fixture.js";
 
 const ref = { accountId: "account", calendarId: "calendar" };
+
+const ownedCalendarCache = d1Fixture.pipe(
+  Effect.tap((database) =>
+    seedCalendarCacheOwners(database, ["person", "first", "second"])
+  )
+);
 
 describe("D1 contract histories", { timeout: 30_000 }, () => {
   it.layer(StoreHistoryFixture.layer)((test) => {
@@ -111,7 +117,7 @@ const range = { end: "2026-11-02T00:00:00Z", start: "2026-10-19T00:00:00Z" };
 
 it.effect("D1 cursor CAS has one winner and stale resets cannot erase it", () =>
   Effect.gen(function* concurrentCursor() {
-    const database = yield* d1Fixture;
+    const database = yield* ownedCalendarCache;
 
     const store = yield* CalendarStore.pipe(
       Effect.provide(d1CalendarStore(database, "person"))
@@ -139,7 +145,7 @@ it.effect(
   "D1 partitions cached data by person and rejects obsolete versions",
   () =>
     Effect.gen(function* isolatedRange() {
-      const database = yield* d1Fixture;
+      const database = yield* ownedCalendarCache;
 
       const first = yield* CalendarStore.pipe(
         Effect.provide(d1CalendarStore(database, "first"))
@@ -167,7 +173,7 @@ it.effect(
   "D1 persists constant-size metadata after large and small change counts",
   () =>
     Effect.gen(function* metadataRows() {
-      const database = yield* d1Fixture;
+      const database = yield* ownedCalendarCache;
 
       const store = yield* CalendarStore.pipe(
         Effect.provide(d1CalendarStore(database, "person"))
@@ -202,7 +208,7 @@ it.effect(
 
 it.effect("D1 range cache expires without changing the calendar version", () =>
   Effect.gen(function* expiringRange() {
-    const database = yield* d1Fixture;
+    const database = yield* ownedCalendarCache;
 
     const store = yield* CalendarStore.pipe(
       Effect.provide(d1CalendarStore(database, "person"))
@@ -220,7 +226,7 @@ it.effect(
   "oversized ranges skip caching without changing the live-read or stale-version result",
   () =>
     Effect.gen(function* boundedRange() {
-      const database = yield* d1Fixture;
+      const database = yield* ownedCalendarCache;
 
       const store = yield* CalendarStore.pipe(
         Effect.provide(d1CalendarStore(database, "person"))
@@ -244,7 +250,7 @@ it.effect(
   "D1 rejects cross-calendar ranges and malformed stored cache data",
   () =>
     Effect.gen(function* cacheCodec() {
-      const database = yield* d1Fixture;
+      const database = yield* ownedCalendarCache;
 
       const store = yield* CalendarStore.pipe(
         Effect.provide(d1CalendarStore(database, "person"))
@@ -280,7 +286,7 @@ it.effect(
   "range expiration uses the expiration index rather than calendar invalidation scans",
   () =>
     Effect.gen(function* expiryPlan() {
-      const database = yield* d1Fixture;
+      const database = yield* ownedCalendarCache;
 
       const query = database
         .prepare(

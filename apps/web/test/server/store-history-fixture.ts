@@ -8,7 +8,11 @@ import {
 import type { StoreCommandValue } from "../../../../packages/calendar/test/store-history.js";
 import { bundleCalendarWorker } from "../../src/dev/bundle-worker.js";
 import { d1CalendarStore } from "../../src/server/calendar-store.js";
-import { calendarMigration } from "./d1-fixture.js";
+import {
+  authMigration,
+  calendarMigration,
+  seedCalendarCacheOwners,
+} from "./d1-fixture.js";
 
 const makeStoreHistoryFixture = Effect.gen(function* makeStoreHistoryFixture() {
   const entry = new URL("store-history-worker.ts", import.meta.url).pathname;
@@ -34,13 +38,15 @@ const makeStoreHistoryFixture = Effect.gen(function* makeStoreHistoryFixture() {
     instance.getD1Database.bind(instance, "DB", undefined)
   );
 
-  const statements = calendarMigration
+  const statements = [authMigration, calendarMigration]
+    .join("\n")
     .split(";")
     .map((statement) => statement.trim())
     .filter(Boolean)
     .map((statement) => database.prepare(statement));
 
   yield* Effect.promise(database.batch.bind(database, statements));
+  yield* seedCalendarCacheOwners(database, ["person"]);
 
   const store = Layer.unwrap(
     Effect.gen(function* isolatedStore() {

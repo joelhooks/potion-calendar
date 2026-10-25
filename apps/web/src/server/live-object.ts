@@ -26,8 +26,10 @@ import type { CalendarOriginPolicy } from "./calendar-origin.js";
 import { calendarForPerson } from "./calendar-runtime.js";
 import { d1CalendarStore } from "./calendar-store.js";
 import { CalendarSynchronization } from "./calendar-synchronization.js";
+import { deleteAccountForPerson } from "./delete-account-runtime.js";
 import { maintainGoogleChannels } from "./google-channel-maintenance.js";
 import { stopAccountGoogleChannels } from "./google-channel-stop.js";
+import { liveAdmission } from "./live-admission.js";
 import { LiveSyncPolicy, LiveCoordinator } from "./live-coordinator.js";
 import type { LiveCoordinatorValue } from "./live-coordinator.js";
 import { liveJobs } from "./live-jobs.js";
@@ -50,6 +52,7 @@ const unavailable = () =>
 
 export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
   class CalendarLive {
+    private readonly admission = liveAdmission();
     private readonly jobs;
     private readonly maintenance;
     private readonly ready: Promise<{
@@ -63,7 +66,7 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
     constructor(state: DurableObjectState, environment: CalendarEnvironment) {
       this.state = state;
       this.environment = environment;
-      this.jobs = liveJobs(state.storage);
+      this.jobs = liveJobs(state.storage, this.admission.accepts);
       this.maintenance = liveMaintenanceState(state.storage);
       this.ready = state.blockConcurrencyWhile(
         // @effect-diagnostics-next-line asyncFunction:off -- Cloudflare invokes its initialization gate through a native Promise callback.
@@ -74,7 +77,11 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
 
               const coordinator = yield* LiveCoordinator.pipe(
                 Effect.provide(
-                  LiveCoordinator.layer(this.jobs, (work) => this.execute(work))
+                  LiveCoordinator.layer(
+                    this.jobs,
+                    (work) => this.execute(work),
+                    this.admission
+                  )
                 )
               );
 
@@ -84,7 +91,7 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
       );
     }
 
-    private owned(personId: string) {
+    private ownerId(personId: string) {
       if (
         this.state.id.toString() !==
         this.environment.CALENDAR_LIVE.idFromName(personId).toString()
@@ -98,7 +105,195 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
         );
       }
 
-      return this.jobs.bindPerson(personId);
+      return Effect.void;
+    }
+
+    private personStatus(personId: string) {
+      return Effect.gen({ self: this }, function* personStatus() {
+        const { config } = yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => this.ready,
+        });
+
+        const context = yield* authContext(
+          createGoogleAuth(config, this.environment.DB)
+        );
+
+        const row = yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () =>
+            context.adapter.findOne({
+              model: "user",
+              where: [{ field: "id", value: personId }],
+            }),
+        });
+
+        const person = yield* Schema.decodeUnknownEffect(
+          Schema.NullOr(Schema.Struct({ email: Schema.String }))
+        )(row).pipe(Effect.mapError(unavailable));
+
+        if (person === null) {
+          return "missing" as const;
+        }
+
+        return allowedEmail(person.email, config.allowedEmails)
+          ? ("allowed" as const)
+          : ("refused" as const);
+      });
+    }
+
+    private owned(personId: string) {
+      return Effect.gen({ self: this }, function* admitLiveOwner() {
+        yield* this.ownerId(personId);
+
+        const status = yield* this.personStatus(personId);
+
+        if (status === "missing") {
+          yield* this.forgetPerson().pipe(
+            Effect.catchCause(() =>
+              Effect.logWarning("Deleted account live cleanup remains pending")
+            )
+          );
+
+          return yield* unavailable();
+        }
+
+        if (status !== "allowed") {
+          return yield* unavailable();
+        }
+
+        if (!this.admission.accepts()) {
+          return yield* new Provider({
+            message: "Account deletion has paused live work",
+            operation: "live",
+            status: 409,
+          });
+        }
+
+        return yield* this.jobs.bindPerson(personId);
+      });
+    }
+
+    private forgetPerson() {
+      const cleanup = Effect.gen({ self: this }, function* forgetPerson() {
+        const { coordinator } = yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => this.ready,
+        });
+
+        yield* Effect.sync(() => {
+          this.admission.pause();
+        });
+        yield* coordinator.awaitAll();
+        yield* Effect.sync(() => {
+          for (const socket of this.state.getWebSockets()) {
+            socket.close(1008, "Account deleted");
+          }
+        });
+        yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => this.state.storage.delete("calendar-inventory"),
+        });
+
+        while (true) {
+          const entries = yield* Effect.tryPromise({
+            catch: unavailable,
+            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+            try: () =>
+              this.state.storage.list({
+                limit: 100,
+                prefix: "watch-cooldown:",
+              }),
+          });
+
+          if (entries.size === 0) {
+            break;
+          }
+
+          yield* Effect.tryPromise({
+            catch: unavailable,
+            // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+            try: () => this.state.storage.delete([...entries.keys()]),
+          });
+        }
+
+        yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => this.state.storage.deleteAlarm(),
+        });
+
+        return yield* this.jobs.clear;
+      });
+
+      return cleanup.pipe(
+        Effect.onError(() =>
+          Effect.gen({ self: this }, function* retainCleanupAlarm() {
+            const livePolicy = yield* LiveSyncPolicy;
+            const now = yield* Clock.currentTimeMillis;
+            yield* Effect.tryPromise({
+              catch: unavailable,
+              // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+              try: () =>
+                this.state.storage.setAlarm(now + livePolicy.retryBaseMs),
+            }).pipe(Effect.ignore);
+          })
+        )
+      );
+    }
+
+    private deletePerson(personId: string) {
+      return Effect.gen({ self: this }, function* deletePerson() {
+        yield* this.ownerId(personId);
+
+        const status = yield* this.personStatus(personId);
+
+        if (status === "missing") {
+          yield* this.forgetPerson().pipe(
+            Effect.catchCause(() =>
+              Effect.logWarning("Deleted account live cleanup remains pending")
+            )
+          );
+
+          return null;
+        }
+
+        if (status !== "allowed") {
+          return yield* unavailable();
+        }
+
+        const { config, coordinator } = yield* Effect.tryPromise({
+          catch: unavailable,
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () => this.ready,
+        });
+
+        if (this.admission.accepts()) {
+          yield* this.jobs.bindPerson(personId);
+        }
+
+        yield* calendarForPerson(
+          createGoogleAuth(config, this.environment.DB),
+          config,
+          personId,
+          {
+            storeFor: (owner) => d1CalendarStore(this.environment.DB, owner),
+            tokenMode: "cached-only",
+          },
+          [],
+          deleteAccountForPerson(this.environment.DB, personId, {
+            finalize: this.forgetPerson(),
+            pause: coordinator.pause(),
+            resume: coordinator.resume,
+          })
+        ).pipe(Effect.mapError(unavailable));
+
+        return null;
+      });
     }
 
     private broadcast(personId: string, frame: LiveFrameValue) {
@@ -327,10 +522,14 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
           LiveOutputValue | null,
           CalendarFailureValue
         > {
-          yield* this.owned(command.personId);
+          if (!LiveCommand.guards.DeleteAccount(command)) {
+            yield* this.owned(command.personId);
+          }
+
           const now = yield* Clock.currentTimeMillis;
 
           return yield* LiveCommand.match(command, {
+            DeleteAccount: ({ personId }) => this.deletePerson(personId),
             NotifyInventory: ({ personId }) =>
               this.broadcast(personId, LiveFrame.members[1].make({})).pipe(
                 Effect.as(null)
@@ -425,9 +624,11 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
         )
       );
 
-      await Effect.runPromise(
-        this.jobs.schedule(await Effect.runPromise(Clock.currentTimeMillis))
-      );
+      if (this.admission.accepts()) {
+        await Effect.runPromise(
+          this.jobs.schedule(await Effect.runPromise(Clock.currentTimeMillis))
+        );
+      }
 
       return Response.json(encoded);
     }
@@ -438,13 +639,33 @@ export const calendarLiveClass = (policy: CalendarOriginPolicy) =>
 
       await Effect.runPromise(
         Effect.gen({ self: this }, function* drainAlarm() {
+          const owner = yield* this.jobs.owner.pipe(Effect.result);
+
+          if (Result.isFailure(owner)) {
+            return;
+          }
+
+          if (
+            (yield* this.personStatus(owner.success.personId)) === "missing"
+          ) {
+            yield* this.forgetPerson();
+
+            return;
+          }
+
           const due = yield* this.jobs.due(yield* Clock.currentTimeMillis);
 
           for (const job of due) {
             yield* coordinator.run(job.key).pipe(Effect.result);
           }
 
-          yield* this.jobs.schedule(yield* Clock.currentTimeMillis);
+          if (
+            (yield* this.personStatus(owner.success.personId)) === "missing"
+          ) {
+            yield* this.forgetPerson();
+          } else if (this.admission.accepts()) {
+            yield* this.jobs.schedule(yield* Clock.currentTimeMillis);
+          }
         })
       );
     }

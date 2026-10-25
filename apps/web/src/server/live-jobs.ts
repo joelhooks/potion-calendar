@@ -43,7 +43,10 @@ export interface LiveJobStorage {
   readonly deleteAlarm: () => Promise<void>;
 }
 
-export const liveJobs = (storage: LiveJobStorage) => {
+export const liveJobs = (
+  storage: LiveJobStorage,
+  accepts: () => boolean = () => true
+) => {
   storage.sql.exec(
     "CREATE TABLE IF NOT EXISTS live_owner (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), person_id TEXT NOT NULL)"
   );
@@ -103,6 +106,10 @@ export const liveJobs = (storage: LiveJobStorage) => {
       catch: failure,
       try: () => {
         storage.transactionSync(() => {
+          if (!accepts()) {
+            throw new Error("Live admission is paused");
+          }
+
           const person = Schema.decodeSync(Schema.NonEmptyString)(personId);
           storage.sql.exec(
             "INSERT OR IGNORE INTO live_owner (singleton, person_id) VALUES (1, ?)",
@@ -157,6 +164,10 @@ export const liveJobs = (storage: LiveJobStorage) => {
       catch: failure,
       try: () =>
         storage.transactionSync(() => {
+          if (!accepts()) {
+            return false;
+          }
+
           const payload = Schema.encodeSync(Schema.fromJsonString(LiveWork))(
             work
           );
@@ -318,8 +329,25 @@ export const liveJobs = (storage: LiveJobStorage) => {
       Effect.mapError(failure)
     );
 
+  const clear = Effect.try({
+    catch: failure,
+    try: () => {
+      storage.transactionSync(() => {
+        for (const table of [
+          "live_job",
+          "live_result",
+          "live_message",
+          "live_owner",
+        ]) {
+          storage.sql.exec(`DELETE FROM ${table}`);
+        }
+      });
+    },
+  });
+
   return {
     bindPerson,
+    clear,
     complete,
     discard,
     due,

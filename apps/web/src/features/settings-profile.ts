@@ -10,6 +10,7 @@ import {
   profileImage,
   profileInitials,
 } from "../client/settings/profile/model.js";
+import { settingsDeleteAccount } from "./settings-delete-account.js";
 
 const profileStyles = `
 .profile-identity { display:flex; align-items:center; gap:16px; margin:20px 0; min-width:0; }
@@ -195,5 +196,6 @@ export const settingsProfile = (
           ),
         ]
       : []),
+    ...settingsDeleteAccount(model, h),
   ];
 };

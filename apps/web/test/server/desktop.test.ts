@@ -1,9 +1,21 @@
 import { desktopHandoffStore } from "@calendar/auth/desktop";
+import type { DesktopGrant, DesktopHandoffStore } from "@calendar/auth/desktop";
 import { makeFakeGoogle } from "@calendar/auth/dev/fake-google";
-import { createGoogleAuth } from "@calendar/auth/google";
+import { authContext, createGoogleAuth } from "@calendar/auth/google";
 import type { GoogleAuth } from "@calendar/auth/google";
+import { deleteCalendarAccount } from "@calendar/database";
 import { expect, it } from "@effect/vitest";
-import { Effect, Match, Schema } from "effect";
+import {
+  Cause,
+  DateTime,
+  Effect,
+  Fiber,
+  Match,
+  Option,
+  Queue,
+  Result,
+  Schema,
+} from "effect";
 
 import { desktopRoutesWithAuth } from "../../src/server/desktop-routes.js";
 import { d1Fixture } from "./d1-fixture.js";
@@ -31,78 +43,176 @@ const cookieJar = (response: Response, existing = "") =>
 const call = (auth: GoogleAuth, request: Request) =>
   Effect.promise(auth.handler.bind(auth, request));
 
-const fixture = Effect.gen(function* fixture() {
-  const database = yield* d1Fixture;
-  const fake = makeFakeGoogle(config.baseURL);
-
-  const auth = createGoogleAuth(
-    { ...config, desktopStore: desktopHandoffStore(database) },
-    database,
-    fake.provider
-  );
-
-  const signIn = Effect.fn("test.desktop.signIn")(function* signIn(
-    email: string
+const desktopFixture = Effect.fn("test.desktopFixture")(
+  function* desktopFixture(
+    wrap: (store: DesktopHandoffStore) => DesktopHandoffStore = (store) => store
   ) {
-    const start = yield* call(
-      auth,
-      new Request(`${config.baseURL}/auth/sign-in/oauth2`, {
-        body: JSON.stringify({ callbackURL: "/", providerId: "google" }),
-        headers: { "content-type": "application/json", origin: config.baseURL },
-        method: "POST",
-      })
+    const database = yield* d1Fixture;
+    const fake = makeFakeGoogle(config.baseURL);
+
+    const auth = createGoogleAuth(
+      { ...config, desktopStore: wrap(desktopHandoffStore(database)) },
+      database,
+      fake.provider
     );
 
-    const data: unknown = yield* Effect.promise(start.json.bind(start));
-    const document = yield* Schema.decodeUnknownEffect(Document)(data);
+    const signIn = Effect.fn("test.desktop.signIn")(function* signIn(
+      email: string
+    ) {
+      const start = yield* call(
+        auth,
+        new Request(`${config.baseURL}/auth/sign-in/oauth2`, {
+          body: JSON.stringify({ callbackURL: "/", providerId: "google" }),
+          headers: {
+            "content-type": "application/json",
+            origin: config.baseURL,
+          },
+          method: "POST",
+        })
+      );
 
-    const response = yield* call(
-      auth,
-      new Request(fake.authorize(new URL(document.url), email), {
-        headers: { cookie: cookieJar(start) },
-      })
-    );
+      const data: unknown = yield* Effect.promise(start.json.bind(start));
+      const document = yield* Schema.decodeUnknownEffect(Document)(data);
 
-    return cookieJar(response, cookieJar(start));
-  });
+      const response = yield* call(
+        auth,
+        new Request(fake.authorize(new URL(document.url), email), {
+          headers: { cookie: cookieJar(start) },
+        })
+      );
 
-  const state = "a".repeat(64);
+      return cookieJar(response, cookieJar(start));
+    });
 
-  const issue = (cookie: string) =>
-    Effect.promise(
-      desktopRoutesWithAuth.bind(
-        undefined,
-        new Request(
-          `${config.baseURL}/desktop/sign-in?port=49152&state=${state}`,
-          {
-            headers: { cookie, origin: config.baseURL },
-            method: "POST",
+    const state = "a".repeat(64);
+
+    const issue = (cookie: string) =>
+      Effect.promise(
+        desktopRoutesWithAuth.bind(
+          undefined,
+          new Request(
+            `${config.baseURL}/desktop/sign-in?port=49152&state=${state}`,
+            {
+              headers: { cookie, origin: config.baseURL },
+              method: "POST",
+            }
+          ),
+          config,
+          auth
+        )
+      );
+
+    const redeem = (token: string, cookie = "") =>
+      Effect.promise(
+        desktopRoutesWithAuth.bind(
+          undefined,
+          new Request(`${config.baseURL}/desktop/complete?token=${token}`, {
+            headers: { cookie },
+          }),
+          config,
+          auth
+        )
+      );
+
+    const tokenFrom = (response: Response) =>
+      new URL(
+        response.headers.get("location") ?? config.baseURL
+      ).searchParams.get("token") ?? "";
+
+    return { auth, database, issue, redeem, signIn, tokenFrom };
+  }
+);
+
+const fixture = desktopFixture();
+
+it.effect(
+  "desktop issuance captured before deletion cannot restore a verification row after deletion while B still issues",
+  () =>
+    Effect.gen(function* delayedDesktopIssuance() {
+      const captured = yield* Queue.unbounded<DesktopGrant>();
+
+      const release = yield* Effect.sync(() => {
+        let resume = Option.none<(ready: boolean) => void>();
+
+        // oxlint-disable promise/avoid-new -- This native store callback must pause without running an Effect runtime inside the test.
+        // @effect-diagnostics-next-line newPromise:off -- Better Auth owns this native Promise store callback; the test releases it only after the real D1 deletion commits.
+        const promise = new Promise<boolean>((resolve) => {
+          resume = Option.some(resolve);
+        });
+        // oxlint-enable promise/avoid-new -- The native callback gate is the only manual Promise in this fixture.
+
+        return { promise, resolve: Option.getOrThrow(resume) };
+      });
+
+      let delayed = true;
+
+      const setup = yield* desktopFixture((store) => ({
+        consume: store.consume,
+        // @effect-diagnostics-next-line asyncFunction:off -- Better Auth owns this delayed native store callback.
+        issue: async (identifier, grant, now) => {
+          if (!delayed) {
+            return await store.issue(identifier, grant, now);
           }
+
+          Queue.offerUnsafe(captured, grant);
+
+          await release.promise;
+
+          return await store.issue(identifier, grant, now);
+        },
+      }));
+
+      const a = yield* setup.signIn("joel@example.test");
+      const b = yield* setup.signIn("second@example.test");
+      const issuing = yield* setup.issue(a).pipe(Effect.forkScoped);
+      const grant = yield* Queue.take(captured);
+
+      const context = yield* authContext(setup.auth);
+
+      const linkState = {
+        expiresAt: DateTime.toDateUtc(
+          DateTime.makeUnsafe("2099-01-01T00:00:00.000Z")
         ),
-        config,
-        auth
-      )
-    );
-
-  const redeem = (token: string, cookie = "") =>
-    Effect.promise(
-      desktopRoutesWithAuth.bind(
-        undefined,
-        new Request(`${config.baseURL}/desktop/complete?token=${token}`, {
-          headers: { cookie },
+        identifier: "delayed-better-auth-link",
+        value: JSON.stringify({
+          link: { email: "joel@example.test", userId: grant.personId },
+          oauthState: "delayed-better-auth-link",
         }),
-        config,
-        auth
-      )
-    );
+      };
 
-  const tokenFrom = (response: Response) =>
-    new URL(
-      response.headers.get("location") ?? config.baseURL
-    ).searchParams.get("token") ?? "";
+      yield* deleteCalendarAccount(setup.database, grant.personId);
 
-  return { auth, database, issue, redeem, signIn, tokenFrom };
-});
+      const lateLink = yield* Effect.tryPromise({
+        catch: (cause) =>
+          new Cause.UnknownError(cause, "Late Better Auth link state refused"),
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+        try: () => context.internalAdapter.createVerificationValue(linkState),
+      }).pipe(Effect.result);
+
+      expect(Result.isFailure(lateLink) || lateLink.success === null).toBe(
+        true
+      );
+      yield* Effect.sync(() => {
+        release.resolve(true);
+      });
+      const refused = yield* Fiber.join(issuing);
+
+      expect(refused.status).not.toBe(303);
+
+      const statement = setup.database.prepare(
+        "SELECT identifier FROM verification WHERE identifier GLOB 'calendar-desktop:*' OR identifier = 'delayed-better-auth-link'"
+      );
+
+      const rows = yield* Effect.promise(statement.all.bind(statement));
+
+      expect(rows.results).toEqual([]);
+      delayed = false;
+      const normal = yield* setup.issue(b);
+
+      expect(normal.status).toBe(303);
+      expect(setup.tokenFrom(normal)).toMatch(/^[a-f0-9]{64}$/u);
+    })
+);
 
 it.effect(
   "desktop transfer atomically redeems once and uses normal secure session-cookie attributes",
@@ -196,7 +306,7 @@ for (const refusal of [
           Match.when(
             "expired-session",
             () =>
-              'UPDATE session SET "expiresAt" = 0 WHERE "userId" IN (SELECT id FROM user WHERE email = \'joel@example.test\')'
+              "UPDATE session SET \"expiresAt\" = '1970-01-01T00:00:01.000Z' WHERE \"userId\" IN (SELECT id FROM user WHERE email = 'joel@example.test')"
           ),
           Match.when(
             "wrong-binding",

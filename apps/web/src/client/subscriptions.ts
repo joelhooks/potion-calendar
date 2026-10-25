@@ -111,7 +111,7 @@ export const subscriptions = Subscription.make<
         Option.match(person, {
           onNone: () => Stream.empty,
           onSome: (personId) =>
-            liveSocketStream().pipe(
+            liveSocketStream(personId).pipe(
               Stream.map((notice) => Message.ReceivedLive({ notice, personId }))
             ),
         }),

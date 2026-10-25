@@ -1,3 +1,9 @@
+export {
+  AccountDeletionStoreError,
+  accountDeletionChannels,
+  deleteCalendarAccount,
+} from "./delete-account.js";
+
 export { RunLog } from "./run-log.js";
 
 export { DatabaseVendor } from "./vendor.js";

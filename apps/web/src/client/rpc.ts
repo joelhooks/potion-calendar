@@ -3,7 +3,10 @@ import {
   searchEventsContract as coreSearchEventsContract,
 } from "@calendar/calendar/contracts";
 import { toRpcGroup } from "@calendar/capability/rpc-group";
-import { sessionContract } from "@calendar/core/contracts";
+import {
+  sessionContract,
+  deleteAccountContract,
+} from "@calendar/core/contracts";
 import { Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { RpcClient, RpcSerialization } from "effect/rpc";
@@ -12,6 +15,7 @@ import { searchEventsContract } from "../search-contract.js";
 
 export const browserGroup = toRpcGroup([
   sessionContract,
+  deleteAccountContract,
   ...calendarContracts.filter(
     (
       contract

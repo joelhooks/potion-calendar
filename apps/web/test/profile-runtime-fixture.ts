@@ -1,18 +1,29 @@
-import { Effect, Layer, Option, Queue, Schema } from "effect";
-import { Runtime } from "foldkit";
+import { SessionSnapshot } from "@calendar/core/contracts";
+import { Effect, Exit, Layer, Option, Queue, Schema } from "effect";
+import { Port, Runtime, Subscription } from "foldkit";
 import type { HtmlBuilder } from "foldkit/html";
 import { UrlRequest } from "foldkit/navigation";
 import { vi } from "vitest";
 
-import { Model, onUrlChange, onUrlRequest, update } from "../src/client/app.js";
+import {
+  Message,
+  Model,
+  onUrlChange,
+  onUrlRequest,
+  update,
+} from "../src/client/app.js";
 import type { AppMessage, AppModel } from "../src/client/app.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
+import { LiveNotice } from "../src/client/live/protocol.js";
 import {
   BackRoute,
   FollowRouteRequest,
   InitializeRouteHistory,
   NavigateRoute,
 } from "../src/client/routing.js";
+import { RunAccountDeletion } from "../src/client/settings/delete-account/commands.js";
+import { AccountDeletionPort } from "../src/client/settings/delete-account/port.js";
+import type { AccountDeletionPortService } from "../src/client/settings/delete-account/port.js";
 import { RunProfileRequest } from "../src/client/settings/profile/commands.js";
 import { ProfileWork } from "../src/client/settings/profile/model.js";
 import { ProfilePort } from "../src/client/settings/profile/port.js";
@@ -30,6 +41,32 @@ const profileView = (model: AppModel, h: HtmlBuilder<AppMessage>) => ({
   title: "Profile test",
 });
 
+const profileHostPorts = {
+  inbound: {
+    live: Port.inbound(
+      Schema.Struct({ notice: LiveNotice, personId: Schema.String })
+    ),
+    session: Port.inbound(SessionSnapshot),
+  },
+};
+
+const profileTestSubscriptions = Subscription.make<AppModel, AppMessage>()(
+  () => ({
+    live: Port.subscriptionEntry(
+      profileHostPorts.inbound.live,
+      ({ personId, notice }) => Message.ReceivedLive({ notice, personId })
+    ),
+    session: Port.subscriptionEntry(
+      profileHostPorts.inbound.session,
+      (snapshot) => Message.ReceivedSession({ snapshot })
+    ),
+  })
+);
+
+const unusedAccountDeletionPort: AccountDeletionPortService = {
+  remove: () => Effect.die("Profile seam must not delete an account"),
+};
+
 const showDialog = function showDialog(this: HTMLDialogElement): void {
   this.open = true;
 };
@@ -40,19 +77,23 @@ const closeDialog = function closeDialog(this: HTMLDialogElement): void {
 
 export const profileDomReady = (ready: () => boolean) =>
   Effect.callback<boolean>((resume) => {
-    const inspect = () => {
+    const observer = new MutationObserver((_, currentObserver) => {
       if (ready()) {
+        currentObserver.disconnect();
         resume(Effect.succeed(true));
       }
-    };
+    });
 
-    const observer = new MutationObserver(inspect);
     observer.observe(document.body, {
       attributes: true,
       childList: true,
       subtree: true,
     });
-    inspect();
+
+    if (ready()) {
+      observer.disconnect();
+      resume(Effect.succeed(true));
+    }
 
     return Effect.sync(() => {
       observer.disconnect();
@@ -60,7 +101,11 @@ export const profileDomReady = (ready: () => boolean) =>
   });
 
 export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
-  function* mountProfileRuntime(initial: AppModel, port: ProfilePortService) {
+  function* mountProfileRuntime(
+    initial: AppModel,
+    port: ProfilePortService,
+    deletionPort: AccountDeletionPortService = unusedAccountDeletionPort
+  ) {
     const container = document.createElement("div");
     container.id = "profile-test-runtime";
     document.body.append(container);
@@ -113,6 +158,7 @@ export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
     const resources = Layer.mergeAll(
       unusedBrowserLayers,
       Layer.succeed(ProfilePort, port),
+      Layer.succeed(AccountDeletionPort, deletionPort),
       Layer.succeed(
         EditingRuntime,
         EditingRuntime.of({
@@ -127,9 +173,14 @@ export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
       container,
       devTools: false,
       init: () => ({ model: initial }),
+      ports: profileHostPorts,
       resources,
       routing: { onUrlChange, onUrlRequest },
-      subscriptions: { profileUnload: subscriptions.profileUnload },
+      subscriptions: {
+        live: profileTestSubscriptions.live,
+        profileUnload: subscriptions.profileUnload,
+        session: profileTestSubscriptions.session,
+      },
       update: (model: AppModel, message: AppMessage) => {
         const result = update(model, message);
         current = result.model;
@@ -140,6 +191,7 @@ export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
             | ReturnType<typeof NavigateRoute>
             | ReturnType<typeof FollowRouteRequest>
             | ReturnType<typeof BackRoute>
+            | ReturnType<typeof RunAccountDeletion>
             | ReturnType<typeof RunProfileRequest>
           >((command) => {
             if (command.name === "NavigateRoute") {
@@ -166,6 +218,20 @@ export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
               return [BackRoute()];
             }
 
+            if (command.name === "RunAccountDeletion") {
+              return [
+                RunAccountDeletion(
+                  Schema.decodeUnknownSync(
+                    Schema.Struct({
+                      personId: Schema.String,
+                      proof: Schema.String,
+                      sequence: Schema.Int,
+                    })
+                  )(command.args)
+                ),
+              ];
+            }
+
             if (command.name === "RunProfileRequest") {
               return [
                 RunProfileRequest(
@@ -188,20 +254,54 @@ export const mountProfileRuntime = Effect.fn("test.mountProfileRuntime")(
       view: profileView,
     });
 
-    yield* Effect.acquireRelease(
+    const mounted = yield* Effect.acquireRelease(
       Effect.sync(() => Runtime.embed(program)),
-      (mounted) =>
+      (handle) =>
         Effect.sync(() => {
-          mounted.dispose();
+          handle.dispose();
         })
     );
+
     yield* profileDomReady(
       () =>
         profileRuntimeRoot()?.querySelector(".settings-content")
           ?.isConnected === true
     );
 
-    return { current: () => current, messages };
+    const receiveSession = Effect.fn("test.receiveProfileSession")(
+      function* receiveProfileSession(
+        snapshot: typeof SessionSnapshot.Encoded
+      ) {
+        const sent = yield* Effect.sync(() =>
+          mounted.ports.session.send(snapshot)
+        );
+
+        if (Exit.isFailure(sent)) {
+          return yield* Effect.failCause(sent.cause);
+        }
+
+        return yield* Effect.void;
+      }
+    );
+
+    const receiveLive = Effect.fn("test.receiveProfileLive")(
+      function* receiveProfileLive(
+        personId: string,
+        notice: typeof LiveNotice.Type
+      ) {
+        const sent = yield* Effect.sync(() =>
+          mounted.ports.live.send({ notice, personId })
+        );
+
+        if (Exit.isFailure(sent)) {
+          return yield* Effect.failCause(sent.cause);
+        }
+
+        return yield* Effect.void;
+      }
+    );
+
+    return { current: () => current, messages, receiveLive, receiveSession };
   }
 );
 

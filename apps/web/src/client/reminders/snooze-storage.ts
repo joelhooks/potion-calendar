@@ -28,6 +28,11 @@ const read = (personId: string): readonly (typeof ReminderSnooze.Type)[] => {
   return [...new Map(entries.map((entry) => [entry.identity, entry])).values()];
 };
 
+export const clearReminderSnoozes = (personId: string) =>
+  Effect.try(() => {
+    localStorage.removeItem(keyFor(personId));
+  });
+
 export const restoreReminderSnoozes = Effect.fn("restoreReminderSnoozes")(
   function* restoreReminderSnoozes(personId: string, now: number) {
     return yield* Effect.try(() => {

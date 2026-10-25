@@ -95,10 +95,20 @@ export const pushUnsupportedRepository = (binding: D1Database) => {
         catch: () => failure("markUnsupported", "storage"),
         // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
         try: () =>
-          database
-            .insert(GooglePushUnsupported)
-            .values(encoded)
-            .onConflictDoNothing()
+          binding
+            .prepare(`INSERT INTO google_push_unsupported
+              (person_id, account_id, calendar_id, status, reason_codes, observed_at)
+              SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM user WHERE id = ?)
+              ON CONFLICT (person_id, account_id, calendar_id) DO NOTHING`)
+            .bind(
+              encoded.personId,
+              encoded.accountId,
+              encoded.calendarId,
+              encoded.status,
+              encoded.reasonCodes,
+              encoded.observedAt,
+              encoded.personId
+            )
             .run(),
       });
     }

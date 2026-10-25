@@ -133,12 +133,18 @@ export const calendarLiveClient = (namespace: DurableObjectNamespace) => {
         }),
     });
 
+  const deleteAccount = (personId: string) =>
+    post(LiveCommand.cases.DeleteAccount.make({ personId })).pipe(
+      Effect.asVoid
+    );
+
   const stopAccount = (personId: string, accountId: string) =>
     post(LiveCommand.cases.StopAccount.make({ accountId, personId })).pipe(
       Effect.asVoid
     );
 
   return {
+    deleteAccount,
     enqueue,
     notifyInventory,
     publish,
@@ -158,6 +164,7 @@ export const liveCalendarOptions = (
     changesFor: (personId) => ({
       publish: (change) => live.publish(personId, change),
     }),
+    deleteAccount: live.deleteAccount,
     maintain: live.reconcile,
     settingsFor: (personId) =>
       calendarSettingsFor(environment.DB, personId, {

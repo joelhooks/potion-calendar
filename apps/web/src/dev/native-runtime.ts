@@ -31,6 +31,15 @@ const Method = Schema.Literals(["GET", "POST", "PATCH", "DELETE"]);
 
 const emptyFailure = () => new Response(null, { status: 503 });
 
+const fakeUserInfoRequest = (url: URL) =>
+  url.hostname === "openidconnect.googleapis.com" &&
+  url.pathname === "/v1/userinfo";
+
+const fakeProviderRequest = (url: URL) =>
+  fakeUserInfoRequest(url) ||
+  (url.hostname === "www.googleapis.com" &&
+    url.pathname.startsWith("/calendar/v3/"));
+
 export const makeNativeDevelopmentRuntime = Effect.fn(
   "makeNativeDevelopmentRuntime"
 )(function* makeNativeDevelopmentRuntime(
@@ -90,6 +99,14 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     }
   >();
 
+  const channelStops: {
+    readonly id: string;
+    readonly resourceId: string | undefined;
+    readonly email: string;
+  }[] = [];
+
+  const refusedChannelStops = new Set<string>();
+
   const outboundRequests: {
     readonly hostname: string;
     readonly method: string;
@@ -127,10 +144,9 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
           });
         }
 
-        if (
-          url.hostname !== "www.googleapis.com" ||
-          !url.pathname.startsWith("/calendar/v3/")
-        ) {
+        const userInfo = fakeUserInfoRequest(url);
+
+        if (!fakeProviderRequest(url)) {
           return emptyFailure();
         }
 
@@ -144,6 +160,15 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
           // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
           try: () => provider.provider.userInfo(bearer),
         });
+
+        if (userInfo) {
+          return Response.json({
+            email: identity.email,
+            email_verified: identity.emailVerified,
+            name: identity.name,
+            sub: identity.id,
+          });
+        }
 
         const path = url.pathname.slice("/calendar/v3".length);
 
@@ -175,8 +200,26 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
 
         if (path === "/channels/stop" && request.method === "POST") {
           const stop = yield* Schema.decodeEffect(
-            Schema.fromJsonString(Schema.Struct({ id: Schema.String }))
+            Schema.fromJsonString(
+              Schema.Struct({
+                id: Schema.String,
+                resourceId: Schema.optionalKey(Schema.String),
+              })
+            )
           )(body ?? "");
+
+          channelStops.push({
+            email: identity.email,
+            id: stop.id,
+            resourceId: stop.resourceId,
+          });
+
+          if (refusedChannelStops.has(stop.id)) {
+            return Response.json(
+              { error: { message: "Local channel stop refused" } },
+              { status: 503 }
+            );
+          }
 
           channels.delete(stop.id);
 
@@ -249,6 +292,7 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     "0005_settings_disconnect_fences.sql",
     "0006_conferencing_default.sql",
     "0007_push_unsupported.sql",
+    "0008_verification_owner_fence.sql",
   ]) {
     const sql = yield* Effect.tryPromise({
       catch: (cause) =>
@@ -266,7 +310,12 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     });
 
     const statements = sql
-      .split(file === "0005_settings_disconnect_fences.sql" ? "\n" : ";")
+      .split(
+        file === "0005_settings_disconnect_fences.sql" ||
+          file === "0008_verification_owner_fence.sql"
+          ? "\n"
+          : ";"
+      )
       .map((statement) => statement.trim())
       .filter(Boolean)
       .map((statement) => database.prepare(statement));
@@ -482,15 +531,58 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     );
 
   return {
+    channelStops,
     database,
     handle,
     hashWorker: () => workerModuleHash(modules),
     linkAccount: (email: string, cookie: string) =>
       seedFakePerson(fake, [email], { cookie }),
     miniflare,
+    notifyChannel: Effect.fn("development.notifyChannel")(
+      function* notifyChannel(id: string) {
+        const channel = channels.get(id);
+
+        if (channel === undefined) {
+          return yield* Effect.die(
+            new Error("The fake notification channel does not exist")
+          );
+        }
+
+        channel.number += 1;
+
+        const response = yield* Effect.tryPromise({
+          catch: (cause) =>
+            new Cause.UnknownError(cause, "Local provider notification failed"),
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
+          try: () =>
+            miniflare.dispatchFetch(channel.address, {
+              headers: {
+                "x-goog-channel-id": id,
+                "x-goog-channel-token": channel.token,
+                "x-goog-message-number": String(channel.number),
+                "x-goog-resource-id": channel.resourceId,
+                "x-goog-resource-state": "exists",
+              },
+              method: "POST",
+            }),
+        });
+
+        return response.status;
+      }
+    ),
     origin,
     outboundRequests,
     person,
+    providerChannels: () =>
+      [...channels].map(([id, channel]) => ({
+        email: channel.email,
+        id,
+        resourceId: channel.resourceId,
+      })),
+    refuseChannelStop: (id: string) =>
+      Effect.sync(() => {
+        refusedChannelStops.add(id);
+      }),
     seedPerson: (identities: readonly string[]) =>
       seedFakePerson(fake, identities),
     url: ready,

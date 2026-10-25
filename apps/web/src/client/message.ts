@@ -40,6 +40,10 @@ import { SearchPageNotice, SearchScrollAnchor } from "./search/page-model.js";
 import { OccurrenceNotice } from "./selection-commands/model.js";
 import { ManagementChange } from "./settings-management/model.js";
 import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
+import {
+  AccountDeletionChange,
+  AccountDeletionReply,
+} from "./settings/delete-account/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
 import { ProfileChange, ProfileReply } from "./settings/profile/model.js";
 import { TimeBlockAction } from "./time-blocks/model.js";
@@ -47,6 +51,12 @@ import { TimeZoneAction } from "./time-zones/model.js";
 import { ZoneDragPreview } from "./zone-drag/model.js";
 
 export const Message = defineMessageUnion({
+  AccountDeletionCompleted: {
+    personId: Schema.String,
+    reply: AccountDeletionReply,
+    sequence: Schema.Int,
+  },
+  AccountDeletionDialogReady: {},
   ApplySearchPage: {
     anchor: Schema.Option(SearchScrollAnchor),
     notice: SearchPageNotice.cases.Ready,
@@ -58,6 +68,10 @@ export const Message = defineMessageUnion({
     personId: Schema.optional(Schema.String),
   },
   CalendarChanged: {},
+  ChangedAccountDeletion: {
+    change: AccountDeletionChange,
+    personId: Schema.String,
+  },
   ChangedConferencing: { change: ConferencingChange },
   ChangedConferencingSettings: {
     change: ConferencingSettingsChange,

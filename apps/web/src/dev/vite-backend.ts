@@ -16,6 +16,7 @@ import type { WorkerArtifact } from "./bundle-worker.js";
 import { DevelopmentRuntime } from "./native-runtime.js";
 
 export interface NativeDevelopmentBackendOptions {
+  readonly initialEmails?: readonly string[];
   readonly worker?: WorkerArtifact;
   readonly onWorkerLoaded?: (hash: string) => void;
 }
@@ -42,7 +43,12 @@ export const nativeDevelopmentBackend = (
 
     const context = await Effect.runPromise(
       Layer.buildWithScope(
-        DevelopmentRuntime.layer(origin, undefined, "success", options?.worker),
+        DevelopmentRuntime.layer(
+          origin,
+          options?.initialEmails,
+          "success",
+          options?.worker
+        ),
         scope
       ).pipe(
         Effect.tap((built) =>

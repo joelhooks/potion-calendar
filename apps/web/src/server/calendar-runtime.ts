@@ -38,6 +38,10 @@ export type CalendarRuntime =
   | GoogleTokens;
 
 export interface CalendarBackendOptions {
+  readonly tokenMode?: "refresh" | "cached-only";
+  readonly deleteAccount?: (
+    personId: string
+  ) => Effect.Effect<void, CalendarFailureValue>;
   readonly storeFor: (personId: string) => Layer.Layer<CalendarStore>;
   readonly googleHttp?: Layer.Layer<GoogleHttp>;
   readonly settingsFor?: (
@@ -80,9 +84,12 @@ export const calendarForPerson = <A, E>(
   operation: Effect.Effect<A, E, CalendarRuntime>
 ) =>
   Effect.gen(function* runCalendarForPerson() {
-    const tokens = yield* googleTokensFor(auth, personId, config).pipe(
-      Effect.mapError(unavailable)
-    );
+    const tokens = yield* googleTokensFor(
+      auth,
+      personId,
+      config,
+      options.tokenMode
+    ).pipe(Effect.mapError(unavailable));
 
     const accounts = yield* tokens
       .accounts()

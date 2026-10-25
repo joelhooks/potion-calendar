@@ -1,3 +1,4 @@
+import { Provider } from "@calendar/calendar";
 import type { CalendarFailureValue } from "@calendar/calendar";
 import { watchActor } from "@calendar/capability/actor-watch";
 import {
@@ -18,6 +19,8 @@ import {
 } from "effect";
 import { types } from "xstate";
 
+import { liveAdmission } from "./live-admission.js";
+import type { LiveAdmission } from "./live-admission.js";
 import { DrainService, Step } from "./live-drain-service.js";
 import type { DrainStep, FailedStep } from "./live-drain-service.js";
 import type { LiveJobs } from "./live-jobs.js";
@@ -116,7 +119,8 @@ export const makeLiveCoordinator = Effect.fn("makeLiveCoordinator")(
     jobs: Pick<LiveJobs, "get" | "last" | "complete" | "retry" | "discard">,
     execute: (
       work: LiveWorkValue
-    ) => Effect.Effect<LiveOutputValue, CalendarFailureValue>
+    ) => Effect.Effect<LiveOutputValue, CalendarFailureValue>,
+    admission: LiveAdmission = liveAdmission()
   ) {
     const policy = yield* LiveSyncPolicy;
 
@@ -213,6 +217,10 @@ export const makeLiveCoordinator = Effect.fn("makeLiveCoordinator")(
 
     const run = Effect.fn("liveCoordinator.run")(function* run(key: string) {
       const slot = yield* Effect.sync(() => {
+        if (!admission.accepts()) {
+          return { role: "paused" as const };
+        }
+
         const existing = running.get(key);
 
         if (existing !== undefined) {
@@ -228,6 +236,14 @@ export const makeLiveCoordinator = Effect.fn("makeLiveCoordinator")(
 
         return { completion, role: "owner" as const };
       });
+
+      if (slot.role === "paused") {
+        return yield* new Provider({
+          message: "Account deletion has paused live work",
+          operation: "live",
+          status: 409,
+        });
+      }
 
       if (slot.role === "joined") {
         return yield* Deferred.await(slot.completion);
@@ -271,7 +287,36 @@ export const makeLiveCoordinator = Effect.fn("makeLiveCoordinator")(
       }
     );
 
-    return { awaitExisting, run };
+    const awaitAll = Effect.fn("liveCoordinator.awaitAll")(
+      function* awaitAll() {
+        const completions = yield* Effect.sync(() => [...running.values()]);
+        yield* Effect.forEach((completion: (typeof completions)[number]) =>
+          Deferred.await(completion).pipe(Effect.ignore)
+        )(completions);
+      }
+    );
+
+    const pause = Effect.fn("liveCoordinator.pause")(function* pause() {
+      const admitted = yield* Effect.sync(admission.pause);
+
+      if (!admitted) {
+        return yield* new Provider({
+          message: "Account deletion is already in progress",
+          operation: "live",
+          status: 409,
+        });
+      }
+
+      return yield* awaitAll();
+    });
+
+    return {
+      awaitAll,
+      awaitExisting,
+      pause,
+      resume: Effect.sync(admission.resume),
+      run,
+    };
   }
 );
 
@@ -287,8 +332,9 @@ export class LiveCoordinator extends Context.Service<
     jobs: Pick<LiveJobs, "get" | "last" | "complete" | "retry" | "discard">,
     execute: (
       work: LiveWorkValue
-    ) => Effect.Effect<LiveOutputValue, CalendarFailureValue>
+    ) => Effect.Effect<LiveOutputValue, CalendarFailureValue>,
+    admission: LiveAdmission = liveAdmission()
   ) {
-    return Layer.effect(this, makeLiveCoordinator(jobs, execute));
+    return Layer.effect(this, makeLiveCoordinator(jobs, execute, admission));
   }
 }

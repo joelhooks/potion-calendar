@@ -46,8 +46,6 @@ export const calendarCacheRepository = (
 ) => {
   const database = drizzle(binding);
 
-  const identity = (key: CalendarCacheKey) => ({ personId, ...key });
-
   const snapshotWhere = (key: CalendarCacheKey) =>
     and(
       eq(CalendarSnapshots.personId, personId),
@@ -60,11 +58,14 @@ export const calendarCacheRepository = (
   ) {
     yield* Effect.tryPromise({
       catch: () => new CalendarCacheError({ operation: "ensure" }),
+      // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
       try: () =>
-        database
-          .insert(CalendarSnapshots)
-          .values(identity(key))
-          .onConflictDoNothing(),
+        binding
+          .prepare(`INSERT INTO calendar_snapshot (person_id, account_id, calendar_id)
+            SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM user WHERE id = ?)
+            ON CONFLICT (person_id, account_id, calendar_id) DO NOTHING`)
+          .bind(personId, key.accountId, key.calendarId, personId)
+          .run(),
     });
   });
 
@@ -92,25 +93,30 @@ export const calendarCacheRepository = (
     ) {
       yield* ensure(key);
 
-      const rows = yield* Effect.tryPromise({
+      const result = yield* Effect.tryPromise({
         catch: () => new CalendarCacheError({ operation: "compareAndSwap" }),
+        // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
         try: () =>
-          database
-            .insert(CalendarSnapshots)
-            .values({ ...identity(key), ...next })
-            .onConflictDoUpdate({
-              set: next,
-              setWhere: eq(CalendarSnapshots.revision, expectedRevision),
-              target: [
-                CalendarSnapshots.personId,
-                CalendarSnapshots.accountId,
-                CalendarSnapshots.calendarId,
-              ],
-            })
-            .returning({ revision: CalendarSnapshots.revision }),
+          binding
+            .prepare(`INSERT INTO calendar_snapshot (person_id, account_id, calendar_id, revision, version, cursor)
+              SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM user WHERE id = ?)
+              ON CONFLICT (person_id, account_id, calendar_id)
+              DO UPDATE SET revision = excluded.revision, version = excluded.version, cursor = excluded.cursor
+              WHERE calendar_snapshot.revision = ?`)
+            .bind(
+              personId,
+              key.accountId,
+              key.calendarId,
+              next.revision,
+              next.version,
+              next.cursor,
+              personId,
+              expectedRevision
+            )
+            .run(),
       });
 
-      return rows.length === 1;
+      return result.meta.changes === 1;
     }
   );
 

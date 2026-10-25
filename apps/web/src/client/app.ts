@@ -210,6 +210,15 @@ import {
 } from "./settings/conferencing/model.js";
 import { updateConferencingSettings } from "./settings/conferencing/update.js";
 import {
+  AccountDeletionUi,
+  initialAccountDeletion,
+} from "./settings/delete-account/model.js";
+import {
+  changeAccountDeletion,
+  completeAccountDeletion,
+  deletionAfterSession,
+} from "./settings/delete-account/update.js";
+import {
   SettingsUi,
   SettingsChange,
   initialSettings,
@@ -264,6 +273,7 @@ const scrollForRoute = (route: typeof Route.Type) =>
 export const RemoteSession = AsyncData.Schema(SessionSnapshot, Schema.String);
 
 export const Model = Schema.Struct({
+  accountDeletion: AccountDeletionUi,
   action: Schema.Literals(["idle", "pending"]),
   attachmentReads: AttachmentReads,
   calendar: CalendarUi,
@@ -304,6 +314,7 @@ type Result = Update.Return<
 >;
 
 export const initialModel = (now: number, zone: string): AppModel => ({
+  accountDeletion: initialAccountDeletion(),
   action: "idle",
   attachmentReads: initialAttachmentReads,
   calendar: {
@@ -619,6 +630,9 @@ const updateCore = (
   dispatch: (model: AppModel, message: AppMessage) => Result
 ): Result =>
   Message.match<Result>(message, {
+    AccountDeletionCompleted: ({ personId, sequence, reply }) =>
+      completeAccountDeletion(model, personId, sequence, reply, dispatch),
+    AccountDeletionDialogReady: () => ({ model }),
     ApplySearchPage: ({ anchor, notice }) =>
       applySearchPage(model, notice, anchor),
     BrowserUrlChanged: ({ url }) => {
@@ -666,6 +680,8 @@ const updateCore = (
         ? bulkControl(model, control)
         : { model },
     CalendarChanged: () => reloadRange(model),
+    ChangedAccountDeletion: ({ change, personId }) =>
+      changeAccountDeletion(model, personId, change),
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
     ChangedConferencingSettings: ({ change, personId }) =>
       updateConferencingSettings(model, personId, change),
@@ -1409,6 +1425,27 @@ const updateCore = (
         return { model };
       }
 
+      if (LiveNotice.guards.SessionEnded(notice)) {
+        const cleared = dispatch(
+          model,
+          Message.ReceivedSession({ snapshot: null })
+        );
+
+        return dispatch(
+          {
+            ...cleared.model,
+            accountDeletion: {
+              ...initialAccountDeletion(model.accountDeletion.sequence + 1),
+              mode: notice.deleted ? "deleted" : "closed",
+            },
+          },
+          Message.RequestedRoute({
+            replace: true,
+            route: CalendarRoute.make({}),
+          })
+        );
+      }
+
       const selected = model.calendar.calendars.filter(
         (calendar) =>
           !model.calendar.hidden.includes(
@@ -1465,6 +1502,7 @@ const updateCore = (
 
       const cleared = {
         ...initial,
+        accountDeletion: deletionAfterSession(model, snapshot),
         calendar: {
           ...initial.calendar,
           rangeRequest: model.calendar.rangeRequest,

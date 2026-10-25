@@ -393,6 +393,14 @@ export const view = (
                   [
                     h.h1([], ["Calendar"]),
                     h.p([], ["Your Google calendars, in one place."]),
+                    ...(model.accountDeletion.mode === "deleted"
+                      ? [
+                          h.p(
+                            [h.Id("account-deleted-notice"), h.Role("status")],
+                            ["Your account was deleted."]
+                          ),
+                        ]
+                      : []),
                     h.button(
                       [
                         h.OnClick(Message.ClickedSignIn()),

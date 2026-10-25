@@ -46,11 +46,17 @@ const storageError = (accountId: string) =>
 const providerError = (accountId: string) =>
   new GoogleTokensError({ accountId, reason: "provider" });
 
+const cachedOnlyRefresh = (account: TokenAccount) =>
+  Effect.fail(
+    new GoogleTokensError({ accountId: account.id, reason: "unavailable" })
+  );
+
 export const googleTokensFor = Effect.fn("googleTokensFor")(
   function* googleTokensFor(
     auth: GoogleAuth,
     userId: string,
-    config: GoogleAuthConfig
+    config: GoogleAuthConfig,
+    tokenMode: "refresh" | "cached-only" = "refresh"
   ) {
     const context = yield* authContext(auth);
     const client = yield* HttpClient.HttpClient;
@@ -283,7 +289,11 @@ export const googleTokensFor = Effect.fn("googleTokensFor")(
       return Redacted.make(tokens.access_token);
     });
 
-    const accessToken = tokenAcquisition({ cached, lookup, refresh });
+    const accessToken = tokenAcquisition({
+      cached,
+      lookup,
+      refresh: tokenMode === "cached-only" ? cachedOnlyRefresh : refresh,
+    });
 
     return GoogleTokens.of({ accessToken, accounts });
   }

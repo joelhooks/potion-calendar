@@ -93,12 +93,36 @@ export const googlePushRepository = (binding: D1Database) => {
         return yield* failure("insertPending", "input");
       }
 
-      yield* Effect.tryPromise({
+      const inserted = yield* Effect.tryPromise({
         catch: () => failure("insertPending", "storage"),
 
         // oxlint-disable-next-line typescript/promise-function-async -- Effect owns cancellation; native Promise adapter
-        try: () => database.insert(GooglePushChannels).values(channel).run(),
+        try: () =>
+          binding
+            .prepare(`INSERT INTO google_push_channel
+              (id, person_id, account_id, calendar_id, kind, token_hash, resource_id, expires_at, created_at, predecessor_id, state)
+              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              WHERE EXISTS (SELECT 1 FROM user WHERE id = ?)`)
+            .bind(
+              channel.id,
+              channel.personId,
+              channel.accountId,
+              channel.calendarId,
+              channel.kind,
+              channel.tokenHash,
+              channel.resourceId,
+              channel.expiresAt,
+              channel.createdAt,
+              channel.predecessorId,
+              channel.state,
+              channel.personId
+            )
+            .run(),
       });
+
+      if (inserted.meta.changes !== 1) {
+        return yield* failure("insertPending", "storage");
+      }
 
       return yield* Effect.void;
     }

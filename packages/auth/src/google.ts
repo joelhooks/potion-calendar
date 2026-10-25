@@ -12,6 +12,11 @@ import { desktopHandoff } from "./desktop.js";
 import type { DesktopHandoffStore } from "./desktop.js";
 import { profileUpdateHook } from "./profile.js";
 
+export {
+  accountDeletionProof,
+  verifyAccountDeletionProof,
+} from "./account-deletion-proof.js";
+
 export const googleScopes = [
   "openid",
   "email",
@@ -251,6 +256,7 @@ export const googleAuthOptions = (
     ],
     secret: config.secret,
     trustedOrigins: [config.baseURL],
+    user: { deleteUser: { enabled: false } },
   }) satisfies BetterAuthOptions;
 
 export const createGoogleAuth = (
