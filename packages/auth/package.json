@@ -15,6 +15,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./contracts": {
+      "types": "./src/contracts.ts",
+      "import": "./dist/contracts.js",
+      "default": "./dist/contracts.js"
+    },
     "./service": {
       "types": "./src/auth-service.ts",
       "import": "./dist/auth-service.js",

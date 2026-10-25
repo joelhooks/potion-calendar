@@ -30,6 +30,8 @@ import { searchInteractions } from "./search/browser.js";
 import { SearchTask } from "./search/model.js";
 import { SearchRuntime } from "./search/runtime.js";
 import { searchQueryTask } from "./search/source.js";
+import { profileDirty, profileRoute } from "./settings/profile/model.js";
+import { profileUnloadStream } from "./settings/profile/subscription.js";
 import { systemSettingsStream } from "./settings/system.js";
 import { UpcomingQuery } from "./upcoming/model.js";
 import { upcomingStream } from "./upcoming/read.js";
@@ -143,6 +145,15 @@ export const subscriptions = Subscription.make<
         Stream.map(() => Message.PageHidden())
       )
     )
+  ),
+  profileUnload: entry(
+    { dirty: Schema.Boolean },
+    {
+      dependenciesToStream: ({ dirty }) => profileUnloadStream(dirty),
+      modelToDependencies: (model) => ({
+        dirty: profileRoute(model.route) && profileDirty(model.profile),
+      }),
+    }
   ),
   reminderSnoozeWake: entry(
     { due: Schema.Option(Schema.Finite), person: Schema.Option(Schema.String) },

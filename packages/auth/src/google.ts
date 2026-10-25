@@ -10,6 +10,7 @@ import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 
 import { desktopHandoff } from "./desktop.js";
 import type { DesktopHandoffStore } from "./desktop.js";
+import { profileUpdateHook } from "./profile.js";
 
 export const googleScopes = [
   "openid",
@@ -210,6 +211,7 @@ export const googleAuthOptions = (
       "/sign-in/social",
       "/unlink-account",
     ],
+    hooks: { before: profileUpdateHook },
     onAPIError: { errorURL: `${config.baseURL}/refused` },
     plugins: [
       ...(config.desktopStore === undefined

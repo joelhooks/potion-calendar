@@ -10,9 +10,12 @@ const RpcReply = Schema.Struct({
   exit: Schema.Struct({ value: SessionSnapshot }),
 });
 
-it.effect(
-  "session returns the authenticated person id, not browser identity",
-  () =>
+it.effect.each([
+  { image: "https://calendar.test/profile-photo.svg", kind: "HTTPS image" },
+  { image: null, kind: "no image" },
+])(
+  "session projects the authenticated name and $kind, never browser identity",
+  ({ image }) =>
     Effect.gen(function* authenticatedSession() {
       const fake = createFakeAuth("http://calendar.test");
 
@@ -36,6 +39,7 @@ it.effect(
           email: "joel@example.test",
           emailVerified: true,
           id: "server-person",
+          image,
           name: "Local Person",
           updatedAt: now,
         },
@@ -76,6 +80,13 @@ it.effect(
       );
 
       expect(reply[0]?.exit.value?.user.id).toBe(current.user.id);
+      expect(reply[0]?.exit.value?.user.name).toBe(current.user.name);
+      expect(reply[0]?.exit.value?.user.image).toBe(image ?? undefined);
+
+      if (image === null) {
+        expect(reply[0]?.exit.value?.user).not.toHaveProperty("image");
+      }
+
       expect(getSession.mock.calls[0]?.[0]).toEqual({
         headers: request.headers,
       });

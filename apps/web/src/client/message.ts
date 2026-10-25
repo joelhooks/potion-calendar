@@ -41,6 +41,7 @@ import { OccurrenceNotice } from "./selection-commands/model.js";
 import { ManagementChange } from "./settings-management/model.js";
 import { ConferencingSettingsChange } from "./settings/conferencing/model.js";
 import { SavedPreferences, SettingsChange } from "./settings/model.js";
+import { ProfileChange, ProfileReply } from "./settings/profile/model.js";
 import { TimeBlockAction } from "./time-blocks/model.js";
 import { TimeZoneAction } from "./time-zones/model.js";
 import { ZoneDragPreview } from "./zone-drag/model.js";
@@ -62,6 +63,7 @@ export const Message = defineMessageUnion({
     change: ConferencingSettingsChange,
     personId: Schema.String,
   },
+  ChangedProfile: { change: ProfileChange, personId: Schema.String },
   ChangedSettings: { change: SettingsChange },
   ChangedSettingsManagement: { change: ManagementChange },
   ChangedTimeBlocks: { action: TimeBlockAction, personId: Schema.String },
@@ -200,6 +202,12 @@ export const Message = defineMessageUnion({
     hostKey: Schema.String,
     preview: Schema.Option(ZoneDragPreview),
   },
+  ProfileCompleted: {
+    personId: Schema.String,
+    reply: ProfileReply,
+    sequence: Schema.Int,
+  },
+  ProfileDialogReady: {},
   ReceivedCalendars: {
     personId: Schema.optionalKey(Schema.String),
     result: ListCalendarsOutput,

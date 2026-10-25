@@ -214,6 +214,13 @@ import {
   SettingsChange,
   initialSettings,
 } from "./settings/model.js";
+import { initialProfile, ProfileUi } from "./settings/profile/model.js";
+import {
+  completeProfile,
+  guardProfileExit,
+  synchronizeProfile,
+  updateProfile,
+} from "./settings/profile/update.js";
 import {
   applyPreferences,
   changeSettings,
@@ -272,6 +279,7 @@ export const Model = Schema.Struct({
   person: Schema.Option(Schema.String),
   phoneGrid: PhoneGrid,
   phoneShell: PhoneShell,
+  profile: ProfileUi,
   reminders: ReminderState,
   route: Route,
   search: SearchUi,
@@ -355,6 +363,7 @@ export const initialModel = (now: number, zone: string): AppModel => ({
   person: Option.none(),
   phoneGrid: initialPhoneGrid(),
   phoneShell: initialPhoneShell(),
+  profile: initialProfile(),
   reminders: initialReminderState(),
   route: CalendarRoute.make({}),
   search: initialSearch(),
@@ -660,6 +669,8 @@ const updateCore = (
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
     ChangedConferencingSettings: ({ change, personId }) =>
       updateConferencingSettings(model, personId, change),
+    ChangedProfile: ({ change, personId }) =>
+      updateProfile(model, personId, change, dispatch),
     ChangedSettings: ({ change }) => {
       const next = preserveMonthDisplay(model, changeSettings(model, change));
 
@@ -1175,6 +1186,9 @@ const updateCore = (
             },
           }
         : { model },
+    ProfileCompleted: ({ personId, reply, sequence }) =>
+      completeProfile(model, personId, sequence, reply),
+    ProfileDialogReady: () => ({ model }),
     ReceivedCalendars: ({ result, personId }) => {
       if (personId !== undefined && !Option.contains(model.person, personId)) {
         return { model };
@@ -1465,6 +1479,10 @@ const updateCore = (
           request: model.desktop.request,
           settings: model.desktop.settings,
         },
+        profile:
+          snapshot !== null && Option.contains(model.person, snapshot.user.id)
+            ? model.profile
+            : initialProfile(model.profile.sequence + 1),
         route: model.route,
         search: initialSearch(model.search.revision + 1),
         session: RemoteSession.Success({ data: snapshot }),
@@ -1753,7 +1771,13 @@ export const update = (model: AppModel, message: AppMessage): Result => {
     return { model };
   }
 
-  const core = updateCore(model, message, update);
+  const guarded = guardProfileExit(model, message);
+
+  if (Option.isSome(guarded)) {
+    return guarded.value;
+  }
+
+  const core = synchronizeProfile(updateCore(model, message, update));
   const target = calendarSettingsTarget(core.model, core.model.route);
 
   const routed =

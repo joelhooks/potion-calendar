@@ -22,6 +22,7 @@ export const SettingsRoute = Schema.TaggedStruct("Settings", {
     "notifications",
     "menu-bar",
     "conferencing",
+    "profile",
   ]),
 });
 
@@ -74,6 +75,10 @@ const recognizedRoute = (
 
   if (pathname === "/settings/conferencing") {
     return Option.some(SettingsRoute.make({ page: "conferencing" }));
+  }
+
+  if (pathname === "/settings/profile") {
+    return Option.some(SettingsRoute.make({ page: "profile" }));
   }
 
   if (pathname === "/settings/menu-bar") {

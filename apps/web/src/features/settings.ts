@@ -16,6 +16,7 @@ import { settingsCalendars } from "./settings-calendars.js";
 import { settingsConferencing } from "./settings-conferencing.js";
 import { settingsGeneral } from "./settings-general.js";
 import { settingsNotifications } from "./settings-notifications.js";
+import { settingsProfile } from "./settings-profile.js";
 
 export const settingsPage = (
   model: AppModel,
@@ -26,7 +27,8 @@ export const settingsPage = (
     | "calendar"
     | "notifications"
     | "menu-bar"
-    | "conferencing",
+    | "conferencing"
+    | "profile",
   accountId?: string
 ): Html => {
   const accounts =
@@ -39,6 +41,7 @@ export const settingsPage = (
     general: "General settings",
     "menu-bar": "Menu bar settings",
     notifications: "Notification settings",
+    profile: "Profile settings",
   }[page];
 
   const content = () => {
@@ -52,6 +55,10 @@ export const settingsPage = (
 
     if (page === "conferencing") {
       return settingsConferencing(model, h);
+    }
+
+    if (page === "profile") {
+      return settingsProfile(model, h);
     }
 
     if (page === "notifications") {
@@ -109,6 +116,13 @@ export const settingsPage = (
               h.AriaCurrent(page === "conferencing" ? "page" : "false"),
             ],
             ["Conferencing"]
+          ),
+          h.a(
+            [
+              h.Href(printRoute(SettingsRoute.make({ page: "profile" }))),
+              h.AriaCurrent(page === "profile" ? "page" : "false"),
+            ],
+            ["Profile"]
           ),
           ...(model.desktop.availability === "available"
             ? [

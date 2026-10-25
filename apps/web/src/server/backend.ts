@@ -28,7 +28,7 @@ import type {
 import { implement } from "@calendar/capability/implement";
 import { toRpc } from "@calendar/capability/rpc";
 import { SessionUnavailable, sessionContract } from "@calendar/core/contracts";
-import { Cause, Effect, Layer, Predicate } from "effect";
+import { Cause, Effect, Layer, Option, Predicate, Schema } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
@@ -84,13 +84,22 @@ export const createBackend = (
 
       const tokens = yield* googleTokensFor(auth, current.user.id, config);
 
+      const user = {
+        email: current.user.email,
+        id: current.user.id,
+        name: current.user.name,
+      };
+
+      const image = Schema.decodeUnknownOption(Schema.String)(
+        current.user.image
+      );
+
       return {
         accounts: yield* tokens.accounts(),
-        user: {
-          email: current.user.email,
-          id: current.user.id,
-          name: current.user.name,
-        },
+        user: Option.match(image, {
+          onNone: () => user,
+          onSome: (value) => ({ ...user, image: value }),
+        }),
       };
     }).pipe(Effect.mapError(() => new SessionUnavailable()))
   );

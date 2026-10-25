@@ -13,6 +13,7 @@ export const SessionSnapshot = Schema.NullOr(
     user: Schema.Struct({
       email: Schema.String,
       id: Schema.String,
+      image: Schema.optionalKey(Schema.String),
       name: Schema.String,
     }),
   })
