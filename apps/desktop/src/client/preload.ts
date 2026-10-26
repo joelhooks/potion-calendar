@@ -1,8 +1,12 @@
-import { desktopChannels } from "@calendar/core/desktop-bridge";
+import {
+  desktopChannels,
+  nativeNotificationChannels,
+} from "@calendar/core/desktop-bridge";
 import { Effect, Option, Schema } from "effect";
 import { contextBridge, ipcRenderer } from "electron";
 
 import { createDesktopBridge } from "../bridge-client.js";
+import type { RendererBridgePort } from "../bridge-client.js";
 import { acceptsDesktopFrame } from "../bridge-policy.js";
 
 const rejected = () => {
@@ -27,7 +31,7 @@ const subscribe = (channel: string, receive: (message: string) => void) => {
   };
 };
 
-const bridge = createDesktopBridge({
+const rendererPort: RendererBridgePort = {
   // @effect-diagnostics-next-line asyncFunction:off -- The sandboxed preload adapts Electron's native IPC Promise and validates its wire text.
   getSettings: async () => {
     const value: unknown = await ipcRenderer.invoke(desktopChannels.settings);
@@ -127,7 +131,32 @@ const bridge = createDesktopBridge({
   subscribeActions: (receive) => subscribe(desktopChannels.action, receive),
   subscribeSettings: (receive) =>
     subscribe(desktopChannels.settingsChanged, receive),
-});
+};
+
+const bridge = createDesktopBridge(
+  process.platform === "darwin"
+    ? {
+        ...rendererPort,
+        // @effect-diagnostics-next-line asyncFunction:off -- Mac notification requests use an additive isolated IPC method with decoded wire-text replies.
+        nativeNotifications: async (request: string) => {
+          const value: unknown = await ipcRenderer.invoke(
+            nativeNotificationChannels.request,
+            request
+          );
+
+          const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+          if (Option.isNone(message)) {
+            throw new Error("Invalid notification reply");
+          }
+
+          return message.value;
+        },
+        subscribeNativeNotifications: (receive: (message: string) => void) =>
+          subscribe(nativeNotificationChannels.notice, receive),
+      }
+    : rendererPort
+);
 
 const origin = process.argv
   .find((argument) => argument.startsWith("--potion-origin="))

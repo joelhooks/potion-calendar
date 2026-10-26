@@ -1,6 +1,7 @@
 import { Option } from "effect";
 
 import type { AppModel, update } from "../app.js";
+import { desktopDependencies } from "../desktop/subscription.js";
 import type { Message } from "../message.js";
 import { reminderOccurrence, resolveReminderCard } from "./action-machine.js";
 import { browserReminderActions } from "./browser-actions.js";
@@ -15,15 +16,48 @@ import {
   PermissionOutcome,
   reminderSnoozeIsSessionOnly,
 } from "./model.js";
-import type { ReminderState } from "./model.js";
+import type { ReminderState, NotificationContentValue } from "./model.js";
+import {
+  nativeNotificationLease,
+  nativeNotificationAgenda,
+  nativeRemindersEnabled,
+  nativeRetryDeliveries,
+} from "./native-projection.js";
 import { RemoveReminderSnoozes } from "./snooze-commands.js";
 
 type Result = ReturnType<typeof update>;
 
+const deliveryContent = (
+  model: AppModel,
+  state: typeof ReminderState.Type,
+  notification: NotificationContentValue
+): NotificationContentValue => {
+  if (notification.nativeKind !== undefined) {
+    return {
+      ...notification,
+      native: {
+        snapshot: desktopDependencies({ ...model, reminders: state }).snapshot,
+      },
+    };
+  }
+
+  const browserActions = browserReminderActions(
+    { ...model, reminders: state },
+    notification
+  );
+
+  return browserActions === undefined
+    ? notification
+    : { ...notification, browserActions };
+};
+
 export const commitReminders = (
   model: AppModel,
-  state: typeof ReminderState.Type
+  incoming: typeof ReminderState.Type
 ): Result => {
+  const retry = nativeRetryDeliveries(model, incoming);
+  const { state } = retry;
+
   const removed =
     state.value === "stopped"
       ? []
@@ -55,25 +89,17 @@ export const commitReminders = (
                   personId: model.person.value,
                 }),
               ]),
-          ...state.context.deliveries
-            .filter(
-              (notification) =>
-                notification.card === undefined ||
-                state.context.permission === "granted"
-            )
-            .map((notification) => {
-              const browserActions = browserReminderActions(
-                { ...model, reminders: state },
-                notification
-              );
-
-              return DeliverReminderNotification({
-                notification:
-                  browserActions === undefined
-                    ? notification
-                    : { ...notification, browserActions },
-              });
-            }),
+          ...[...state.context.deliveries, ...retry.deliveries].flatMap(
+            (notification) =>
+              notification.card === undefined ||
+              state.context.permission === "granted"
+                ? [
+                    DeliverReminderNotification({
+                      notification: deliveryContent(model, state, notification),
+                    }),
+                  ]
+                : []
+          ),
         ]
       : [],
     model: {
@@ -220,7 +246,9 @@ const failNotification = (
         },
         failure: report
           ? Option.some(
-              "A notification could not be shown. Check this site's notification permission."
+              nativeNotificationLease(model) === undefined
+                ? "A notification could not be shown. Check this site's notification permission."
+                : "A desktop notification could not be shown. Check Calendar in system notification settings."
             )
           : model.reminders.failure,
       },
@@ -241,6 +269,50 @@ export const completeReminderDelivery = (
   const notification = model.reminders.context.active.find(
     (item) => item.id === result.id && item.personId === result.personId
   );
+
+  if (reason === "stale") {
+    const { revision } = result.failure.value;
+    const agenda = nativeNotificationAgenda(model);
+
+    if (
+      result.failure.value.lease !== agenda?.lease ||
+      result.failure.value.personId !== result.personId
+    ) {
+      return failNotification(model, result.personId, result.id, false);
+    }
+
+    if (
+      !Option.contains(model.person, result.personId) ||
+      notification?.nativeKind === undefined ||
+      !nativeRemindersEnabled(model) ||
+      revision === undefined ||
+      agenda === undefined ||
+      (notification.nativeRetry?.lease === agenda.lease &&
+        notification.nativeRetry.revision > revision)
+    ) {
+      return { model };
+    }
+
+    return commitReminders(model, {
+      ...model.reminders,
+      context: {
+        ...model.reminders.context,
+        active: model.reminders.context.active.map((item) =>
+          item.id === notification.id && item.personId === notification.personId
+            ? {
+                ...item,
+                nativeRetry: {
+                  lease: agenda.lease,
+                  revision,
+                  status: "waiting" as const,
+                },
+              }
+            : item
+        ),
+        deliveries: [],
+      },
+    });
+  }
 
   if (reason === "expired" && notification?.card !== undefined) {
     return resolveReminderPresentation(

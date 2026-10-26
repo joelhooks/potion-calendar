@@ -23,13 +23,22 @@ export const beginDesktopRequest = (state: DesktopState): DesktopState => ({
   }),
 });
 
+const withNotificationLease = (
+  state: DesktopState,
+  settings: DesktopSettingsValue
+): DesktopState => {
+  const lease = settings.runtime?.notificationLease;
+
+  return lease === undefined ? state : { ...state, notificationLease: lease };
+};
+
 const observedSettings = (
   state: DesktopState,
   settings: DesktopSettingsValue
 ): DesktopState =>
   settings.revision > currentRevision(state)
     ? {
-        ...state,
+        ...withNotificationLease(state, settings),
         availability: "available",
         error: Option.none(),
         settings: RemoteDesktop.Success({ data: settings }),
@@ -62,7 +71,7 @@ export const receiveDesktopNotice = (
                   settings.revision < currentRevision(state)
                     ? state
                     : {
-                        ...state,
+                        ...withNotificationLease(state, settings),
                         availability: "available",
                         canSaveIcs:
                           finished.canSaveIcs ?? state.canSaveIcs ?? false,

@@ -21,7 +21,10 @@ import type {
 
 type Memory = typeof ReminderMemory.Type;
 
-type Scan = typeof ReminderScan.Type;
+type Scan = typeof ReminderScan.Type & {
+  readonly native?: boolean;
+  readonly nativeEnabled?: boolean;
+};
 
 type Invitation = Memory["invitations"][string];
 
@@ -154,7 +157,10 @@ const readMemory = (
   if (sameScope) {
     return {
       accepted: memory.accepted,
-      coverage: memory.coverage,
+      coverage:
+        scan.native === true && scan.nativeEnabled !== true
+          ? Option.some(checked)
+          : memory.coverage,
       invitations: memory.invitations,
     };
   }
@@ -163,7 +169,10 @@ const readMemory = (
 };
 
 export const planReminders = (memory: Memory, scan: Scan): Memory => {
-  const permitted = memory.permission === "granted";
+  const permitted =
+    scan.native === true
+      ? scan.nativeEnabled === true
+      : memory.permission === "granted";
 
   const candidates = scan.candidates.filter((candidate) =>
     eligibleNotificationEvent(candidate, scan.now)
@@ -271,7 +280,7 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
 
   const invitations = invitationsIn(candidates);
 
-  const proposals =
+  const pendingPopups =
     (permitted || scan.webCards === true) &&
     scan.now >= highWater &&
     Option.isSome(scan.accepted)
@@ -283,6 +292,13 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
           )
         )
       : [];
+
+  const proposals: NotificationContentValue[] = pendingPopups.map(
+    (notification) =>
+      scan.native === true
+        ? { ...notification, nativeKind: "reminder" }
+        : notification
+  );
 
   const popupIds = new Set(proposals.map((notification) => notification.id));
   proposals.unshift(...snoozeProposals);
@@ -301,6 +317,10 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
         candidates,
         memory.invitations,
         invitations
+      ).map((notification) =>
+        scan.native === true
+          ? { ...notification, nativeKind: "invite" as const }
+          : notification
       )
     );
   }
@@ -338,6 +358,21 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
       return [notification];
     }
 
+    if (scan.native === true && popupIds.has(notification.id)) {
+      const occurrence = reminderOccurrence(
+        notification.personId,
+        notification.candidate
+      );
+
+      if (selected.has(occurrence)) {
+        return [];
+      }
+
+      selected.add(occurrence);
+
+      return [notification];
+    }
+
     if (scan.webCards !== true || !popupIds.has(notification.id)) {
       return [notification];
     }
@@ -360,7 +395,8 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
 
   const replaced = active.filter(
     (notification) =>
-      notification.card !== undefined &&
+      (notification.card !== undefined ||
+        notification.nativeKind === "reminder") &&
       selected.has(
         reminderOccurrence(notification.personId, notification.candidate)
       )

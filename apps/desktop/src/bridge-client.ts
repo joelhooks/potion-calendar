@@ -3,14 +3,21 @@ import {
   MeetingJoinOutcome,
   desktopWire,
   icsSaveParseOptions,
+  nativeNotificationWire,
+  NativeNotificationRequest,
 } from "@calendar/core/desktop-bridge";
 import type {
   DesktopBridge,
   IcsSaveRequest,
+  NativeNotificationNotice,
 } from "@calendar/core/desktop-bridge";
 import { Option, Schema } from "effect";
 
 export interface RendererBridgePort {
+  readonly nativeNotifications?: (message: string) => Promise<string>;
+  readonly subscribeNativeNotifications?: (
+    receive: (message: string) => void
+  ) => () => void;
   readonly getSettings: () => Promise<string>;
   readonly joinMeeting: (message: string) => Promise<string>;
   readonly previewSound?: (message: string) => Promise<string>;
@@ -64,6 +71,57 @@ export const createDesktopBridge = (
     }
 
     return result.value;
+  };
+
+  const { nativeNotifications } = port;
+  const { subscribeNativeNotifications } = port;
+
+  const exposeNative = (base: DesktopBridge): DesktopBridge => {
+    if (
+      nativeNotifications === undefined ||
+      subscribeNativeNotifications === undefined
+    ) {
+      return base;
+    }
+
+    return {
+      ...base,
+      // @effect-diagnostics-next-line asyncFunction:off -- Only decoded versioned notification operations and replies cross the isolated native Promise boundary.
+      nativeNotifications: async (
+        request: typeof NativeNotificationRequest.Type
+      ) => {
+        const validated = Schema.decodeOption(NativeNotificationRequest, {
+          onExcessProperty: "error",
+        })(request);
+
+        if (Option.isNone(validated)) {
+          throw new Error("Invalid notification request");
+        }
+
+        const encoded = Schema.encodeOption(nativeNotificationWire.request, {
+          onExcessProperty: "error",
+        })(validated.value);
+
+        if (Option.isNone(encoded)) {
+          throw new Error("Invalid notification request");
+        }
+
+        return reply(
+          nativeNotificationWire.reply,
+          await nativeNotifications(encoded.value)
+        );
+      },
+      onNativeNotification: (
+        listener: (notice: typeof NativeNotificationNotice.Type) => void
+      ) =>
+        subscribeNativeNotifications((message) => {
+          const notice = decode(nativeNotificationWire.notice, message);
+
+          if (Option.isSome(notice)) {
+            listener(notice.value.notice);
+          }
+        }),
+    };
   };
 
   const bridge: DesktopBridge = {
@@ -146,12 +204,14 @@ export const createDesktopBridge = (
     },
   };
 
+  const exposed = exposeNative(bridge);
+
   if (saveIcs === undefined) {
-    return Object.freeze(bridge);
+    return Object.freeze(exposed);
   }
 
   return Object.freeze({
-    ...bridge,
+    ...exposed,
     // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload validates the bounded ICS request and native completion before exposing the result.
     saveIcs: async (request: typeof IcsSaveRequest.Type) => {
       const encoded = Schema.encodeOption(

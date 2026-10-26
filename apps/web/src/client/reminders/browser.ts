@@ -216,7 +216,10 @@ export const browserNotifications = (): NotificationPortService => {
                 event.detail
               );
 
-              if (Option.isSome(decoded)) {
+              if (
+                Option.isSome(decoded) &&
+                !NotificationEvent.guards.Native(decoded.value)
+              ) {
                 const { value } = decoded;
 
                 const owner = NotificationEvent.guards.Clicked(value)

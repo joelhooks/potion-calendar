@@ -1,3 +1,4 @@
+import type { CalendarEventValue } from "@calendar/calendar/contracts";
 import type { DesktopAction } from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 import type { Update } from "foldkit";
@@ -12,16 +13,15 @@ import { desktopSelection } from "./selection.js";
 
 type Result = Update.Return<AppModel, AppMessage, EditingRuntime>;
 
-export const respondFromDesktop = (
+export const respondForSavedEvent = (
   model: AppModel,
-  action: typeof DesktopAction.cases.RespondToEvent.Type
+  event: CalendarEventValue | undefined,
+  response: (typeof DesktopAction.cases.RespondToEvent.Type)["response"]
 ): Result => {
-  const selected = desktopSelection(model, action.key);
-
   if (
     Option.isNone(model.person) ||
-    selected === undefined ||
-    rsvpSelf(selected.source) === undefined
+    event === undefined ||
+    rsvpSelf(event) === undefined
   ) {
     return {
       model: {
@@ -46,9 +46,9 @@ export const respondFromDesktop = (
     commands: [
       DispatchEditing({
         command: EditingCommand.cases.Rsvp.make({
-          event: selected.source,
+          event,
           notePolicy: "omit",
-          response: action.response,
+          response,
         }),
         personId: model.person.value,
       }),
@@ -56,3 +56,13 @@ export const respondFromDesktop = (
     model,
   };
 };
+
+export const respondFromDesktop = (
+  model: AppModel,
+  action: typeof DesktopAction.cases.RespondToEvent.Type
+): Result =>
+  respondForSavedEvent(
+    model,
+    desktopSelection(model, action.key)?.source,
+    action.response
+  );

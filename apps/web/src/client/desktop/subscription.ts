@@ -8,6 +8,7 @@ import { AsyncData } from "foldkit";
 import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { Message } from "../message.js";
+import { nativeNotificationAgenda } from "../reminders/native-projection.js";
 import { resolvedTheme } from "../settings/model.js";
 import { browserDesktop } from "./commands.js";
 import { DesktopBridgeError } from "./io.js";
@@ -25,9 +26,10 @@ const promptPreferences = (
   version: 1,
 });
 
-export const desktopDependencies = (model: AppModel) => ({
-  active: model.desktop.availability === "available",
-  snapshot: Option.match(AsyncData.getData(model.desktop.settings), {
+export const desktopDependencies = (model: AppModel) => {
+  const notificationAgenda = nativeNotificationAgenda(model);
+
+  const snapshot = Option.match(AsyncData.getData(model.desktop.settings), {
     onNone: (): AgendaSnapshotValue => ({
       events: [],
       promptPreferences: promptPreferences(model),
@@ -40,8 +42,16 @@ export const desktopDependencies = (model: AppModel) => ({
       ),
       promptPreferences: promptPreferences(model, settings),
     }),
-  }),
-});
+  });
+
+  return {
+    active: model.desktop.availability === "available",
+    snapshot:
+      notificationAgenda === undefined
+        ? snapshot
+        : { ...snapshot, notificationAgenda },
+  };
+};
 
 export const desktopAgendaStream = (
   active: boolean,

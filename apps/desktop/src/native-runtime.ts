@@ -1,3 +1,5 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Each trusted document receives an opaque notification lease that is revoked on navigation.
+import { randomUUID } from "node:crypto";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- This composition root supplies the native writer only to the user-dialog-authorized ICS save service.
 import { writeFile } from "node:fs/promises";
 
@@ -5,6 +7,8 @@ import {
   DesktopAction,
   desktopChannels,
   desktopWire,
+  nativeNotificationChannels,
+  nativeNotificationWire,
 } from "@calendar/core/desktop-bridge";
 import type {
   AgendaKeyValue,
@@ -26,7 +30,7 @@ import {
   Schema,
   Stream,
 } from "effect";
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, shell, Notification } from "electron";
 import type { BrowserWindow } from "electron";
 
 import { desktopAgendaReceiver } from "./agenda-receiver.js";
@@ -39,6 +43,8 @@ import type { NativeIntentValue } from "./native-host.js";
 import { nativeIcsSavePort } from "./native-ics-save.js";
 import { NativeIntentEvent } from "./native-intent-event.js";
 import { runNativeJoin } from "./native-join.js";
+import { electronNotification } from "./native-notification-port.js";
+import { NativeNotifications } from "./native-notifications.js";
 import { nativeSettingsPort } from "./native-settings.js";
 import { NativeTray } from "./native-tray.js";
 import { navigation as classifyNavigation } from "./navigation.js";
@@ -48,7 +54,7 @@ import {
   openPromptAttachment,
   requestPromptSnooze,
 } from "./prompt-actions.js";
-import { startPrompt } from "./prompt-machine.js";
+import { preparePromptAdmission, startPrompt } from "./prompt-machine.js";
 import { PromptWindow } from "./prompt-window.js";
 import { NativeSettings } from "./settings.js";
 import { soundPreviewEnabled } from "./sound-machine.js";
@@ -64,6 +70,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
     const context = yield* Effect.context();
     const scope = yield* Effect.scope;
     const runPromise = Effect.runPromiseWith(context);
+    const runSync = Effect.runSyncWith(context);
     const runFork = Effect.runForkWith(context);
 
     const navigationStartedAt = yield* Ref.make<Option.Option<number>>(
@@ -139,9 +146,22 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           );
 
     const join = Effect.fn("Desktop.joinMeeting")(function* join(
-      request: MeetingJoinRequestValue
+      request: MeetingJoinRequestValue,
+      authorized: Effect.Effect<boolean> = Effect.succeed(true)
     ) {
-      const result = yield* runNativeJoin(request, openExternal);
+      const result = yield* runNativeJoin(request, (href) =>
+        authorized.pipe(
+          Effect.flatMap((allowed) =>
+            allowed
+              ? openExternal(href)
+              : Effect.fail(
+                  new DesktopError({
+                    message: "This notification is no longer available",
+                  })
+                )
+          )
+        )
+      );
 
       if (Predicate.isTagged(result, "Requested")) {
         yield* send(prompt, { key: request.key, type: "Dismiss" });
@@ -150,8 +170,11 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       return result;
     });
 
-    const joinWithFeedback = (request: MeetingJoinRequestValue) =>
-      join(request).pipe(
+    const joinWithFeedback = (
+      request: MeetingJoinRequestValue,
+      authorized: Effect.Effect<boolean> = Effect.succeed(true)
+    ) =>
+      join(request, authorized).pipe(
         Effect.tap((result) =>
           Predicate.isTagged(result, "Failed")
             ? Effect.sync(() => {
@@ -167,6 +190,80 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
         Effect.andThen(pageAction(DesktopAction.cases.ShowEvent.make({ key }))),
         Effect.andThen(send(prompt, { key, type: "Dismiss" }))
       );
+
+    const notificationContext = yield* Layer.build(
+      NativeNotifications.layer(
+        {
+          beforeAction: Effect.void,
+          create: electronNotification,
+          emit: (notice) =>
+            Effect.sync(() => {
+              if (
+                !window.isDestroyed() &&
+                acceptsDesktopFrame(origin, window.webContents.getURL(), true)
+              ) {
+                const encoded = Schema.encodeOption(
+                  nativeNotificationWire.notice
+                )({ notice, version: 1 });
+
+                if (Option.isSome(encoded)) {
+                  window.webContents.send(
+                    nativeNotificationChannels.notice,
+                    encoded.value
+                  );
+                }
+              }
+            }),
+          focus: Effect.sync(focus),
+          join: (event, authorized) =>
+            event.conferenceUrl === null
+              ? Effect.void
+              : joinWithFeedback(
+                  {
+                    conferenceUrl: event.conferenceUrl,
+                    key: event.key,
+                  },
+                  authorized
+                ),
+          open: (href, authorized) =>
+            authorized.pipe(
+              Effect.flatMap((allowed) =>
+                allowed ? openExternal(href) : Effect.void
+              )
+            ),
+          origin,
+          preferences: settings.preferences,
+          prepare: (snapshot, permit) =>
+            Effect.gen(function* prepareNativeNotification() {
+              return yield* preparePromptAdmission(
+                prompt,
+                {
+                  now: yield* Clock.currentTimeMillis,
+                  preferences: yield* settings.preferences,
+                  snapshot,
+                },
+                randomUUID(),
+                permit
+              );
+            }),
+          run: (task) => {
+            runFork(task.pipe(Effect.forkIn(scope)));
+          },
+          supported:
+            process.platform === "darwin" && Notification.isSupported(),
+          trusted: Effect.sync(
+            () =>
+              !window.isDestroyed() &&
+              acceptsDesktopFrame(origin, window.webContents.getURL(), true)
+          ),
+        },
+        randomUUID()
+      )
+    );
+
+    const notifications = yield* Effect.service(NativeNotifications).pipe(
+      Effect.provide(notificationContext)
+    );
 
     const trayActionPort = {
       join: joinWithFeedback,
@@ -284,7 +381,11 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       );
 
     const publishSettings = (value: DesktopSettingsValue) =>
-      send(host.actor, { settings: value, type: "Settings" }).pipe(
+      (value.preferences.menuBar
+        ? Effect.void
+        : notifications.install({ events: [] })
+      ).pipe(
+        Effect.andThen(send(host.actor, { settings: value, type: "Settings" })),
         Effect.andThen(
           Effect.sync(() => {
             if (
@@ -357,20 +458,52 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
               Effect.gen(function* observedSettings() {
                 const value = yield* settings.get;
 
-                return {
-                  ...value,
-                  runtime: {
-                    navigationStartedAt: Option.getOrUndefined(
-                      yield* Ref.get(navigationStartedAt)
-                    ),
-                    prompt: yield* promptWindow.active,
-                    tray: yield* tray.active,
-                  },
+                const runtime = {
+                  navigationStartedAt: Option.getOrUndefined(
+                    yield* Ref.get(navigationStartedAt)
+                  ),
+                  prompt: yield* promptWindow.active,
+                  tray: yield* tray.active,
                 };
+
+                return process.platform === "darwin"
+                  ? {
+                      ...value,
+                      runtime: {
+                        ...runtime,
+                        notificationLease: yield* notifications.lease,
+                      },
+                    }
+                  : { ...value, runtime };
               })
             ),
             Effect.tap(publishSettings),
             Effect.flatMap(Schema.encodeEffect(desktopWire.settings))
+          )
+        );
+      }
+    );
+    ipcMain.handle(
+      nativeNotificationChannels.request,
+      // @effect-diagnostics-next-line asyncFunction:off -- This main-frame IPC boundary decodes versioned notification operations before running scoped native effects.
+      async (event, payload): Promise<string> => {
+        if (!trusted(event)) {
+          throw new Error("Denied notification request");
+        }
+
+        return await run(
+          Schema.decodeUnknownEffect(nativeNotificationWire.request, {
+            onExcessProperty: "error",
+          })(payload).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DesktopError({
+                  cause,
+                  message: "Invalid notification request",
+                })
+            ),
+            Effect.flatMap(notifications.request),
+            Effect.flatMap(Schema.encodeEffect(nativeNotificationWire.reply))
           )
         );
       }
@@ -416,6 +549,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       origin,
       {
         accepted: (snapshot) => {
+          runFork(notifications.install(snapshot).pipe(Effect.forkIn(scope)));
           runFork(
             send(host.actor, { snapshot, type: "Agenda" }).pipe(
               Effect.forkIn(scope)
@@ -423,13 +557,19 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           );
         },
         rejected: () => {
+          runSync(notifications.invalidate);
           runFork(
-            send(host.actor, { snapshot: { events: [] }, type: "Agenda" }).pipe(
-              Effect.andThen(
-                Effect.logWarning("Rejected desktop agenda payload")
-              ),
-              Effect.forkIn(scope)
-            )
+            notifications
+              .install({ events: [] })
+              .pipe(
+                Effect.andThen(
+                  send(host.actor, { snapshot: { events: [] }, type: "Agenda" })
+                ),
+                Effect.andThen(
+                  Effect.logWarning("Rejected desktop agenda payload")
+                ),
+                Effect.forkIn(scope)
+              )
           );
         },
         trusted,
@@ -438,12 +578,20 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
 
     ipcMain.on(desktopChannels.agenda, agenda);
 
-    const clear = () =>
+    const clear = () => {
+      const lease = randomUUID();
+      runSync(notifications.revoke(lease));
       runFork(
-        send(host.actor, { snapshot: { events: [] }, type: "Agenda" }).pipe(
-          Effect.forkIn(scope)
-        )
+        notifications
+          .reset(lease)
+          .pipe(
+            Effect.andThen(
+              send(host.actor, { snapshot: { events: [] }, type: "Agenda" })
+            ),
+            Effect.forkIn(scope)
+          )
       );
+    };
 
     const navigation = () => {
       clear();
@@ -467,6 +615,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
     };
 
     const stop = () => {
+      runSync(notifications.revoke("quitting"));
       intent(NativeIntent.cases.Stop.make({}));
     };
 
@@ -482,6 +631,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
 
         for (const channel of [
           desktopChannels.settings,
+          nativeNotificationChannels.request,
           desktopChannels.join,
           desktopChannels.preferences,
           desktopChannels.previewSound,

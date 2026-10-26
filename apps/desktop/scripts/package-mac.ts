@@ -73,6 +73,8 @@ export const reserveMacArtifactDirectory = (directory: string) =>
     },
   });
 
+export const macNotificationInfo = { NSUserNotificationAlertStyle: "alert" };
+
 const packageMac = Effect.gen(function* packageMacBuild() {
   const head = yield* Effect.try({
     catch: (cause) =>
@@ -127,6 +129,7 @@ const packageMac = Effect.gen(function* packageMacBuild() {
         asar: true,
         dir: "dist",
         electronVersion: manifest.devDependencies.electron,
+        extendInfo: macNotificationInfo,
         name: "Potion Calendar",
         out: directory,
         platform: "darwin",

@@ -1,4 +1,4 @@
-import { Effect, Option, Predicate, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import type { SchemaAST } from "effect";
 
 export const trayLocationByteLimit = 512;
@@ -286,6 +286,14 @@ export const AgendaKey = Schema.Struct({
   eventId: Schema.NonEmptyString,
 });
 
+export const sameDesktopEventKey = (
+  left: typeof AgendaKey.Type,
+  right: typeof AgendaKey.Type
+): boolean =>
+  left.accountId === right.accountId &&
+  left.calendarId === right.calendarId &&
+  left.eventId === right.eventId;
+
 export const ConferenceUrl = Schema.String.check(
   Schema.makeFilter((value: string) => {
     const url = URL.parse(value);
@@ -389,13 +397,136 @@ export const PromptPreferences = Schema.Struct({
 });
 
 const optionalPromptPreferences = Schema.optional(PromptPreferences).pipe(
-  Schema.catchDecoding(() => Effect.succeed(Option.none()))
+  Schema.catchDecoding(() => Effect.succeedNone)
 );
+
+const nativeNotificationInstant = Schema.Finite.check(
+  Schema.makeFilter((value) => !Object.is(value, -0))
+);
+
+const nativeNotificationSequence = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.makeFilter((value) => !Object.is(value, -0))
+);
+
+export const NativeNotificationEventRef = Schema.Struct({
+  body: Schema.String,
+  conferenceUrl: Schema.NullOr(ConferenceUrl),
+  end: nativeNotificationInstant,
+  key: AgendaKey,
+  participantEmails: Schema.Array(Schema.String),
+  rsvp: Schema.Boolean,
+  start: nativeNotificationInstant,
+  title: Schema.String,
+});
+
+export const NativeNotificationAgenda = Schema.Struct({
+  deliveries: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      key: AgendaKey,
+      kind: Schema.Literals(["reminder", "invite"]),
+      start: nativeNotificationInstant,
+    })
+  ),
+  events: Schema.Array(NativeNotificationEventRef),
+  lease: Schema.String.check(Schema.isMinLength(1)),
+  personId: Schema.NullOr(Schema.String),
+  revision: nativeNotificationSequence,
+  version: Schema.Literal(1),
+});
 
 export const AgendaSnapshot = Schema.Struct({
   events: Schema.Array(AgendaEvent),
+  notificationAgenda: Schema.optional(NativeNotificationAgenda).pipe(
+    Schema.catchDecoding(() => Effect.succeedNone)
+  ),
   promptPreferences: optionalPromptPreferences,
 });
+
+export const NativeNotificationAction = Schema.Literals([
+  "join",
+  "email",
+  "show",
+  "accepted",
+  "declined",
+  "tentative",
+]);
+
+export const NativeNotificationRef = Schema.Struct({
+  generation: nativeNotificationSequence,
+  id: Schema.String,
+  key: AgendaKey,
+  kind: Schema.Literals(["reminder", "invite"]),
+  lease: Schema.String,
+  personId: Schema.String,
+  revision: nativeNotificationSequence,
+  start: nativeNotificationInstant,
+});
+
+export const NativeNotificationRequest = Schema.TaggedUnion({
+  Close: {
+    refs: Schema.Array(NativeNotificationRef),
+    version: Schema.Literal(1),
+  },
+  Prepare: {
+    id: Schema.optional(Schema.String),
+    snapshot: AgendaSnapshot,
+    version: Schema.Literal(1),
+  },
+  Replace: { ref: NativeNotificationRef, version: Schema.Literal(1) },
+  Show: { ref: NativeNotificationRef, version: Schema.Literal(1) },
+});
+
+export const NativeNotificationReply = Schema.Struct({
+  authority: Schema.optional(
+    Schema.Struct({
+      lease: Schema.String,
+      personId: Schema.NullOr(Schema.String),
+      revision: nativeNotificationSequence,
+    })
+  ),
+  claims: Schema.Array(
+    Schema.Struct({ key: AgendaKey, start: nativeNotificationInstant })
+  ),
+  ref: Schema.optional(NativeNotificationRef),
+  status: Schema.Literals([
+    "ready",
+    "refused",
+    "failed",
+    "stale",
+    "superseded",
+  ]),
+  version: Schema.Literal(1),
+});
+
+export const NativeNotificationNotice = Schema.TaggedUnion({
+  ActionSelected: {
+    action: NativeNotificationAction,
+    ref: NativeNotificationRef,
+  },
+  Clicked: { ref: NativeNotificationRef },
+  Closed: { ref: NativeNotificationRef },
+  Failed: { ref: NativeNotificationRef },
+  Reply: { ref: NativeNotificationRef, supported: Schema.Literal(false) },
+  Shown: { ref: NativeNotificationRef },
+});
+
+export const nativeNotificationWire = {
+  notice: Schema.fromJsonString(
+    Schema.Struct({
+      notice: NativeNotificationNotice,
+      version: Schema.Literal(1),
+    })
+  ),
+  reply: Schema.fromJsonString(NativeNotificationReply),
+  request: Schema.fromJsonString(NativeNotificationRequest),
+};
+
+export const nativeNotificationChannels = {
+  notice: "potion:desktop:notification-notice:1",
+  request: "potion:desktop:notification-request:1",
+};
 
 export const PromptSound = Schema.Literals(["none", "blip", "bell", "tap"]);
 
@@ -426,6 +557,7 @@ export const DesktopSettings = Schema.Struct({
   runtime: Schema.optional(
     Schema.Struct({
       navigationStartedAt: Schema.optional(Schema.Finite),
+      notificationLease: Schema.optional(Schema.String),
       prompt: Schema.Boolean,
       tray: Schema.Boolean,
     })
@@ -582,6 +714,12 @@ export const DesktopStartupTiming = Schema.Struct({
 });
 
 export interface DesktopBridge {
+  readonly nativeNotifications?: (
+    request: typeof NativeNotificationRequest.Type
+  ) => Promise<typeof NativeNotificationReply.Type>;
+  readonly onNativeNotification?: (
+    receive: (notice: typeof NativeNotificationNotice.Type) => void
+  ) => () => void;
   readonly getStartupTiming?: () => typeof DesktopStartupTiming.Type;
   readonly getSettings: () => Promise<DesktopSettingsValue>;
   readonly joinMeeting: (

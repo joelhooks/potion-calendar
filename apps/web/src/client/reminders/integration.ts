@@ -3,6 +3,10 @@ import { Option } from "effect";
 import type { AppModel, update } from "../app.js";
 import { initialReminderState, stepReminder } from "./machine.js";
 import { ReminderSnoozeStorage } from "./model.js";
+import {
+  nativeNotificationLease,
+  nativeRemindersEnabled,
+} from "./native-projection.js";
 import { releaseResolvedReminderEvents } from "./retained.js";
 import { reminderSnapshot } from "./source.js";
 import { commitReminders } from "./update.js";
@@ -19,6 +23,8 @@ const inputsChanged = (previous: AppModel, next: AppModel): boolean =>
   previous.session !== next.session ||
   previous.settings !== next.settings ||
   previous.desktop.availability !== next.desktop.availability ||
+  (nativeNotificationLease(next) !== undefined &&
+    previous.desktop.settings !== next.desktop.settings) ||
   previous.reminders.context.permission !== next.reminders.context.permission ||
   previous.reminders.context.snoozes !== next.reminders.context.snoozes ||
   previous.reminders.context.snoozeStorage !==
@@ -60,7 +66,7 @@ const startReminders = (previous: AppModel, model: AppModel): Result => {
   );
 };
 
-export const withReminders = (previous: AppModel, result: Result): Result => {
+const updateReminders = (previous: AppModel, result: Result): Result => {
   if (result.model === previous) {
     return result;
   }
@@ -117,12 +123,24 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
     if (snapshot !== undefined) {
       const scanned = commitReminders(
         model,
-        stepReminder(model.reminders, {
-          ...snapshot,
-          snoozeRangeReady: snapshot.snoozeRangeReady,
-          type: "SCAN",
-          webCards: model.desktop.availability === "unavailable",
-        })
+        stepReminder(
+          model.reminders,
+          nativeNotificationLease(model) === undefined
+            ? {
+                ...snapshot,
+                snoozeRangeReady: snapshot.snoozeRangeReady,
+                type: "SCAN",
+                webCards: model.desktop.availability === "unavailable",
+              }
+            : {
+                ...snapshot,
+                native: true,
+                nativeEnabled: nativeRemindersEnabled(model),
+                snoozeRangeReady: snapshot.snoozeRangeReady,
+                type: "NATIVE_SCAN",
+                webCards: false,
+              }
+        )
       );
 
       ({ model } = scanned);
@@ -135,4 +153,36 @@ export const withReminders = (previous: AppModel, result: Result): Result => {
   return commands.length === 0
     ? { ...result, model }
     : { ...result, commands, model };
+};
+
+export const withReminders = (previous: AppModel, result: Result): Result => {
+  if (result.model === previous) {
+    return result;
+  }
+
+  const active =
+    nativeNotificationLease(result.model) !== undefined ||
+    previous.desktop.notificationRevision !== undefined;
+
+  const changed =
+    inputsChanged(previous, result.model) ||
+    previous.person !== result.model.person ||
+    previous.reminders.context.active !== result.model.reminders.context.active;
+
+  return updateReminders(
+    previous,
+    active && changed
+      ? {
+          ...result,
+          model: {
+            ...result.model,
+            desktop: {
+              ...result.model.desktop,
+              notificationRevision:
+                (previous.desktop.notificationRevision ?? 0) + 1,
+            },
+          },
+        }
+      : result
+  );
 };

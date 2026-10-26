@@ -1,9 +1,44 @@
+import { AgendaKey } from "@calendar/core/desktop-bridge";
 import type {
   AgendaEventValue,
   AgendaKeyValue,
   AgendaSnapshotValue,
   DesktopPreferencesValue,
 } from "@calendar/core/desktop-bridge";
+import { Schema } from "effect";
+
+export class PromptAdmissionSuperseded extends Schema.TaggedError<PromptAdmissionSuperseded>()(
+  "PromptAdmissionSuperseded",
+  { message: Schema.String }
+) {}
+
+export const PromptAdmissionAuthority = Schema.Struct({
+  lease: Schema.String,
+  personId: Schema.NullOr(Schema.String),
+  revision: Schema.Finite,
+});
+
+export const PromptAdmissionPermit = Schema.Struct({
+  active: Schema.Boolean,
+  main: Schema.optionalKey(PromptAdmissionAuthority),
+});
+
+export interface PromptAdmissionPermitValue {
+  active: boolean;
+  readonly main?: typeof PromptAdmissionAuthority.Type;
+}
+
+export const PromptInputAcknowledgement = Schema.Struct({
+  attempt: Schema.NullOr(Schema.String),
+  authority: Schema.NullOr(
+    Schema.Struct({
+      lease: Schema.String,
+      personId: Schema.NullOr(Schema.String),
+      revision: Schema.Finite,
+    })
+  ),
+  claims: Schema.Array(Schema.Struct({ key: AgendaKey, start: Schema.Finite })),
+});
 
 const minuteMilliseconds = 60_000;
 

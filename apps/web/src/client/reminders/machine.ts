@@ -5,6 +5,7 @@ import type { EventFromLogic } from "xstate";
 
 import {
   NotificationPermission,
+  NativeReminderScan,
   ReminderMemory,
   ReminderSnooze,
   ReminderSnoozeChoice,
@@ -43,6 +44,7 @@ export const reminderMachine = setupEffect({
   schemas: {
     context: ReminderMemory,
     events: {
+      NATIVE_SCAN: NativeReminderScan,
       PERMISSION: Schema.Struct({
         now: Schema.Finite,
         permission: NotificationPermission,
@@ -85,6 +87,9 @@ export const reminderMachine = setupEffect({
   context: emptyMemory(),
   initial: "stopped",
   on: {
+    NATIVE_SCAN: ({ context, event }) => ({
+      context: planReminders(context, event),
+    }),
     PERMISSION: ({ context, event }) => {
       const granted = event.permission === "granted";
       const entering = granted && context.permission !== "granted";

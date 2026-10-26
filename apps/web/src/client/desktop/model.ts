@@ -39,6 +39,8 @@ export const DesktopUi = Schema.Struct({
   availability: Schema.Literals(["unknown", "unavailable", "available"]),
   canSaveIcs: Schema.optional(Schema.Boolean),
   error: Schema.Option(Schema.String),
+  notificationLease: Schema.optional(Schema.String),
+  notificationRevision: Schema.optional(Schema.Int),
   request: Schema.Int,
   settings: RemoteDesktop.schema,
 });

@@ -142,6 +142,7 @@ import { actOnReminderCard } from "./reminders/actions.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
+import { actOnNativeNotification } from "./reminders/native-actions.js";
 import { selectReminderNotification } from "./reminders/selection.js";
 import {
   completeReminderSnoozeCleanup,
@@ -1125,6 +1126,10 @@ const updateCore = (
         : { model },
     Navigated: () => ({ model }),
     ObservedNotification: ({ event, now }) => {
+      if (NotificationEvent.guards.Native(event)) {
+        return actOnNativeNotification(model, event.notice, dispatch);
+      }
+
       if (NotificationEvent.guards.Action(event)) {
         return actOnWorkerNotification(model, event, dispatch);
       }

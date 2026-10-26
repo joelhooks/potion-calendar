@@ -1,4 +1,8 @@
 import { Calendar, CalendarEvent } from "@calendar/calendar/contracts";
+import {
+  AgendaSnapshot,
+  NativeNotificationNotice,
+} from "@calendar/core/desktop-bridge";
 import { Match, Option, Schema } from "effect";
 
 import { ReminderNotificationAction } from "./worker-protocol.js";
@@ -111,6 +115,15 @@ export const NotificationContent = Schema.Struct({
   candidate: ReminderCandidate,
   card: Schema.optional(ReminderCard),
   id: Schema.String,
+  native: Schema.optional(Schema.Struct({ snapshot: AgendaSnapshot })),
+  nativeKind: Schema.optional(Schema.Literals(["reminder", "invite"])),
+  nativeRetry: Schema.optional(
+    Schema.Struct({
+      lease: Schema.String,
+      revision: Schema.Finite,
+      status: Schema.Literals(["waiting", "attempted"]),
+    })
+  ),
   personId: Schema.String,
   title: Schema.String,
 });
@@ -127,19 +140,24 @@ export const NotificationEvent = Schema.TaggedUnion({
   Clicked: { notification: NotificationContent },
   Closed: { id: Schema.String, personId: Schema.String },
   Failed: { id: Schema.String, personId: Schema.String },
+  Native: { notice: NativeNotificationNotice },
   Permission: { permission: NotificationPermission, personId: Schema.String },
 });
 
 export class NotificationFailure extends Schema.TaggedError<NotificationFailure>()(
   "NotificationFailure",
   {
+    lease: Schema.optional(Schema.String),
+    personId: Schema.optional(Schema.String),
     reason: Schema.Literals([
       "unsupported",
       "delivery",
       "permission",
       "inactive",
       "expired",
+      "stale",
     ]),
+    revision: Schema.optional(Schema.Int),
   }
 ) {}
 
@@ -194,4 +212,10 @@ export const ReminderScan = Schema.Struct({
   scope: Schema.String,
   snoozeRangeReady: Schema.optional(Schema.Boolean),
   webCards: Schema.optional(Schema.Boolean),
+});
+
+export const NativeReminderScan = Schema.Struct({
+  ...ReminderScan.fields,
+  native: Schema.Literal(true),
+  nativeEnabled: Schema.Boolean,
 });

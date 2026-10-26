@@ -1,13 +1,13 @@
 import { Context } from "effect";
 import type { Effect, Stream } from "effect";
 
-import { browserNotifications } from "./browser.js";
 import type {
   NotificationContentValue,
   NotificationEvent,
   NotificationFailure,
   NotificationPermission,
 } from "./model.js";
+import { routedNotifications } from "./native.js";
 
 export interface NotificationPortService {
   readonly requestPermission: Effect.Effect<
@@ -28,5 +28,5 @@ export interface NotificationPortService {
 
 export const NotificationPort = Context.Reference<NotificationPortService>(
   "@calendar/web/reminders/NotificationPort",
-  { defaultValue: browserNotifications }
+  { defaultValue: routedNotifications }
 );
