@@ -208,7 +208,13 @@ it.effect(
           subscriptions.desktopAgenda.modelToDependencies(signedOut)
         )
         .pipe(Stream.runDrain);
-      expect(published.at(-1)).toEqual({ events: [] });
+      expect(published.at(-1)?.events).toEqual([]);
+      expect(published.at(-1)?.promptPreferences).toEqual({
+        joinShortcut: settings.preferences.joinShortcut,
+        theme: "light",
+        timeFormat: "12",
+        version: 1,
+      });
     }).pipe(Effect.provide(domainFence))
 );
 

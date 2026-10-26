@@ -54,6 +54,7 @@ const browserContractModules = new Set([
   "packages/capability/rpc-group",
   "packages/core/contracts",
   "packages/core/desktop-bridge",
+  "packages/core/keyboard-hints",
   "packages/devtools/contracts",
 ]);
 

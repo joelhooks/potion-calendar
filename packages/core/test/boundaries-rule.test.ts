@@ -109,6 +109,31 @@ describe("architecture boundary rules", () => {
     );
   });
 
+  it("allows only the exact pure keyboard hints leaf and rejects siblings and subtrees", () => {
+    for (const area of [
+      "apps/web/src/client",
+      "apps/desktop/src/client",
+      "apps/web/src/features",
+    ]) {
+      expect(
+        lintFixture(
+          area,
+          'import { formatKey } from "@calendar/core/keyboard-hints";'
+        ).status
+      ).toBe(0);
+
+      for (const module of [
+        "@calendar/core/release",
+        "@calendar/core/keyboard-hints/x",
+      ]) {
+        expectRule(
+          lintFixture(area, `import { value } from "${module}";`),
+          "browser-safe contract"
+        );
+      }
+    }
+  });
+
   it("allows only the web Vite config to install its own development composition", () => {
     const source = 'import { development } from "./src/dev/vite-backend.js";';
     expect(lintFixture("apps/web", source, "vite.config.ts").status).toBe(0);

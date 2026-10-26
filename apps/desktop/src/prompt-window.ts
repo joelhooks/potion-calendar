@@ -18,6 +18,7 @@ import { BrowserWindow, ipcMain, screen, session } from "electron";
 import { DesktopError } from "./config.js";
 import type { PromptPresentation } from "./prompt-machine.js";
 import { resizePromptWindow, revealPromptWindow } from "./prompt-placement.js";
+import { nextPromptView } from "./prompt-preferences.js";
 import { promptFallbackHeight, promptMeasuredHeight } from "./prompt-size.js";
 import { previewWithSound, revealWithSound } from "./sound-machine.js";
 import { preparePromptSound } from "./sound-port.js";
@@ -312,10 +313,9 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       events: readonly AgendaEventValue[],
       presentation: PromptPresentation
     ) {
-      const nextView = yield* Ref.updateAndGet(view, (previous) => ({
-        events,
-        revision: previous.revision + 1,
-      }));
+      const nextView = yield* Ref.updateAndGet(view, (previous) =>
+        nextPromptView(previous, events, presentation)
+      );
 
       const window = yield* prepareWindow();
       const port = soundPort(window);

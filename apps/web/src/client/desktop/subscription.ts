@@ -1,25 +1,45 @@
-import type { AgendaSnapshotValue } from "@calendar/core/desktop-bridge";
+import type {
+  AgendaSnapshotValue,
+  DesktopSettingsValue,
+} from "@calendar/core/desktop-bridge";
 import { Effect, Option, Stream } from "effect";
 import { AsyncData } from "foldkit";
 
+import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { Message } from "../message.js";
+import { resolvedTheme } from "../settings/model.js";
 import { browserDesktop } from "./commands.js";
 import { DesktopBridgeError } from "./io.js";
 import { DesktopNotice } from "./model.js";
 import { desktopNoticeStream } from "./runtime.js";
 import { agendaSnapshot } from "./snapshot.js";
 
+const promptPreferences = (
+  model: AppModel,
+  settings?: DesktopSettingsValue
+): NonNullable<AgendaSnapshotValue["promptPreferences"]> => ({
+  joinShortcut: settings?.preferences.joinShortcut ?? null,
+  theme: resolvedTheme(model),
+  timeFormat: resolvedTimeFormat(model),
+  version: 1,
+});
+
 export const desktopDependencies = (model: AppModel) => ({
   active: model.desktop.availability === "available",
   snapshot: Option.match(AsyncData.getData(model.desktop.settings), {
-    onNone: (): AgendaSnapshotValue => ({ events: [] }),
-    onSome: (settings) =>
-      agendaSnapshot(
+    onNone: (): AgendaSnapshotValue => ({
+      events: [],
+      promptPreferences: promptPreferences(model),
+    }),
+    onSome: (settings): AgendaSnapshotValue => ({
+      ...agendaSnapshot(
         model,
         settings.preferences,
         typeof window === "undefined" ? undefined : window.location.origin
       ),
+      promptPreferences: promptPreferences(model, settings),
+    }),
   }),
 });
 

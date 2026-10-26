@@ -25,7 +25,7 @@ it.effect(
 
       if (Option.isSome(decoded)) {
         expect(
-          yield* Schema.decodeUnknownEffect(promptWire.action)(
+          yield* Schema.decodeEffect(promptWire.action)(
             yield* Schema.encodeEffect(promptWire.action)(decoded.value)
           )
         ).toEqual(action);
@@ -46,7 +46,7 @@ it.effect(
         },
       ];
 
-      const decoded = yield* Schema.decodeUnknownEffect(PromptView)({
+      const decoded = yield* Schema.decodeEffect(PromptView)({
         events: [{ ...attachmentMeeting, attachments }],
         revision: 1,
       });

@@ -35,6 +35,16 @@ p {
   display: flex;
   gap: 8px;
 }
+.actions:has([data-prompt-join-hint]) {
+  align-items: center;
+  flex-wrap: wrap;
+}
+[data-prompt-join-hint] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  opacity: 0.8;
+}
 button {
   font: inherit;
   padding: 5px 10px;

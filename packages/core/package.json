@@ -24,6 +24,11 @@
       "import": "./dist/desktop-bridge.js",
       "default": "./dist/desktop-bridge.js"
     },
+    "./keyboard-hints": {
+      "types": "./src/keyboard-hints.ts",
+      "import": "./dist/keyboard-hints.js",
+      "default": "./dist/keyboard-hints.js"
+    },
     "./participant-email": {
       "types": "./src/participant-email.ts",
       "import": "./dist/participant-email.js",

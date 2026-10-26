@@ -193,7 +193,7 @@ it.effect(
       expect(eligiblePromptAttachments(saved)).toEqual([]);
       expect(
         Option.isNone(
-          Schema.decodeUnknownOption(PromptAction)({
+          Schema.decodeOption(PromptAction)({
             action: "attachment",
             index: 20,
             key: attachmentMeeting.key,

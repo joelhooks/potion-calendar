@@ -2,8 +2,13 @@ import type {
   AgendaEventValue,
   PromptAction,
   PromptBridge,
+  PromptPreferences,
   PromptView,
 } from "@calendar/core/desktop-bridge";
+import {
+  formatKey,
+  globalShortcutBinding,
+} from "@calendar/core/keyboard-hints";
 import { DateTime } from "effect";
 import { initialTransition, transition } from "xstate";
 import type { EventFromLogic } from "xstate";
@@ -19,7 +24,11 @@ const api = window.potionPrompt;
 
 const root = document.querySelector("main");
 
-const card = (event: AgendaEventValue): HTMLElement => {
+const card = (
+  event: AgendaEventValue,
+  preferences: typeof PromptPreferences.Type | undefined,
+  first: boolean
+): HTMLElement => {
   const article = document.createElement("article");
   article.dataset.promptCard = "";
   article.dataset.eventId = event.key.eventId;
@@ -42,10 +51,20 @@ const card = (event: AgendaEventValue): HTMLElement => {
   const time = document.createElement("p");
   const actions = document.createElement("div");
   heading.textContent = event.title;
-  time.textContent = DateTime.formatLocal(DateTime.makeUnsafe(event.start), {
+
+  const timing: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
-  });
+  };
+
+  if (preferences !== undefined) {
+    timing.hourCycle = preferences.timeFormat === "12" ? "h12" : "h23";
+  }
+
+  time.textContent = DateTime.formatLocal(
+    DateTime.makeUnsafe(event.start),
+    timing
+  );
   body.append(heading, time);
   actions.className = "actions";
   article.append(body, attachmentControls(event, api), actions);
@@ -73,6 +92,17 @@ const card = (event: AgendaEventValue): HTMLElement => {
   const join = button("Join", "join");
   join.dataset.promptJoin = "";
   actions.append(join);
+
+  if (first && preferences !== undefined && preferences.joinShortcut !== null) {
+    const hint = document.createElement("span");
+    hint.dataset.promptJoinHint = "";
+    hint.textContent = `Global join ${formatKey(
+      globalShortcutBinding(preferences.joinShortcut),
+      navigator.platform
+    )}`;
+    actions.append(hint);
+  }
+
   const dismiss = button("×", "dismiss");
   dismiss.dataset.promptDismiss = "";
   dismiss.className = "dismiss";
@@ -318,7 +348,17 @@ const render = (view: typeof PromptView.Type) => {
     return;
   }
 
-  root.replaceChildren(...view.events.map(card));
+  if (view.preferences === undefined) {
+    document.documentElement.style.removeProperty("color-scheme");
+  } else {
+    document.documentElement.style.colorScheme = view.preferences.theme;
+  }
+
+  root.replaceChildren(
+    ...view.events.map((event, index) =>
+      card(event, view.preferences, index === 0)
+    )
+  );
   measurement.presented(view.revision);
 };
 

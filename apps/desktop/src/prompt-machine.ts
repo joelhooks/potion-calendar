@@ -6,6 +6,7 @@ import {
 } from "@calendar/core/desktop-bridge";
 import type {
   AgendaEventValue,
+  PromptPreferences,
   PromptSound,
 } from "@calendar/core/desktop-bridge";
 import {
@@ -30,8 +31,10 @@ import {
   snoozePrompt,
 } from "./prompt-model.js";
 import type { PromptContext, PromptInput } from "./prompt-model.js";
+import { projectPromptPreferences } from "./prompt-preferences.js";
 
 export interface PromptPresentation {
+  readonly preferences?: typeof PromptPreferences.Type | undefined;
   readonly reveal: boolean;
   readonly sound: typeof PromptSound.Type;
 }
@@ -84,10 +87,7 @@ export const promptMachine = (work: PromptWork) => {
         readonly events: readonly AgendaEventValue[];
         readonly presentation: PromptPresentation;
       };
-    }) =>
-      work
-        .present(input.events, input.presentation)
-        .pipe(Effect.as(input.events)),
+    }) => work.present(input.events, input.presentation).pipe(Effect.as(input)),
   });
 
   const close = createEffectLogic({ effect: work.close });
@@ -202,6 +202,10 @@ export const promptMachine = (work: PromptWork) => {
             return {
               events: context.pending,
               presentation: {
+                preferences: projectPromptPreferences(
+                  context.snapshot,
+                  context.preferences
+                ),
                 reveal,
                 sound: reveal ? context.preferences.promptSound : "none",
               },
@@ -210,7 +214,17 @@ export const promptMachine = (work: PromptWork) => {
           onDone: ({ context, event }) => ({
             context: presentedPrompts(context),
             target:
-              JSON.stringify(context.pending) === JSON.stringify(event.output)
+              JSON.stringify({
+                events: context.pending,
+                preferences: projectPromptPreferences(
+                  context.snapshot,
+                  context.preferences
+                ),
+              }) ===
+              JSON.stringify({
+                events: event.output.events,
+                preferences: event.output.presentation.preferences,
+              })
                 ? "visible"
                 : "evaluating",
           }),

@@ -9,7 +9,7 @@ it.effect.each(["accepted", "declined", "tentative"] as const)(
   (response) =>
     Effect.sync(() => {
       const wire = `{"_tag":"RespondToEvent","key":${JSON.stringify(key)},"response":${JSON.stringify(response)},"note":"Never forward this draft"}`;
-      const decoded = Schema.decodeUnknownOption(desktopWire.action)(wire);
+      const decoded = Schema.decodeOption(desktopWire.action)(wire);
 
       expect(Option.isSome(decoded)).toBe(true);
       expect(Option.getOrUndefined(decoded)).toMatchObject({ key, response });
@@ -32,7 +32,7 @@ it.effect(
         '{"_tag":"RespondToEvent","key":{"eventId":"instance"},"response":"accepted"}',
       ]) {
         expect(
-          Option.isNone(Schema.decodeUnknownOption(desktopWire.action)(wire))
+          Option.isNone(Schema.decodeOption(desktopWire.action)(wire))
         ).toBe(true);
       }
     })

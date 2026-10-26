@@ -5,7 +5,6 @@ import {
   DesktopAction,
   desktopChannels,
   desktopWire,
-  eligiblePromptAttachments,
 } from "@calendar/core/desktop-bridge";
 import type {
   AgendaKeyValue,
@@ -30,6 +29,7 @@ import {
 import { app, dialog, ipcMain, shell } from "electron";
 import type { BrowserWindow } from "electron";
 
+import { desktopAgendaReceiver } from "./agenda-receiver.js";
 import { acceptsDesktopFrame } from "./bridge-policy.js";
 import { DesktopError } from "./config.js";
 import { IcsFileSaver } from "./ics-save.js";
@@ -412,39 +412,29 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           .pipe(Effect.tap((reply) => publishSettings(reply.settings)))
     );
 
-    const agenda: Parameters<typeof ipcMain.on>[1] = (event, value) => {
-      if (!trusted(event)) {
-        return;
+    const agenda: Parameters<typeof ipcMain.on>[1] = desktopAgendaReceiver(
+      origin,
+      {
+        accepted: (snapshot) => {
+          runFork(
+            send(host.actor, { snapshot, type: "Agenda" }).pipe(
+              Effect.forkIn(scope)
+            )
+          );
+        },
+        rejected: () => {
+          runFork(
+            send(host.actor, { snapshot: { events: [] }, type: "Agenda" }).pipe(
+              Effect.andThen(
+                Effect.logWarning("Rejected desktop agenda payload")
+              ),
+              Effect.forkIn(scope)
+            )
+          );
+        },
+        trusted,
       }
-
-      const decoded = Schema.decodeUnknownOption(desktopWire.agenda)(value);
-
-      if (Option.isSome(decoded)) {
-        runFork(
-          send(host.actor, {
-            snapshot: {
-              events: decoded.value.events.map((item) => ({
-                ...item,
-                attachments: eligiblePromptAttachments(
-                  item.attachments ?? [],
-                  origin
-                ),
-              })),
-            },
-            type: "Agenda",
-          }).pipe(Effect.forkIn(scope))
-        );
-      } else {
-        runFork(
-          send(host.actor, { snapshot: { events: [] }, type: "Agenda" }).pipe(
-            Effect.andThen(
-              Effect.logWarning("Rejected desktop agenda payload")
-            ),
-            Effect.forkIn(scope)
-          )
-        );
-      }
-    };
+    );
 
     ipcMain.on(desktopChannels.agenda, agenda);
 

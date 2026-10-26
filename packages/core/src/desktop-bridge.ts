@@ -1,4 +1,4 @@
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Option, Predicate, Schema } from "effect";
 import type { SchemaAST } from "effect";
 
 export const trayLocationByteLimit = 512;
@@ -349,10 +349,6 @@ export const AgendaEvent = Schema.Struct({
   trayDetails: Schema.optional(TrayDetails),
 }).check(Schema.makeFilter((event) => event.end > event.start));
 
-export const AgendaSnapshot = Schema.Struct({
-  events: Schema.Array(AgendaEvent),
-});
-
 const modifiers = new Set([
   "alt",
   "cmd",
@@ -384,6 +380,22 @@ export const GlobalShortcut = Schema.NullOr(
     })
   )
 );
+
+export const PromptPreferences = Schema.Struct({
+  joinShortcut: GlobalShortcut,
+  theme: Schema.Literals(["light", "dark"]),
+  timeFormat: Schema.Literals(["12", "24"]),
+  version: Schema.Literal(1),
+});
+
+const optionalPromptPreferences = Schema.optional(PromptPreferences).pipe(
+  Schema.catchDecoding(() => Effect.succeed(Option.none()))
+);
+
+export const AgendaSnapshot = Schema.Struct({
+  events: Schema.Array(AgendaEvent),
+  promptPreferences: optionalPromptPreferences,
+});
 
 export const PromptSound = Schema.Literals(["none", "blip", "bell", "tap"]);
 
@@ -472,6 +484,7 @@ export const PromptSize = Schema.Struct({
 
 export const PromptView = Schema.Struct({
   events: Schema.Array(AgendaEvent),
+  preferences: optionalPromptPreferences,
   revision: Schema.Int,
 });
 

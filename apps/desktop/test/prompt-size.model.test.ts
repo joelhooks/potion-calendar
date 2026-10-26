@@ -25,7 +25,7 @@ it.effect.prop(
     Effect.gen(function* measuredHistory() {
       const expected = Math.min(area, Math.max(140, height));
 
-      const report = yield* Schema.decodeUnknownEffect(promptWire.size)(
+      const report = yield* Schema.decodeEffect(promptWire.size)(
         yield* Schema.encodeEffect(promptWire.size)({ height, revision })
       );
 
@@ -94,7 +94,7 @@ it.effect(
     Effect.sync(() => {
       expect(
         Option.isNone(
-          Schema.decodeUnknownOption(PromptSize)({
+          Schema.decodeOption(PromptSize)({
             height: Number.POSITIVE_INFINITY,
             revision: 1,
           })
@@ -102,9 +102,7 @@ it.effect(
       ).toBe(true);
       expect(
         Option.isNone(
-          Schema.decodeUnknownOption(promptWire.size)(
-            '{"height":null,"revision":1}'
-          )
+          Schema.decodeOption(promptWire.size)('{"height":null,"revision":1}')
         )
       ).toBe(true);
       expect(
