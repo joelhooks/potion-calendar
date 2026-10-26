@@ -8,6 +8,7 @@ import {
   eligiblePromptAttachments,
 } from "@calendar/core/desktop-bridge";
 import type {
+  AgendaKeyValue,
   DesktopActionValue,
   DesktopSettingsValue,
   MeetingJoinRequestValue,
@@ -51,6 +52,7 @@ import { startPrompt } from "./prompt-machine.js";
 import { PromptWindow } from "./prompt-window.js";
 import { NativeSettings } from "./settings.js";
 import { soundPreviewEnabled } from "./sound-machine.js";
+import { performTrayAction } from "./tray-actions.js";
 
 export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
   function* makeDesktopRuntime(
@@ -148,6 +150,36 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       return result;
     });
 
+    const joinWithFeedback = (request: MeetingJoinRequestValue) =>
+      join(request).pipe(
+        Effect.tap((result) =>
+          Predicate.isTagged(result, "Failed")
+            ? Effect.sync(() => {
+                dialog.showErrorBox("Could not open meeting", result.message);
+              })
+            : Effect.void
+        ),
+        Effect.asVoid
+      );
+
+    const showEvent = (key: AgendaKeyValue) =>
+      Effect.sync(focus).pipe(
+        Effect.andThen(pageAction(DesktopAction.cases.ShowEvent.make({ key }))),
+        Effect.andThen(send(prompt, { key, type: "Dismiss" }))
+      );
+
+    const trayActionPort = {
+      join: joinWithFeedback,
+      open: openExternal,
+      origin,
+      show: showEvent,
+      trusted: Effect.sync(
+        () =>
+          !window.isDestroyed() &&
+          acceptsDesktopFrame(origin, window.webContents.getURL(), true)
+      ),
+    };
+
     const host = yield* startNativeHost(
       {
         intents: Stream.fromEventListener<NativeIntentEvent>(
@@ -162,20 +194,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                 send(prompt, { key: value.key, type: "Dismiss" }),
               EmailPrompt: (value) =>
                 emailPromptParticipants(value.key, view.agenda, openExternal),
-              Join: (value) =>
-                join(value.request).pipe(
-                  Effect.tap((result) =>
-                    Predicate.isTagged(result, "Failed")
-                      ? Effect.sync(() => {
-                          dialog.showErrorBox(
-                            "Could not open meeting",
-                            result.message
-                          );
-                        })
-                      : Effect.void
-                  ),
-                  Effect.asVoid
-                ),
+              Join: (value) => joinWithFeedback(value.request),
               MenuState: () => Effect.void,
               OpenPromptAttachment: (value) =>
                 openPromptAttachment(
@@ -209,20 +228,18 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                     })
                   )
                 ),
-              ShowEvent: (value) =>
-                Effect.sync(focus).pipe(
-                  Effect.andThen(
-                    pageAction(
-                      DesktopAction.cases.ShowEvent.make({ key: value.key })
-                    )
-                  ),
-                  Effect.andThen(
-                    send(prompt, { key: value.key, type: "Dismiss" })
-                  )
-                ),
+              ShowEvent: (value) => showEvent(value.key),
               SnoozePrompt: (value) => requestPromptSnooze(prompt, value.key),
               Stop: () => Effect.void,
               ToggleMenu: () => tray.toggle(view.menuState),
+              TrayAttachment: (value) =>
+                performTrayAction(value, view, trayActionPort),
+              TrayEmail: (value) =>
+                performTrayAction(value, view, trayActionPort),
+              TrayJoin: (value) =>
+                performTrayAction(value, view, trayActionPort),
+              TrayShowEvent: (value) =>
+                performTrayAction(value, view, trayActionPort),
             }),
             Effect.tapError(() =>
               Effect.logWarning("Desktop native action failed")
@@ -418,7 +435,14 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           }).pipe(Effect.forkIn(scope))
         );
       } else {
-        runFork(Effect.logWarning("Rejected desktop agenda payload"));
+        runFork(
+          send(host.actor, { snapshot: { events: [] }, type: "Agenda" }).pipe(
+            Effect.andThen(
+              Effect.logWarning("Rejected desktop agenda payload")
+            ),
+            Effect.forkIn(scope)
+          )
+        );
       }
     };
 

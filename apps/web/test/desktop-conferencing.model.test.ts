@@ -11,7 +11,7 @@ import {
 } from "./upcoming-fixture.js";
 
 it.effect.prop(
-  "native publication recognizes saved conference text without publishing it or weakening HTTPS",
+  "native publication recognizes saved conference text while publishing only approved inert location and preserving HTTPS",
   {
     field: Arbitrary.schema(Schema.Literals(["location", "description"])),
     protocol: Arbitrary.schema(Schema.Literals(["https", "http"])),
@@ -40,7 +40,18 @@ it.effect.prop(
       expect(snapshot.events[0]?.conferenceUrl).toBe(
         protocol === "https" && !userInfo ? link : null
       );
-      expect(JSON.stringify(snapshot)).not.toContain("Private calendar note");
+      expect(snapshot.events[0]?.trayDetails?.location).toBe(
+        field === "location" ? text : null
+      );
+      expect(
+        JSON.stringify({
+          ...snapshot,
+          events: snapshot.events.map((event) => ({
+            ...event,
+            trayDetails: { ...event.trayDetails, location: null },
+          })),
+        })
+      ).not.toContain("Private calendar note");
       expect(snapshot.events[0]).not.toHaveProperty("description");
       expect(snapshot.events[0]).not.toHaveProperty("location");
     })

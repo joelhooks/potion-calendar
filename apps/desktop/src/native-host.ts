@@ -44,6 +44,17 @@ export const NativeIntent = Schema.TaggedUnion({
   SnoozePrompt: { key: AgendaKey },
   Stop: {},
   ToggleMenu: {},
+  TrayAttachment: {
+    index: Schema.Int,
+    key: AgendaKey,
+    url: ConferenceUrl,
+  },
+  TrayEmail: { href: Schema.String, key: AgendaKey },
+  TrayJoin: {
+    ...MeetingJoinRequest.fields,
+    section: Schema.Literals(["current", "day"]),
+  },
+  TrayShowEvent: { key: AgendaKey },
 });
 
 export type NativeIntentValue = typeof NativeIntent.Type;
@@ -159,11 +170,8 @@ export const nativeHostMachine = (work: NativeHostWork) => {
                 ...context.queued.filter(
                   (queued) =>
                     queued._tag !== event.intent._tag ||
-                    (Predicate.isTagged(queued, "OpenPromptAttachment") &&
-                      Predicate.isTagged(
-                        event.intent,
-                        "OpenPromptAttachment"
-                      ) &&
+                    ("index" in queued &&
+                      "index" in event.intent &&
                       (queued.index !== event.intent.index ||
                         queued.url !== event.intent.url)) ||
                     ("key" in queued &&

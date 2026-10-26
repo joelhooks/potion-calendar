@@ -6,6 +6,7 @@ import type {
 import {
   ConferenceUrl,
   eligiblePromptAttachments,
+  projectTrayDetails,
 } from "@calendar/core/desktop-bridge";
 import type {
   AgendaEventValue,
@@ -119,15 +120,17 @@ const projectSavedEvent = (
       ? { kind: "disabled" }
       : participantEmail(event, ownEmails);
 
+  const attachments = eligiblePromptAttachments(
+    (event.attachments ?? []).map((attachment) => ({
+      title: attachment.title ?? "Attachment",
+      url: attachment.url,
+    })),
+    origin
+  );
+
   const projected: AgendaEventValue = {
     ...times.value,
-    attachments: eligiblePromptAttachments(
-      (event.attachments ?? []).map((attachment) => ({
-        title: attachment.title ?? "Attachment",
-        url: attachment.url,
-      })),
-      origin
-    ),
+    attachments,
     calendarColor,
     conferenceUrl: conferenceUrl(event),
     hasLocation: (event.location?.trim().length ?? 0) > 0,
@@ -140,6 +143,7 @@ const projectSavedEvent = (
     participantEmails: email.kind === "ready" ? email.recipients : [],
     responseStatus,
     title: title.length > 0 ? title : "Untitled event",
+    trayDetails: projectTrayDetails(event.location, attachments, email),
   };
 
   return Option.some(

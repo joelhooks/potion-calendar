@@ -43,6 +43,41 @@ export const menuAgenda = (
     (event) => event.start < now + preferences.includeDays * dayMilliseconds
   );
 
+const completeKeyOrder = (left: AgendaEventValue, right: AgendaEventValue) =>
+  left.key.accountId.localeCompare(right.key.accountId) ||
+  left.key.calendarId.localeCompare(right.key.calendarId) ||
+  left.key.eventId.localeCompare(right.key.eventId);
+
+export const sameAgendaKey = (
+  left: AgendaEventValue["key"],
+  right: AgendaEventValue["key"]
+): boolean =>
+  left.accountId === right.accountId &&
+  left.calendarId === right.calendarId &&
+  left.eventId === right.eventId;
+
+export const trayAgenda = (
+  snapshot: AgendaSnapshotValue,
+  preferences: DesktopPreferencesValue,
+  now: number
+) => {
+  const events = menuAgenda(snapshot, preferences, now);
+
+  const [current] = events
+    .filter((event) => !event.allDay)
+    .toSorted(
+      (left, right) => left.start - right.start || completeKeyOrder(left, right)
+    );
+
+  return {
+    current,
+    remaining:
+      current === undefined
+        ? events
+        : events.filter((event) => !sameAgendaKey(event.key, current.key)),
+  };
+};
+
 export const previewMeeting = (
   snapshot: AgendaSnapshotValue,
   preferences: DesktopPreferencesValue,

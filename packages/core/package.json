@@ -24,6 +24,11 @@
       "import": "./dist/desktop-bridge.js",
       "default": "./dist/desktop-bridge.js"
     },
+    "./participant-email": {
+      "types": "./src/participant-email.ts",
+      "import": "./dist/participant-email.js",
+      "default": "./dist/participant-email.js"
+    },
     "./release": {
       "types": "./src/release.ts",
       "import": "./dist/release.js",

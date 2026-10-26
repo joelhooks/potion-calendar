@@ -1,6 +1,166 @@
 import { Effect, Predicate, Schema } from "effect";
 import type { SchemaAST } from "effect";
 
+export const trayLocationByteLimit = 512;
+
+export const trayAttachmentTitleByteLimit = 256;
+
+export const trayAttachmentUrlByteLimit = 8192;
+
+export const trayDetailsByteLimit = 256 * 1024;
+
+const trayEncoder = new TextEncoder();
+
+// oxlint-disable-next-line eslint/no-control-regex -- Native menu labels must not carry controls or bidi direction overrides.
+const menuControls = /[\u0000-\u001F\u007F-\u009F\p{Bidi_Control}]/gu;
+
+export const trayPlainText = (value: string): string =>
+  value.replaceAll(menuControls, " ").replaceAll(/\s+/gu, " ").trim();
+
+export const trayDisplayText = (value: string, maximum: number): string => {
+  let label = "";
+  let size = 0;
+
+  for (const character of trayPlainText(value)) {
+    const next = trayEncoder.encode(character).byteLength;
+
+    if (size + next > maximum) {
+      break;
+    }
+
+    label += character;
+    size += next;
+  }
+
+  return label;
+};
+
+export const TrayAttachmentUrl = Schema.String.check(
+  Schema.makeFilter((value: string) => {
+    const parsed = URL.parse(value);
+
+    return (
+      trayEncoder.encode(value).byteLength <= trayAttachmentUrlByteLimit &&
+      // oxlint-disable-next-line eslint/no-control-regex -- Reject control bytes before URL parsing can discard them in an external attachment handoff.
+      !/[\s\u0000-\u001F\u007F-\u009F\\]/u.test(value) &&
+      parsed !== null &&
+      parsed.protocol === "https:" &&
+      parsed.username === "" &&
+      parsed.password === ""
+    );
+  })
+);
+
+const TrayLabel = Schema.String.check(
+  Schema.makeFilter(
+    (value: string) =>
+      value === trayPlainText(value) &&
+      trayEncoder.encode(value).byteLength <= trayAttachmentTitleByteLimit
+  )
+);
+
+export const TrayDetails = Schema.Struct({
+  attachments: Schema.Array(
+    Schema.Struct({
+      index: Schema.Int.check(Schema.isBetween({ maximum: 19, minimum: 0 })),
+      title: TrayLabel,
+      url: TrayAttachmentUrl,
+    })
+  ).check(Schema.isMaxLength(20)),
+  email: Schema.NullOr(
+    Schema.Struct({
+      href: Schema.String.check(
+        Schema.isMaxLength(2000),
+        Schema.makeFilter((value: string) => {
+          const parsed = URL.parse(value);
+
+          return (
+            parsed !== null &&
+            parsed.protocol === "mailto:" &&
+            parsed.username === "" &&
+            parsed.password === "" &&
+            parsed.pathname.includes("@") &&
+            !/%0[ad]/iu.test(value)
+          );
+        })
+      ),
+      recipientCount: Schema.Int.check(
+        Schema.isBetween({ maximum: 2000, minimum: 1 })
+      ),
+    })
+  ),
+  location: Schema.NullOr(
+    Schema.String.check(
+      Schema.makeFilter(
+        (value: string) =>
+          value === trayPlainText(value) &&
+          trayEncoder.encode(value).byteLength <= trayLocationByteLimit
+      )
+    )
+  ),
+  version: Schema.Literal(1),
+}).check(
+  Schema.makeFilter(
+    (value) =>
+      trayEncoder.encode(JSON.stringify(value)).byteLength <=
+      trayDetailsByteLimit
+  )
+);
+
+export type TrayDetailsValue = typeof TrayDetails.Type;
+
+type TrayEmailSource =
+  | { readonly kind: "disabled" }
+  | {
+      readonly kind: "ready";
+      readonly href: string;
+      readonly recipients: readonly string[];
+    };
+
+export const projectTrayDetails = (
+  location: string | undefined,
+  attachments: readonly { readonly title: string; readonly url: string }[],
+  email: TrayEmailSource
+): TrayDetailsValue => {
+  const label = trayDisplayText(location ?? "", trayLocationByteLimit);
+
+  let result: TrayDetailsValue = {
+    attachments: [],
+    email:
+      email.kind === "ready"
+        ? { href: email.href, recipientCount: email.recipients.length }
+        : null,
+    location: label.length > 0 ? label : null,
+    version: 1,
+  };
+
+  for (const [index, attachment] of attachments.slice(0, 20).entries()) {
+    if (!Schema.is(TrayAttachmentUrl)(attachment.url)) {
+      continue;
+    }
+
+    const next = {
+      ...result,
+      attachments: [
+        ...result.attachments,
+        {
+          index,
+          title:
+            trayDisplayText(attachment.title, trayAttachmentTitleByteLimit) ||
+            "Attachment",
+          url: attachment.url,
+        },
+      ],
+    };
+
+    if (Schema.is(TrayDetails)(next)) {
+      result = next;
+    }
+  }
+
+  return result;
+};
+
 export const icsSaveByteLimit = 4 * 1024 * 1024;
 
 export const icsSaveWireLimit = 8 * 1024 * 1024;
@@ -186,6 +346,7 @@ export const AgendaEvent = Schema.Struct({
   ),
   start: Schema.Finite,
   title: Schema.String,
+  trayDetails: Schema.optional(TrayDetails),
 }).check(Schema.makeFilter((event) => event.end > event.start));
 
 export const AgendaSnapshot = Schema.Struct({

@@ -146,7 +146,10 @@ it.effect(
       expect(snapshot.events[0]?.hasLocation).toBe(true);
       expect(snapshot.events[0]?.conferenceUrl).toBeNull();
       expect(snapshot.events[1]?.hasLocation).toBe(false);
-      expect(JSON.stringify(snapshot)).not.toContain("Private meeting address");
+      expect(snapshot.events[0]?.trayDetails?.location).toBe(
+        "Private meeting address"
+      );
+      expect(snapshot.events[0]?.trayDetails?.version).toBe(1);
     })
 );
 
@@ -246,6 +249,10 @@ it.effect(
       ]);
       expect(JSON.stringify(snapshot)).not.toContain("other-self@example.test");
       expect(JSON.stringify(snapshot)).not.toContain("room@example.test");
+      expect(snapshot.events[0]?.trayDetails?.email).toEqual({
+        href: "mailto:guest%2Btag@example.test,second@example.test?subject=Saved%20meeting",
+        recipientCount: 2,
+      });
     })
 );
 
@@ -299,6 +306,12 @@ it.effect(
       expect(
         agendaSnapshot(wrong, preferences).events[0]?.participantEmails
       ).toEqual([]);
+      expect(
+        agendaSnapshot(missing, preferences).events[0]?.trayDetails?.email
+      ).toBeNull();
+      expect(
+        agendaSnapshot(wrong, preferences).events[0]?.trayDetails?.email
+      ).toBeNull();
     })
 );
 
@@ -321,13 +334,14 @@ it.effect.prop(
         organizer: { email: "organizer@example.test", self: ownOrganizer },
       };
 
-      expect(
-        agendaSnapshot(loaded([event]), preferences).events[0]
-          ?.participantEmails
-      ).toEqual(
+      const [projected] = agendaSnapshot(loaded([event]), preferences).events;
+      expect(projected?.participantEmails).toEqual(
         ordinary && !omitted && (!hidden || ownOrganizer)
           ? ["guest@example.test"]
           : []
+      );
+      expect(projected?.trayDetails?.email !== null).toBe(
+        ordinary && !omitted && (!hidden || ownOrganizer)
       );
     })
 );
@@ -368,6 +382,13 @@ it.effect.prop(
       expect(projected).toBeDefined();
       expect(projected?.attachments).toEqual(
         attachments.slice(5, 25).map((attachment) => ({
+          title: attachment.title,
+          url: attachment.url,
+        }))
+      );
+      expect(projected?.trayDetails?.attachments).toEqual(
+        attachments.slice(5, 25).map((attachment, index) => ({
+          index,
           title: attachment.title,
           url: attachment.url,
         }))

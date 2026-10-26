@@ -1,13 +1,14 @@
-import { Context, DateTime, Effect, Layer, Match, Option, Ref } from "effect";
+import { Clock, Context, DateTime, Effect, Layer, Option, Ref } from "effect";
 import { Menu, Tray, nativeImage } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 
-import { menuAgenda, previewLabel, singleLine } from "./agenda.js";
+import { previewLabel } from "./agenda.js";
 import { DesktopError } from "./config.js";
 import { NativeIntent } from "./native-host.js";
 import type { NativeIntentValue, NativeView } from "./native-host.js";
 import { calendarDotPng, iconPng } from "./tray-icon.js";
-import { trayResponseMenu } from "./tray-response.js";
+import { trayMenuRows } from "./tray-menu.js";
+import type { TrayMenuItem } from "./tray-menu.js";
 
 const calendarFrame = (x: number, y: number): boolean =>
   x >= 4 &&
@@ -58,6 +59,24 @@ const day = (value: number) =>
     weekday: "short",
   });
 
+const nativeTrayItem = (row: TrayMenuItem): MenuItemConstructorOptions => {
+  const { calendarColor, submenu, ...item } = row;
+
+  const result: MenuItemConstructorOptions = { ...item };
+
+  if (calendarColor !== undefined) {
+    result.icon = nativeImage.createFromBuffer(calendarDotPng(calendarColor), {
+      scaleFactor: 2,
+    });
+  }
+
+  if (submenu !== undefined) {
+    result.submenu = submenu.map(nativeTrayItem);
+  }
+
+  return result;
+};
+
 export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
   function* makeNativeTray(
     intent: (value: NativeIntentValue) => void,
@@ -85,6 +104,8 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
         return yield* close;
       }
 
+      const currentView = { ...view, now: yield* Clock.currentTimeMillis };
+
       return yield* Effect.try({
         catch: (cause) =>
           new DesktopError({ cause, message: "Menu bar could not update" }),
@@ -98,65 +119,10 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
 
           runSync(Ref.set(current, Option.some(tray)));
           tray.setToolTip("Potion Calendar");
-          const rows: MenuItemConstructorOptions[] = [];
-          let group = "";
 
-          const agenda = menuAgenda(view.agenda, view.preferences, view.now);
-
-          for (const event of agenda) {
-            const label = day(event.start);
-
-            if (label !== group) {
-              rows.push({ enabled: false, label });
-              group = label;
-            }
-
-            const actions: MenuItemConstructorOptions[] = [
-              {
-                click: () => {
-                  intent(NativeIntent.cases.ShowEvent.make({ key: event.key }));
-                },
-                label: "Show event",
-              },
-            ];
-
-            if (event.conferenceUrl !== null) {
-              const { conferenceUrl } = event;
-              actions.unshift({
-                click: () => {
-                  intent(
-                    NativeIntent.cases.Join.make({
-                      request: { conferenceUrl, key: event.key },
-                    })
-                  );
-                },
-                label: "Join",
-              });
-            }
-
-            if (event === agenda[0]) {
-              actions.push(...trayResponseMenu(event, intent));
-            }
-
-            const response = Match.value(event.responseStatus).pipe(
-              Match.when("tentative", () => "Maybe · "),
-              Match.when("needsAction", () => "Unanswered · "),
-              Match.orElse(() => "")
-            );
-
-            rows.push({
-              icon: nativeImage.createFromBuffer(
-                calendarDotPng(event.calendarColor),
-                { scaleFactor: 2 }
-              ),
-              label: `${event.allDay ? "All-day" : time(event.start)}  ${response}${singleLine(event.title)}`,
-              submenu: actions,
-            });
-          }
-
-          if (rows.length === 0) {
-            rows.push({ enabled: false, label: "No upcoming meeting" });
-          }
+          const rows = trayMenuRows(currentView, { day, time }, intent).map(
+            nativeTrayItem
+          );
 
           rows.push(
             { type: "separator" },
@@ -191,7 +157,12 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
           tray.setContextMenu(menu);
 
           tray.setTitle(
-            previewLabel(view.agenda, view.preferences, view.now, time)
+            previewLabel(
+              currentView.agenda,
+              currentView.preferences,
+              currentView.now,
+              time
+            )
           );
         },
       });
