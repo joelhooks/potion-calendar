@@ -50,6 +50,7 @@ export const receiveDesktopNotice = (
                 Failed: ({ message }): DesktopState => ({
                   ...state,
                   availability: "available",
+                  canSaveIcs: finished.canSaveIcs ?? state.canSaveIcs ?? false,
                   error: Option.some(message),
                   settings: Option.match(AsyncData.getData(state.settings), {
                     onNone: () => RemoteDesktop.Failure({ error: message }),
@@ -63,12 +64,15 @@ export const receiveDesktopNotice = (
                     : {
                         ...state,
                         availability: "available",
+                        canSaveIcs:
+                          finished.canSaveIcs ?? state.canSaveIcs ?? false,
                         error,
                         settings: RemoteDesktop.Success({ data: settings }),
                       },
                 Unavailable: (): DesktopState => ({
                   ...state,
                   availability: "unavailable",
+                  canSaveIcs: false,
                   error: Option.none(),
                   settings: RemoteDesktop.Idle(),
                 }),

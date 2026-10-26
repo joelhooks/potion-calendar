@@ -26,13 +26,18 @@ export const DesktopOutcome = Schema.TaggedUnion({
 
 export const DesktopNotice = Schema.TaggedUnion({
   Action: { action: DesktopAction },
-  Finished: { outcome: DesktopOutcome, request: Schema.Int },
+  Finished: {
+    canSaveIcs: Schema.optional(Schema.Boolean),
+    outcome: DesktopOutcome,
+    request: Schema.Int,
+  },
   Rejected: { message: Schema.String },
   Settings: { settings: DesktopSettings },
 });
 
 export const DesktopUi = Schema.Struct({
   availability: Schema.Literals(["unknown", "unavailable", "available"]),
+  canSaveIcs: Schema.optional(Schema.Boolean),
   error: Schema.Option(Schema.String),
   request: Schema.Int,
   settings: RemoteDesktop.schema,
@@ -40,6 +45,7 @@ export const DesktopUi = Schema.Struct({
 
 export const initialDesktop = (): typeof DesktopUi.Type => ({
   availability: "unknown",
+  canSaveIcs: false,
   error: Option.none(),
   request: 0,
   settings: RemoteDesktop.Idle(),

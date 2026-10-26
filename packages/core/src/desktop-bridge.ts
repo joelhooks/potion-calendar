@@ -1,4 +1,103 @@
 import { Effect, Predicate, Schema } from "effect";
+import type { SchemaAST } from "effect";
+
+export const icsSaveByteLimit = 4 * 1024 * 1024;
+
+export const icsSaveWireLimit = 8 * 1024 * 1024;
+
+export const icsSaveNameLimit = 128;
+
+export const icsSaveParseOptions = {
+  onExcessProperty: "error",
+} satisfies SchemaAST.ParseOptions;
+
+const encoder = new TextEncoder();
+
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+export const IcsSuggestedName = Schema.String.check(
+  Schema.isMaxLength(icsSaveNameLimit),
+  Schema.isPattern(/^[\p{L}\p{N}][\p{L}\p{N}-]*\.ics$/u),
+  Schema.makeFilter(
+    (name) =>
+      encoder.encode(name).byteLength <= icsSaveNameLimit &&
+      !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])\.ics$/iu.test(name)
+  )
+);
+
+export const desktopIcsFilename = (filename: string): string => {
+  let stem = "";
+  let size = 4;
+
+  for (const character of filename.endsWith(".ics")
+    ? filename.slice(0, -4)
+    : "") {
+    const next = encoder.encode(character).byteLength;
+
+    if (size + next > icsSaveNameLimit) {
+      break;
+    }
+
+    stem += character;
+    size += next;
+  }
+
+  const suggested = `${stem.replace(/-+$/u, "")}.ics`;
+
+  return Schema.is(IcsSuggestedName)(suggested) ? suggested : "events.ics";
+};
+
+export const IcsCalendarBytes = Schema.Uint8Array.check(
+  Schema.isMaxLength(icsSaveByteLimit),
+  Schema.makeFilter((bytes) => {
+    try {
+      const text = decoder.decode(bytes);
+
+      return (
+        text.startsWith("BEGIN:VCALENDAR\r\n") &&
+        text.endsWith("END:VCALENDAR\r\n") &&
+        text.includes("\r\nVERSION:2.0\r\n") &&
+        !text.includes("\u0000")
+      );
+    } catch {
+      return false;
+    }
+  })
+);
+
+export const IcsSaveRequest = Schema.Struct({
+  bytes: IcsCalendarBytes,
+  suggestedName: IcsSuggestedName,
+});
+
+export const IcsSaveFailureReason = Schema.Literals([
+  "busy",
+  "dialog",
+  "invalid",
+  "transport",
+  "tooLarge",
+  "unavailable",
+  "untrusted",
+  "write",
+]);
+
+export const IcsSaveOutcome = Schema.TaggedUnion({
+  Cancelled: {},
+  Failed: { reason: IcsSaveFailureReason },
+  Saved: {},
+});
+
+const transport = Schema.Struct({
+  ...IcsSaveRequest.fields,
+  bytes: Schema.Uint8ArrayFromBase64.pipe(Schema.decodeTo(IcsCalendarBytes)),
+});
+
+const icsSaveWire = Schema.String.check(
+  Schema.isMaxLength(icsSaveWireLimit),
+  Schema.makeFilter(
+    (message) => encoder.encode(message).byteLength <= icsSaveWireLimit
+  )
+).pipe(Schema.decodeTo(Schema.fromJsonString(transport)));
 
 export type Navigation = "window" | "browser" | "deny";
 
@@ -266,6 +365,8 @@ export const desktopWire = {
   previewSound: Schema.fromJsonString(Schema.Struct({ sound: PromptSound })),
   previewSoundReply: Schema.fromJsonString(Schema.Boolean),
   reply: Schema.fromJsonString(DesktopSettingsReply),
+  saveIcs: icsSaveWire,
+  saveIcsReply: Schema.fromJsonString(IcsSaveOutcome),
   settings: Schema.fromJsonString(DesktopSettings),
   startup: Schema.fromJsonString(StartupRequest),
 };
@@ -276,6 +377,7 @@ export const desktopChannels = {
   join: "potion:desktop:join:1",
   preferences: "potion:desktop:preferences:1",
   previewSound: "potion:desktop:preview-sound:1",
+  saveIcs: "potion:desktop:save-ics:1",
   settings: "potion:desktop:settings:1",
   settingsChanged: "potion:desktop:settings-changed:1",
   startup: "potion:desktop:startup:1",
@@ -319,6 +421,9 @@ export interface DesktopBridge {
   ) => () => void;
   readonly previewSound?: (sound: typeof PromptSound.Type) => Promise<boolean>;
   readonly publishAgenda: (snapshot: AgendaSnapshotValue) => void;
+  readonly saveIcs?: (
+    request: typeof IcsSaveRequest.Type
+  ) => Promise<typeof IcsSaveOutcome.Type>;
   readonly savePreferences: (
     preferences: DesktopPreferencesValue
   ) => Promise<typeof DesktopSettingsReply.Type>;

@@ -1,3 +1,6 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- This composition root supplies the native writer only to the user-dialog-authorized ICS save service.
+import { writeFile } from "node:fs/promises";
+
 import {
   DesktopAction,
   desktopChannels,
@@ -28,9 +31,11 @@ import type { BrowserWindow } from "electron";
 
 import { acceptsDesktopFrame } from "./bridge-policy.js";
 import { DesktopError } from "./config.js";
+import { IcsFileSaver } from "./ics-save.js";
 import { mainWindowActions } from "./main-window.js";
 import { NativeIntent, startNativeHost } from "./native-host.js";
 import type { NativeIntentValue } from "./native-host.js";
+import { nativeIcsSavePort } from "./native-ics-save.js";
 import { NativeIntentEvent } from "./native-intent-event.js";
 import { runNativeJoin } from "./native-join.js";
 import { nativeSettingsPort } from "./native-settings.js";
@@ -282,6 +287,20 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
         )
       );
 
+    const saveIcs = yield* IcsFileSaver;
+
+    ipcMain.handle(
+      desktopChannels.saveIcs,
+      // @effect-diagnostics-next-line asyncFunction:off -- The bounded native handler owns decoding, frame revalidation, dialog lifetime and the write result inside this window's Effect scope.
+      async (event, payload): Promise<string> =>
+        await run(
+          saveIcs.handle(
+            payload,
+            Effect.sync(() => trusted(event))
+          )
+        )
+    );
+
     const register = <A, B>(
       channel: string,
       input: Schema.Codec<A, string>,
@@ -452,6 +471,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           desktopChannels.join,
           desktopChannels.preferences,
           desktopChannels.previewSound,
+          desktopChannels.saveIcs,
           desktopChannels.startup,
         ]) {
           ipcMain.removeHandler(channel);
@@ -486,6 +506,17 @@ export class DesktopRuntime extends Context.Service<
         ).pipe(
           Layer.provide(
             Layer.mergeAll(
+              IcsFileSaver.layer(
+                nativeIcsSavePort({
+                  // @effect-diagnostics-next-line asyncFunction:off -- The composition root binds the dialog to this exact owned BrowserWindow.
+                  choose: async (options) =>
+                    await dialog.showSaveDialog(window, options),
+                  // @effect-diagnostics-next-line asyncFunction:off -- Only the dialog-authorized service receives this native filesystem writer.
+                  write: async (path, bytes, options) => {
+                    await writeFile(path, bytes, options);
+                  },
+                })
+              ),
               NativeSettings.layer(
                 nativeSettingsPort((action) => {
                   intent(

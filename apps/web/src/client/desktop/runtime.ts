@@ -2,7 +2,15 @@ import { watchActor } from "@calendar/capability/actor-watch";
 import { DesktopAction, DesktopSettings } from "@calendar/core/desktop-bridge";
 import type { DesktopBridge } from "@calendar/core/desktop-bridge";
 import { createEffectActor, createEffectLogic, join } from "@xstate/effect";
-import { Effect, Match, Option, Queue, Schema, Stream } from "effect";
+import {
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 
 import {
   previewDesktopSound,
@@ -81,6 +89,9 @@ export const runDesktopRequest = Effect.fn("Desktop.runBrowserRequest")(
     const outcome = yield* join(actor).pipe(Effect.orDie);
 
     return DesktopNotice.cases.Finished.make({
+      canSaveIcs: Option.exists(bridge, (native) =>
+        Predicate.isFunction(native.saveIcs)
+      ),
       outcome,
       request: request.request,
     });

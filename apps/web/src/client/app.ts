@@ -1513,6 +1513,7 @@ const updateCore = (
         ),
         desktop: {
           availability: model.desktop.availability,
+          canSaveIcs: model.desktop.canSaveIcs,
           error: Option.none(),
           request: model.desktop.request,
           settings: model.desktop.settings,

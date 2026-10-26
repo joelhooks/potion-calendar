@@ -25,7 +25,10 @@ export const icsExportAvailable = (model: AppModel): boolean => {
     Option.contains(model.person, session.user.id) &&
     model.calendar.selected.length > 0 &&
     EditorView.guards.Closed(model.editing.view) &&
-    model.desktop.availability === "unavailable"
+    model.icsExport.phase !== "saving" &&
+    (model.desktop.availability === "unavailable" ||
+      (model.desktop.availability === "available" &&
+        model.desktop.canSaveIcs === true))
   );
 };
 

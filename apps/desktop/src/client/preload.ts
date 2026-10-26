@@ -76,6 +76,22 @@ const bridge = createDesktopBridge({
     ipcRenderer.send(desktopChannels.agenda, message);
   },
   rejected,
+  // @effect-diagnostics-next-line asyncFunction:off -- The dedicated ICS channel returns only decoded wire text; native paths never enter this bridge.
+  saveIcs: async (request) => {
+    const value: unknown = await ipcRenderer.invoke(
+      desktopChannels.saveIcs,
+      request
+    );
+
+    const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+    if (Option.isNone(message)) {
+      rejected();
+      throw new Error("Invalid ICS save reply");
+    }
+
+    return message.value;
+  },
   // @effect-diagnostics-next-line asyncFunction:off -- Electron IPC replies are decoded before exposure to the hosted page.
   savePreferences: async (preferences) => {
     const value: unknown = await ipcRenderer.invoke(

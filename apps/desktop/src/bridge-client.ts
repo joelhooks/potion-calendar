@@ -1,5 +1,13 @@
-import { MeetingJoinOutcome, desktopWire } from "@calendar/core/desktop-bridge";
-import type { DesktopBridge } from "@calendar/core/desktop-bridge";
+import {
+  IcsSaveOutcome,
+  MeetingJoinOutcome,
+  desktopWire,
+  icsSaveParseOptions,
+} from "@calendar/core/desktop-bridge";
+import type {
+  DesktopBridge,
+  IcsSaveRequest,
+} from "@calendar/core/desktop-bridge";
 import { Option, Schema } from "effect";
 
 export interface RendererBridgePort {
@@ -8,6 +16,7 @@ export interface RendererBridgePort {
   readonly previewSound?: (message: string) => Promise<string>;
   readonly publishAgenda: (message: string) => void;
   readonly rejected: () => void;
+  readonly saveIcs?: (message: string) => Promise<string>;
   readonly savePreferences: (message: string) => Promise<string>;
   readonly setStartup: (message: string) => Promise<string>;
   readonly subscribeActions: (receive: (message: string) => void) => () => void;
@@ -19,6 +28,8 @@ export interface RendererBridgePort {
 export const createDesktopBridge = (
   port: RendererBridgePort
 ): DesktopBridge => {
+  const { saveIcs } = port;
+
   const decode = <A>(
     schema: Schema.Codec<A, string>,
     message: string
@@ -55,7 +66,7 @@ export const createDesktopBridge = (
     return result.value;
   };
 
-  return Object.freeze({
+  const bridge: DesktopBridge = {
     // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload exposes decoded native IPC Promises to the hosted page.
     getSettings: async () =>
       reply(desktopWire.settings, await port.getSettings()),
@@ -133,5 +144,41 @@ export const createDesktopBridge = (
 
       return reply(desktopWire.reply, await port.setStartup(encoded.value));
     },
-  } satisfies DesktopBridge);
+  };
+
+  if (saveIcs === undefined) {
+    return Object.freeze(bridge);
+  }
+
+  return Object.freeze({
+    ...bridge,
+    // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload validates the bounded ICS request and native completion before exposing the result.
+    saveIcs: async (request: typeof IcsSaveRequest.Type) => {
+      const encoded = Schema.encodeOption(
+        desktopWire.saveIcs,
+        icsSaveParseOptions
+      )(request);
+
+      if (Option.isNone(encoded)) {
+        port.rejected();
+
+        return IcsSaveOutcome.cases.Failed.make({ reason: "invalid" });
+      }
+
+      const message = await saveIcs(encoded.value);
+
+      const decoded = Schema.decodeOption(
+        desktopWire.saveIcsReply,
+        icsSaveParseOptions
+      )(message);
+
+      if (Option.isNone(decoded)) {
+        port.rejected();
+
+        throw new Error("Invalid ICS save reply");
+      }
+
+      return decoded.value;
+    },
+  });
 };

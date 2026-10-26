@@ -28,6 +28,8 @@ export const beginIcsExport = (model: AppModel) => {
   }
 
   const revision = model.icsExport.revision + 1;
+  const saving = model.desktop.availability === "available";
+  const phase: "idle" | "saving" = saving ? "saving" : "idle";
 
   return {
     commands: [
@@ -37,7 +39,20 @@ export const beginIcsExport = (model: AppModel) => {
         revision,
       }),
     ],
-    model: { ...model, icsExport: { notice: Option.none(), revision } },
+    model: {
+      ...model,
+      icsExport: {
+        notice: saving
+          ? Option.some({
+              message: "Saving…",
+              personId: selection.personId,
+              revision,
+            })
+          : Option.none(),
+        phase,
+        revision,
+      },
+    },
   };
 };
 
@@ -49,6 +64,10 @@ export const receiveIcsExport = (
   notice.revision === model.icsExport.revision
     ? {
         ...model,
-        icsExport: { ...model.icsExport, notice: Option.some(notice) },
+        icsExport: {
+          ...model.icsExport,
+          notice: Option.some(notice),
+          phase: "idle",
+        },
       }
     : model;

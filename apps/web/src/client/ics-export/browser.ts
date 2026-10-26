@@ -8,6 +8,7 @@ import { Command } from "foldkit";
 
 import { browserDesktop } from "../desktop/commands.js";
 import { Message } from "../message.js";
+import { desktopIcsMessage, saveDesktopIcs } from "./desktop.js";
 
 export const zonedSeriesExportMessage =
   "Repeating series in a time zone can't be exported yet. Select one occurrence to export it.";
@@ -61,7 +62,9 @@ export const DownloadSelectedIcs = Command.define("DownloadSelectedIcs", {
   },
   execute: ({ events, personId, revision }) =>
     Effect.gen(function* downloadSelectedIcs() {
-      if (Option.isSome(browserDesktop())) {
+      const desktop = browserDesktop();
+
+      if (Option.isSome(desktop) && desktop.value.saveIcs === undefined) {
         return Message.ReceivedIcsExport({
           notice: {
             message:
@@ -79,6 +82,22 @@ export const DownloadSelectedIcs = Command.define("DownloadSelectedIcs", {
         return Message.ReceivedIcsExport({
           notice: {
             message: icsExportRefusal(outcome.reason),
+            personId,
+            revision,
+          },
+        });
+      }
+
+      if (Option.isSome(desktop)) {
+        const saved = yield* saveDesktopIcs(
+          desktop.value,
+          outcome.content,
+          outcome.filename
+        );
+
+        return Message.ReceivedIcsExport({
+          notice: {
+            message: desktopIcsMessage(saved, outcome.skipped.length),
             personId,
             revision,
           },
