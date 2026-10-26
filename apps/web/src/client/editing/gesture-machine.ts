@@ -4,6 +4,7 @@ import { types } from "xstate";
 
 import { doubleClick, dragPrecision } from "../../layout/edit-time.js";
 import { gestureRange } from "../../layout/gesture-range.js";
+import { isoFromDay } from "../../layout/navigation.js";
 import type { GestureResult } from "./gesture-model.js";
 import { GesturePoint, GestureStart } from "./gesture-model.js";
 
@@ -89,11 +90,31 @@ export const gestureMachine = setupEffect({
                       : 30),
                 };
 
+            const result = gestureRange(start, point, context.sequence + 1);
+
+            const fullDay =
+              event.point.mod === true &&
+              !event.point.alt &&
+              !event.point.shift;
+
+            const date = isoFromDay(event.point.day);
+
             return {
               context: {
                 blockClick: true,
                 click: undefined,
-                completed: gestureRange(start, point, context.sequence + 1),
+                completed: fullDay
+                  ? {
+                      ...result,
+                      range: {
+                        allDay: true,
+                        endDate: date,
+                        endTime: "00:00",
+                        startDate: date,
+                        startTime: "00:00",
+                      },
+                    }
+                  : result,
                 preview: undefined,
                 sequence: context.sequence + 1,
                 start: undefined,
