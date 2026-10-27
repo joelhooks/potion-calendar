@@ -1,3 +1,4 @@
+import { deskDefaultMenuBarOffNotificationGuidance } from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -99,6 +100,14 @@ export const desktopNotificationRows = <Message>(
                     ),
                   actions.rejected
                 ),
+                ...(preferences.menuBar
+                  ? []
+                  : [
+                      h.p(
+                        [h.Role("status")],
+                        [deskDefaultMenuBarOffNotificationGuidance.text]
+                      ),
+                    ]),
               ],
             }),
           ]

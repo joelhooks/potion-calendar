@@ -6,6 +6,8 @@ import {
 import { Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
+import { NotificationSettingsUi } from "./notification-model.js";
+
 export const RemoteDesktop = AsyncData.Schema(DesktopSettings, Schema.String);
 
 export const DesktopRequest = Schema.TaggedUnion({
@@ -41,6 +43,7 @@ export const DesktopUi = Schema.Struct({
   error: Schema.Option(Schema.String),
   notificationLease: Schema.optional(Schema.String),
   notificationRevision: Schema.optional(Schema.Int),
+  notificationSettings: Schema.optional(NotificationSettingsUi),
   request: Schema.Int,
   settings: RemoteDesktop.schema,
 });

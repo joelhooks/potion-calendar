@@ -10,6 +10,8 @@ import {
   BrowserWindow,
   dialog,
   Menu,
+  Notification,
+  ipcMain,
   screen,
   session,
   shell,
@@ -22,6 +24,7 @@ import { DesktopError, desktopOrigin } from "./config.js";
 import { waitForSignIn } from "./loopback.js";
 import { focusMainWindow } from "./main-window.js";
 import { applicationMenu } from "./menus.js";
+import { installNotificationSettings } from "./native-notification-settings.js";
 import { DesktopRuntime } from "./native-runtime.js";
 import { navigation, startsSystemSignIn } from "./navigation.js";
 import { runSignIn } from "./sign-in-machine.js";
@@ -420,6 +423,24 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
       )
     );
   });
+  yield* installNotificationSettings(
+    window,
+    origin,
+    process.platform === "darwin",
+    {
+      // @effect-diagnostics-next-line asyncFunction:off -- The fixed notification-settings destination crosses Electron's native shell Promise only after the trusted Open intent.
+      openExternal: async (url) => {
+        await shell.openExternal(url);
+      },
+      register: (channel, handler) => {
+        ipcMain.handle(channel, handler);
+      },
+      remove: (channel) => {
+        ipcMain.removeHandler(channel);
+      },
+      supported: () => Notification.isSupported(),
+    }
+  );
   yield* Effect.gen(function* nativeApplication() {
     const native = yield* DesktopRuntime;
     Menu.setApplicationMenu(

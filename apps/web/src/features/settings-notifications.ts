@@ -4,6 +4,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import { Message } from "../client/app.js";
 import type { AppModel, AppMessage } from "../client/app.js";
 import { SettingsChange } from "../client/settings/model.js";
+import { desktopNotificationPermission } from "./desktop-notification-permission.js";
 import { desktopSettingsView } from "./desktop-settings-actions.js";
 import { desktopNotificationRows } from "./desktop-settings.js";
 import { remindersPermission } from "./reminders-permission.js";
@@ -13,7 +14,9 @@ export const settingsNotifications = (
   h: HtmlBuilder<AppMessage>
 ): readonly Html[] => [
   h.h1([], ["Notifications"]),
-  remindersPermission(model, h),
+  model.desktop.availability === "available"
+    ? desktopNotificationPermission(model, h)
+    : remindersPermission(model, h),
   ...desktopSettingsView(model.desktop, h, desktopNotificationRows),
   h.section(
     [h.Class("settings-section")],

@@ -80,6 +80,10 @@ import {
   DesktopUi,
   initialDesktop,
 } from "./desktop/model.js";
+import {
+  readNotificationSettingsForRoute,
+  updateNotificationSettings,
+} from "./desktop/notification-settings.js";
 import { respondFromDesktop } from "./desktop/respond.js";
 import { desktopSelection } from "./desktop/selection.js";
 import { beginDesktopRequest, receiveDesktopNotice } from "./desktop/update.js";
@@ -640,9 +644,8 @@ const updateCore = (
       const route = routeFromUrl(url);
       const closed = closeKeyboard(model);
 
-      return {
-        commands: scrollForRoute(route),
-        model: syncSearchRoute(
+      const next = readNotificationSettingsForRoute(
+        syncSearchRoute(
           {
             ...closed,
             keyboard: {
@@ -655,7 +658,12 @@ const updateCore = (
             },
           },
           route
-        ),
+        )
+      );
+
+      return {
+        ...next,
+        commands: [...scrollForRoute(route), ...(next.commands ?? [])],
       };
     },
     BrowserUrlRequested: ({ request }) => {
@@ -686,6 +694,8 @@ const updateCore = (
     ChangedConferencing: ({ change }) => changeConferencing(model, change),
     ChangedConferencingSettings: ({ change, personId }) =>
       updateConferencingSettings(model, personId, change),
+    ChangedDesktopNotificationSettings: ({ change }) =>
+      updateNotificationSettings(model, change),
     ChangedProfile: ({ change, personId }) =>
       updateProfile(model, personId, change, dispatch),
     ChangedSettings: ({ change }) => {
@@ -1315,12 +1325,14 @@ const updateCore = (
     },
     ReceivedDesktop: ({ notice }) => {
       if (!DesktopNotice.guards.Action(notice)) {
-        return {
-          model: {
-            ...model,
-            desktop: receiveDesktopNotice(model.desktop, notice),
-          },
+        const next = {
+          ...model,
+          desktop: receiveDesktopNotice(model.desktop, notice),
         };
+
+        return model.desktop.availability === "available"
+          ? { model: next }
+          : readNotificationSettingsForRoute(next);
       }
 
       return Match.value(notice.action).pipe(

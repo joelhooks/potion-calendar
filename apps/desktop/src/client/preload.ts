@@ -1,6 +1,7 @@
 import {
   desktopChannels,
   nativeNotificationChannels,
+  notificationSettingsChannel,
 } from "@calendar/core/desktop-bridge";
 import { Effect, Option, Schema } from "effect";
 import { contextBridge, ipcRenderer } from "electron";
@@ -148,6 +149,22 @@ const bridge = createDesktopBridge(
 
           if (Option.isNone(message)) {
             throw new Error("Invalid notification reply");
+          }
+
+          return message.value;
+        },
+        // @effect-diagnostics-next-line asyncFunction:off -- The Mac-only additive method transports versioned settings intents, not caller-selected external URLs.
+        notificationSettings: async (request: string) => {
+          const value: unknown = await ipcRenderer.invoke(
+            notificationSettingsChannel,
+            request
+          );
+
+          const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+          if (Option.isNone(message)) {
+            rejected();
+            throw new Error("Invalid notification settings reply");
           }
 
           return message.value;

@@ -714,6 +714,9 @@ export const DesktopStartupTiming = Schema.Struct({
 });
 
 export interface DesktopBridge {
+  readonly notificationSettings?: (
+    request: typeof NotificationSettingsRequest.Type
+  ) => Promise<typeof NotificationSettingsReply.Type>;
   readonly nativeNotifications?: (
     request: typeof NativeNotificationRequest.Type
   ) => Promise<typeof NativeNotificationReply.Type>;
@@ -758,3 +761,79 @@ export const defaultDesktopPreferences = (): DesktopPreferencesValue => ({
   showTime: true,
   showTitle: true,
 });
+
+export const deskDefaultMacNotificationPermission = Object.freeze({
+  authorization: Schema.Literal("unknown").make("unknown"),
+  explanation: "This build cannot read macOS notification authorization.",
+  label: "desk default (spec silent)",
+  sources: [
+    "https://www.electronjs.org/docs/latest/api/notification",
+    "https://www.electronjs.org/docs/latest/api/system-preferences",
+  ],
+  text: "Permission status: Check System Settings",
+});
+
+export const deskDefaultMacNotificationSettingsUrl = Object.freeze({
+  fallback:
+    "Open the Apple menu, choose System Settings, then Notifications and Potion Calendar.",
+  label: "desk default (spec silent)",
+  sources: [
+    "https://www.electronjs.org/docs/latest/api/shell",
+    "https://support.apple.com/guide/mac-help/change-notifications-settings-mh40583/mac",
+  ],
+  url: "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+});
+
+export const deskDefaultMacNotificationGuidance = Object.freeze({
+  alerts:
+    "Choose Alerts for notifications that stay visible until you dismiss them.",
+  focus: "Do Not Disturb or Focus can hide alerts.",
+  label: "desk default (spec silent)",
+  sources: [
+    "https://support.apple.com/guide/mac-help/change-notifications-settings-mh40583/mac",
+  ],
+});
+
+export const deskDefaultMenuBarOffNotificationGuidance = Object.freeze({
+  label: "desk default (spec silent)",
+  sources: [
+    "https://www.electronjs.org/docs/latest/api/notification",
+    "https://support.apple.com/guide/mac-help/change-notifications-settings-mh40583/mac",
+  ],
+  text: "The menu bar calendar is off. Desktop reminders and upcoming-meeting notifications will not appear.",
+});
+
+export const MacNotificationPermission = Schema.Struct({
+  authorization: Schema.Literal("unknown"),
+  supported: Schema.Boolean,
+});
+
+export const NotificationSettingsRequest = Schema.TaggedUnion({
+  Open: { version: Schema.Literal(1) },
+  Read: { version: Schema.Literal(1) },
+});
+
+export const NotificationSettingsReply = Schema.TaggedUnion({
+  Failed: { message: Schema.String, version: Schema.Literal(1) },
+  Read: { permission: MacNotificationPermission, version: Schema.Literal(1) },
+  Requested: { version: Schema.Literal(1) },
+  Unavailable: { version: Schema.Literal(1) },
+});
+
+export const notificationSettingsWire = {
+  reply: Schema.fromJsonString(NotificationSettingsReply),
+  request: Schema.fromJsonString(NotificationSettingsRequest),
+};
+
+export const notificationSettingsChannel =
+  "potion:desktop:notification-settings:1";
+
+export const notificationSettingsReplyMatches = (
+  request: typeof NotificationSettingsRequest.Type,
+  reply: typeof NotificationSettingsReply.Type
+): boolean =>
+  Predicate.isTagged(reply, "Failed") ||
+  Predicate.isTagged(reply, "Unavailable") ||
+  (Predicate.isTagged(request, "Read") && Predicate.isTagged(reply, "Read")) ||
+  (Predicate.isTagged(request, "Open") &&
+    Predicate.isTagged(reply, "Requested"));

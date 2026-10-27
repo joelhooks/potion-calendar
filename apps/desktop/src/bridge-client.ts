@@ -5,6 +5,9 @@ import {
   icsSaveParseOptions,
   nativeNotificationWire,
   NativeNotificationRequest,
+  NotificationSettingsRequest,
+  notificationSettingsWire,
+  notificationSettingsReplyMatches,
 } from "@calendar/core/desktop-bridge";
 import type {
   DesktopBridge,
@@ -14,6 +17,7 @@ import type {
 import { Option, Schema } from "effect";
 
 export interface RendererBridgePort {
+  readonly notificationSettings?: (message: string) => Promise<string>;
   readonly nativeNotifications?: (message: string) => Promise<string>;
   readonly subscribeNativeNotifications?: (
     receive: (message: string) => void
@@ -124,6 +128,52 @@ export const createDesktopBridge = (
     };
   };
 
+  const exposeNotificationSettings = (base: DesktopBridge): DesktopBridge => {
+    const { notificationSettings } = port;
+
+    if (notificationSettings === undefined) {
+      return base;
+    }
+
+    return {
+      ...base,
+      // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload admits only versioned settings intents and matching decoded native replies, never renderer URLs.
+      notificationSettings: async (request) => {
+        const admitted = Schema.decodeOption(NotificationSettingsRequest, {
+          onExcessProperty: "error",
+        })(request);
+
+        if (Option.isNone(admitted)) {
+          port.rejected();
+          throw new Error("Invalid notification settings request");
+        }
+
+        const encoded = Schema.encodeOption(notificationSettingsWire.request)(
+          admitted.value
+        );
+
+        if (Option.isNone(encoded)) {
+          port.rejected();
+          throw new Error("Invalid notification settings request");
+        }
+
+        const result = Schema.decodeOption(notificationSettingsWire.reply, {
+          onExcessProperty: "error",
+        })(await notificationSettings(encoded.value));
+
+        if (
+          Option.isNone(result) ||
+          !notificationSettingsReplyMatches(admitted.value, result.value)
+        ) {
+          port.rejected();
+          throw new Error("Invalid notification settings reply");
+        }
+
+        return result.value;
+      },
+    };
+  };
+
   const bridge: DesktopBridge = {
     // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload exposes decoded native IPC Promises to the hosted page.
     getSettings: async () =>
@@ -204,7 +254,7 @@ export const createDesktopBridge = (
     },
   };
 
-  const exposed = exposeNative(bridge);
+  const exposed = exposeNotificationSettings(exposeNative(bridge));
 
   if (saveIcs === undefined) {
     return Object.freeze(exposed);

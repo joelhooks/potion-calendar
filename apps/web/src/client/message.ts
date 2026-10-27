@@ -19,6 +19,7 @@ import { ClipboardDelivery } from "./clipboard/delivery.js";
 import { ClipboardAction } from "./clipboard/runtime.js";
 import { ConferencingChange } from "./conferencing/model.js";
 import { DesktopNotice, DesktopRequest } from "./desktop/model.js";
+import { NotificationSettingsChange } from "./desktop/notification-model.js";
 import { EditorAction } from "./editing/editor-action.js";
 import { GestureResult } from "./editing/gesture-model.js";
 import { EditingNotice } from "./editing/runtime.js";
@@ -77,6 +78,7 @@ export const Message = defineMessageUnion({
     change: ConferencingSettingsChange,
     personId: Schema.String,
   },
+  ChangedDesktopNotificationSettings: { change: NotificationSettingsChange },
   ChangedProfile: { change: ProfileChange, personId: Schema.String },
   ChangedSettings: { change: SettingsChange },
   ChangedSettingsManagement: { change: ManagementChange },

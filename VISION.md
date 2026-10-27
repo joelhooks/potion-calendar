@@ -25,4 +25,4 @@ One person: Joel, across his Google accounts. Nobody else signs in. There is no 
 
 Level: 3 (jfdi)
 
-Personal app behind an allowlisted Google sign-in. Deploys run from the operator machine through the Alchemy `default` profile with `pnpm deploy:plan` then `pnpm deploy:prod`. Rollback with `pnpm deploy:rollback`. Watch the live site after every deploy; a broken sign-in or an empty week is a failed deploy.
+Personal app behind an allowlisted Google sign-in. Watch the live site after every deploy; a broken sign-in or an empty week is a failed deploy.
