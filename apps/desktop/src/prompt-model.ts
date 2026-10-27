@@ -229,15 +229,18 @@ export const snoozePrompt = (
     [identity, { start: event.start, until: now + minuteMilliseconds }],
   ]);
 
+  const visible = context.visible.filter(
+    (card) => promptIdentity(card.key) !== identity
+  );
+
   return reconcilePrompts(
     {
       ...context,
       now,
       remembered,
       snoozed,
-      visible: context.visible.filter(
-        (card) => promptIdentity(card.key) !== identity
-      ),
+      visible,
+      visibleOwner: visible.length === 0 ? null : context.visibleOwner,
     },
     {},
     retained.filter((card) => promptIdentity(card.key) !== identity)
@@ -262,14 +265,17 @@ export const dismissPrompt = (
   const snoozed = new Map(context.snoozed);
   snoozed.delete(promptIdentity(key));
 
+  const visible = context.visible.filter(
+    (card) => promptIdentity(card.key) !== promptIdentity(key)
+  );
+
   return reconcilePrompts(
     {
       ...context,
       remembered,
       snoozed,
-      visible: context.visible.filter(
-        (card) => promptIdentity(card.key) !== promptIdentity(key)
-      ),
+      visible,
+      visibleOwner: visible.length === 0 ? null : context.visibleOwner,
     },
     {},
     retained.filter((card) => promptIdentity(card.key) !== promptIdentity(key))

@@ -21,6 +21,11 @@ import {
 import { DesktopError } from "../src/config.js";
 import { preparePromptAdmission, startPrompt } from "../src/prompt-machine.js";
 import {
+  dismissPrompt,
+  initialPrompt,
+  snoozePrompt,
+} from "../src/prompt-model.js";
+import {
   nativeEvent,
   nativeHarness,
   nativeRef,
@@ -39,6 +44,44 @@ const meeting: AgendaEventValue = {
   start: nativeEvent.start,
   title: nativeEvent.title,
 };
+
+it.effect.each([
+  ["snooze", "last-card"],
+  ["dismiss", "last-card"],
+  ["snooze", "subset"],
+  ["dismiss", "subset"],
+] as const)(
+  "%s removal keeps owner only for a nonempty %s result",
+  ([action, mode]) =>
+    Effect.sync(() => {
+      const other = {
+        ...meeting,
+        key: { ...meeting.key, eventId: "remaining-card" },
+      };
+
+      const remaining = mode === "subset" ? [other] : [];
+      const events = [meeting, ...remaining];
+      const owner = { lease: "removal-lease", personId: "removal-person" };
+
+      const context = {
+        ...initialPrompt({
+          now: 0,
+          preferences: defaultDesktopPreferences(),
+          snapshot: { ...nativeSnapshot(), events },
+        }),
+        visible: events,
+        visibleOwner: owner,
+      };
+
+      const result =
+        action === "snooze"
+          ? snoozePrompt(context, meeting.key, 0)
+          : dismissPrompt(context, meeting.key);
+
+      expect(result.visible).toEqual(remaining);
+      expect(result.visibleOwner).toBe(mode === "subset" ? owner : null);
+    })
+);
 
 it.effect.each(["accepted", "refused"] as const)(
   "real prompt %s presentation determines ordinary-reminder ownership",
