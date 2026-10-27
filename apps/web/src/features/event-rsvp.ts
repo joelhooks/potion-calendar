@@ -8,8 +8,8 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import type { AppModel, AppMessage } from "../client/app.js";
 import { Message } from "../client/app.js";
 import {
+  freshRsvpNoteTarget,
   localRsvpDraftTarget,
-  rsvpNoteTarget,
 } from "../client/desktop/rsvp-note.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { bindingHints } from "../client/keyboard/registry.js";
@@ -32,7 +32,7 @@ const preparedSource = (
     prepared === undefined ||
     !Option.contains(model.person, prepared.intent.personId) ||
     nativeNotificationLease(model) !== prepared.intent.lease ||
-    rsvpNoteTarget(model, prepared.intent) === undefined
+    freshRsvpNoteTarget(model, prepared.intent) === undefined
   ) {
     return Option.none();
   }

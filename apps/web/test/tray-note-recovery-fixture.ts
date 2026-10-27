@@ -14,13 +14,17 @@ import { Scene } from "foldkit/test";
 
 import { Message, update } from "../src/client/app.js";
 import type { AppMessage, AppModel } from "../src/client/app.js";
+import { BulkExecution, BulkView } from "../src/client/bulk/model.js";
+import { bulkPlanFor } from "../src/client/bulk/selection.js";
 import { DesktopNotice } from "../src/client/desktop/model.js";
 import { CalendarEditingClient } from "../src/client/editing/calendar-client.js";
 import { DispatchEditing } from "../src/client/editing/commands.js";
 import { DeletionWriter } from "../src/client/editing/delete-actor.js";
+import { DeleteCommand } from "../src/client/editing/deletion-session.js";
 import { PrepareEditingDialogs } from "../src/client/editing/dialog-mount.js";
 import { EditorAction } from "../src/client/editing/editor-action.js";
 import { PrepareGestures } from "../src/client/editing/gesture-mount.js";
+import { RsvpIntent } from "../src/client/editing/rsvp-machine.js";
 import {
   EditingCommand,
   EditingNotice,
@@ -31,6 +35,8 @@ import { PrepareKeyboard } from "../src/client/keyboard/mount.js";
 import { PrepareSelection } from "../src/client/selection/mount.js";
 import { PrepareZoneDrag } from "../src/client/zone-drag/mount.js";
 import { view } from "../src/features/app.js";
+import { BulkReceipt, BulkUndo } from "../src/layout/bulk-plans.js";
+import { bulkRootFixture } from "./bulk-root-fixture.js";
 import {
   savedUpcomingEvent,
   upcomingFixture,
@@ -174,6 +180,80 @@ export const recoveryAdmission = (intent = recoveryIntent) =>
       action: DesktopAction.cases.PrepareRsvpNote.make(intent),
     }),
   });
+
+export const RecoveryBusy = Schema.Literals([
+  "rsvp",
+  "bulk-running",
+  "bulk-undoing",
+]);
+
+export const recoveryBusyMessage = (
+  model: AppModel,
+  kind: typeof RecoveryBusy.Type,
+  busy: boolean
+): AppMessage => {
+  if (kind === "rsvp") {
+    return Message.ReceivedEditing({
+      notice: EditingNotice.cases.Rsvp.make({
+        view: {
+          ...model.editing.rsvp,
+          saving: busy
+            ? Option.some(
+                RsvpIntent.make({
+                  event: recoveryEvent,
+                  id: 1,
+                  request: {
+                    ...recoveryIntent.key,
+                    response: "tentative",
+                    sendUpdates: "none",
+                  },
+                })
+              )
+            : Option.none(),
+        },
+      }),
+      personId: upcomingPerson,
+    });
+  }
+
+  const base = bulkRootFixture();
+  const selection = base.keys.slice(0, 2);
+
+  const plan = bulkPlanFor(
+    {
+      ...base.model,
+      calendar: { ...base.model.calendar, selected: selection },
+    },
+    "delete"
+  );
+
+  const execution = BulkExecution.make({
+    id: "unrelated-bulk",
+    mutations: [],
+    plan,
+    receipts: plan.steps.map((step) =>
+      BulkReceipt.cases.Succeeded.make({
+        key: step.key,
+        undo: BulkUndo.cases.Available.make({
+          request: DeleteCommand.cases.Undo.make({ id: step.key }),
+        }),
+      })
+    ),
+    selection,
+  });
+
+  const active =
+    kind === "bulk-running"
+      ? BulkView.cases.Running.make({ id: execution.id, plan, selection })
+      : BulkView.cases.Undoing.make({ execution });
+
+  return Message.ReceivedEditing({
+    notice: EditingNotice.cases.Bulk.make({
+      view: busy ? active : BulkView.cases.Idle.make({}),
+    }),
+    personId: upcomingPerson,
+  });
+};
 
 export const recoveryHost = Effect.fn("RecoveryTest.host")(
   function* recoveryHost(initial: AppModel) {

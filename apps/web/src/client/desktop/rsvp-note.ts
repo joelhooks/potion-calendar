@@ -23,7 +23,7 @@ import { nativeNotificationLease } from "../reminders/native-projection.js";
 import { desktopSelection } from "./selection.js";
 import { agendaSnapshot } from "./snapshot.js";
 
-const nativeNoteTarget = (
+export const freshRsvpNoteTarget = (
   model: AppModel,
   intent: typeof TrayRsvpNote.Type
 ): { display: DisplayEvent; source: CalendarEventValue } | undefined => {
@@ -41,7 +41,7 @@ const nativeNoteTarget = (
         (event) =>
           sameDesktopEventKey(event.key, intent.key) &&
           event.start === intent.start &&
-          event.rsvp?.enabled === true
+          event.rsvp !== undefined
       )
     : undefined;
 
@@ -67,10 +67,14 @@ export const trayRsvpNoteMissingCopy = "refuse-send-keep-editable-draft";
 
 export const trayRsvpNoteDraftMutation = "local-no-native-freshness";
 
+export const trayRsvpNoteBusyPolicy = "preserve-prepared-while-busy";
+
+export const trayRsvpNoteFreshnessPolicy = "real-expiry-dominates-busy";
+
 export const rsvpNoteTarget = (
   model: AppModel,
   intent: typeof TrayRsvpNote.Type
-) => (responseIsBusy(model) ? undefined : nativeNoteTarget(model, intent));
+) => (responseIsBusy(model) ? undefined : freshRsvpNoteTarget(model, intent));
 
 export const localRsvpDraftTarget = (
   model: AppModel,
@@ -157,7 +161,7 @@ export const newPreparedRsvpNote = (before: AppModel, after: AppModel) => {
     (previous === undefined ||
       trayRsvpNoteToken(previous.intent, previous.id) !==
         trayRsvpNoteToken(next.intent, next.id)) &&
-    rsvpNoteTarget(after, next.intent) !== undefined
+    freshRsvpNoteTarget(after, next.intent) !== undefined
     ? next
     : undefined;
 };
@@ -173,7 +177,7 @@ const readyNote = (
   if (
     prepared === undefined ||
     !Predicate.isTagged(model.route, "Calendar") ||
-    rsvpNoteTarget(model, prepared.intent) === undefined
+    freshRsvpNoteTarget(model, prepared.intent) === undefined
   ) {
     return Option.none();
   }
@@ -231,7 +235,7 @@ const obsoletePreparation = (model: AppModel) => {
 
   return prepared !== undefined &&
     Option.contains(model.person, prepared.intent.personId) &&
-    nativeNoteTarget(model, prepared.intent) === undefined
+    freshRsvpNoteTarget(model, prepared.intent) === undefined
     ? prepared
     : undefined;
 };
