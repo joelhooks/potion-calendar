@@ -12,6 +12,7 @@ import type { AppModel } from "../app.js";
 import { writableCalendar } from "../editing/load-editor.js";
 import { activeZone } from "../time-zones/model.js";
 import { applyZonePreferences } from "../time-zones/update.js";
+import { deskDefaultConferencing } from "./conferencing/default.js";
 import { initialConferencingSettings } from "./conferencing/model.js";
 import type { SavedPreferences } from "./model.js";
 import { SettingsChange } from "./model.js";
@@ -38,6 +39,7 @@ export const preferenceSnapshot = (
 ): typeof SavedPreferences.Type => {
   const base: typeof SavedPreferences.Type = {
     customVideoLinks: model.conferencingSettings.entries,
+    defaultConferencing: model.conferencingSettings.defaultConferencing,
     eventInvites: model.settings.eventInvites,
     hiddenWeekdays: hiddenTimeWeekdays(model.calendar.navigation),
     hideContextPanel: model.settings.hideContextPanel,
@@ -125,6 +127,8 @@ export const applyPreferences = (
     },
     conferencingSettings: {
       ...initialConferencingSettings(model.conferencingSettings.requestId + 1),
+      defaultConferencing:
+        preferences.defaultConferencing ?? deskDefaultConferencing,
       entries: preferences.customVideoLinks ?? [],
     },
     settings: {

@@ -2,6 +2,7 @@ import { setupEffect } from "@xstate/effect";
 import { Option, Schema } from "effect";
 import { initialTransition, transition, types } from "xstate";
 
+import { UserDefaultConferencing } from "./default.js";
 import {
   ConferencingSettings,
   ConferencingSettingsChange,
@@ -34,6 +35,7 @@ const beginEdit = (state: State, id?: string): State => {
 
 const list = (state: State, entries = state.entries): State => ({
   ...initialConferencingSettings(state.requestId),
+  defaultConferencing: state.defaultConferencing,
   entries,
 });
 
@@ -43,6 +45,15 @@ export const conferencingSettingsMachine = setupEffect({
     events: {
       Add: Schema.Struct({}),
       Cancel: Schema.Struct({}),
+      Default: Schema.Struct({ value: UserDefaultConferencing }),
+      DefaultFailed: Schema.Struct({
+        message: Schema.String,
+        requestId: Schema.Int,
+      }),
+      DefaultSaved: Schema.Struct({
+        requestId: Schema.Int,
+        value: UserDefaultConferencing,
+      }),
       Edit: Schema.Struct({ id: Schema.NonEmptyString }),
       Failed: Schema.Struct({ message: Schema.String, requestId: Schema.Int }),
       Link: Schema.Struct({ value: Schema.String }),
@@ -102,6 +113,19 @@ export const conferencingSettingsMachine = setupEffect({
           context: ({ context }) => beginEdit(context),
           target: "editing",
         },
+        Default: ({ context, event }) =>
+          event.value === context.defaultConferencing
+            ? undefined
+            : {
+                context: {
+                  ...context,
+                  defaultError: Option.none(),
+                  mode: "savingDefault",
+                  pendingDefault: Option.some(event.value),
+                  requestId: context.requestId + 1,
+                },
+                target: "savingDefault",
+              },
         Edit: ({ context, event }) =>
           context.entries.some((entry) => entry.id === event.id)
             ? { context: beginEdit(context, event.id), target: "editing" }
@@ -157,6 +181,28 @@ export const conferencingSettingsMachine = setupEffect({
             : undefined,
       },
     },
+    savingDefault: {
+      on: {
+        DefaultFailed: ({ context, event }) =>
+          context.requestId === event.requestId
+            ? {
+                context: {
+                  ...list(context),
+                  defaultError: Option.some(event.message),
+                },
+                target: "listing",
+              }
+            : undefined,
+        DefaultSaved: ({ context, event }) =>
+          context.requestId === event.requestId &&
+          Option.contains(context.pendingDefault, event.value)
+            ? {
+                context: { ...list(context), defaultConferencing: event.value },
+                target: "listing",
+              }
+            : undefined,
+      },
+    },
   },
 });
 
@@ -173,6 +219,23 @@ export const changeConferencingSettings = (
     Cancel: () =>
       transition(conferencingSettingsMachine, snapshot, { type: "Cancel" })[0]
         .context,
+    Default: ({ value }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        type: "Default",
+        value,
+      })[0].context,
+    DefaultFailed: ({ message, requestId }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        message,
+        requestId,
+        type: "DefaultFailed",
+      })[0].context,
+    DefaultSaved: ({ value, requestId }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        requestId,
+        type: "DefaultSaved",
+        value,
+      })[0].context,
     Edit: ({ id }) =>
       transition(conferencingSettingsMachine, snapshot, { id, type: "Edit" })[0]
         .context,

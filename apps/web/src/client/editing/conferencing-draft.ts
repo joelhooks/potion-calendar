@@ -10,6 +10,11 @@ import type {
 } from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
+import {
+  UserDefaultConferencing,
+  deskDefaultConferencing,
+  resolvedConferencingDefault,
+} from "../settings/conferencing/default.js";
 import type { EventDraftValue } from "./editor-model.js";
 
 export const EditorConferencingContext = Schema.Struct({
@@ -20,6 +25,7 @@ export const EditorConferencingContext = Schema.Struct({
       setting: Schema.optional(ConferencingDefault),
     })
   ),
+  defaultConferencing: Schema.optionalKey(UserDefaultConferencing),
 });
 
 export const ConferencingDraft = Schema.Struct({
@@ -128,7 +134,11 @@ export const applyEditorConferencingDefault = (
     selfEmail: account?.email,
     setting:
       editorMeetUnavailable(editor, true) === undefined
-        ? account?.setting
+        ? resolvedConferencingDefault(
+            account.setting,
+            editor.conferencingContext?.defaultConferencing ??
+              deskDefaultConferencing
+          )
         : undefined,
   });
 

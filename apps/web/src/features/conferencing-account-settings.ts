@@ -26,7 +26,7 @@ const descriptions: Record<typeof ConferencingDefault.Type, string> = {
   googleMeet:
     "Adds Meet when you invite another person to a new event without conferencing.",
   none: "Do not add conferencing automatically.",
-  unset: "New events won't get a meeting link until you choose.",
+  unset: "Inherits your default conferencing on this browser.",
 };
 
 export const conferencingAccountSettings = (
@@ -98,7 +98,19 @@ export const conferencingAccountSettings = (
         ),
         ...(value === undefined
           ? []
-          : [h.p([h.Class("muted")], [descriptions[value]])]),
+          : [
+              h.p([h.Class("muted")], [descriptions[value]]),
+              ...(value === "unset"
+                ? [
+                    h.p(
+                      [h.Class("muted")],
+                      [
+                        `Your default: ${model.conferencingSettings.defaultConferencing === "googleMeet" ? "Google Meet" : "No conferencing"}.`,
+                      ]
+                    ),
+                  ]
+                : []),
+            ]),
         ...(busy
           ? [
               h.p(

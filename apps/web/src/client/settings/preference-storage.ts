@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { emptyTimeBlocks } from "../../layout/time-blocks.js";
+import { deskDefaultConferencing } from "./conferencing/default.js";
 import {
   SavedPreferences,
   StoredPreferences,
@@ -63,6 +64,8 @@ export const writeGeneralPreferences = Effect.fn("writeGeneralPreferences")(
     return yield* modifyPreferences(person, (current) => ({
       ...preferences,
       customVideoLinks: current.customVideoLinks ?? [],
+      defaultConferencing:
+        current.defaultConferencing ?? deskDefaultConferencing,
       timeBlocks:
         preferences.timeBlocks ?? current.timeBlocks ?? emptyTimeBlocks(),
     }));

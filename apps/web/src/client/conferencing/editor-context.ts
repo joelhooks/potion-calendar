@@ -17,7 +17,7 @@ export const editorConferencingContext = (
     return { accounts: [] };
   }
 
-  return {
+  const context = {
     accounts: snapshot.accounts.map((account) => {
       const state = Object.hasOwn(model.conferencing.accounts, account.id)
         ? model.conferencing.accounts[account.id]
@@ -35,5 +35,8 @@ export const editorConferencingContext = (
 
       return { accountId: account.id, email: account.email, setting };
     }),
+    defaultConferencing: model.conferencingSettings.defaultConferencing,
   };
+
+  return context;
 };

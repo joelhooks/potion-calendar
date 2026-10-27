@@ -1,5 +1,7 @@
 import { Option, Schema } from "effect";
 
+import { UserDefaultConferencing, deskDefaultConferencing } from "./default.js";
+
 const WebUrl = Schema.URLFromString.check(
   Schema.makeFilter(
     (url) => url.protocol === "https:" || url.protocol === "http:"
@@ -35,22 +37,34 @@ export const CustomVideoErrors = Schema.Struct({
 });
 
 export const ConferencingSettings = Schema.Struct({
+  defaultConferencing: UserDefaultConferencing,
+  defaultError: Schema.Option(Schema.String),
   draft: CustomVideoDraft,
   entries: CustomVideoLinks,
   error: Schema.Option(Schema.String),
   errors: CustomVideoErrors,
-  mode: Schema.Literals(["listing", "editing", "saving", "removing"]),
+  mode: Schema.Literals([
+    "listing",
+    "editing",
+    "saving",
+    "removing",
+    "savingDefault",
+  ]),
+  pendingDefault: Schema.Option(UserDefaultConferencing),
   requestId: Schema.Int,
 });
 
 export const initialConferencingSettings = (
   requestId = 0
 ): typeof ConferencingSettings.Type => ({
+  defaultConferencing: deskDefaultConferencing,
+  defaultError: Option.none(),
   draft: { id: Option.none(), link: "", name: "" },
   entries: [],
   error: Option.none(),
   errors: { link: Option.none(), name: Option.none() },
   mode: "listing",
+  pendingDefault: Option.none(),
   requestId,
 });
 
@@ -100,6 +114,9 @@ export const validateVideoDraft = (draft: typeof CustomVideoDraft.Type) => {
 export const ConferencingSettingsChange = Schema.TaggedUnion({
   Add: {},
   Cancel: {},
+  Default: { value: UserDefaultConferencing },
+  DefaultFailed: { message: Schema.String, requestId: Schema.Int },
+  DefaultSaved: { requestId: Schema.Int, value: UserDefaultConferencing },
   Edit: { id: Schema.NonEmptyString },
   Failed: { message: Schema.String, requestId: Schema.Int },
   Link: { value: Schema.String },

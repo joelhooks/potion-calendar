@@ -18,6 +18,10 @@ import {
   TimeBlockEditor,
   initialTimeBlockEditor,
 } from "../time-blocks/model.js";
+import {
+  UserDefaultConferencing,
+  deskDefaultConferencing,
+} from "./conferencing/default.js";
 import { CustomVideoLinks } from "./conferencing/model.js";
 import { VisibilityChoices, VisibilityMigration } from "./visibility-model.js";
 
@@ -86,6 +90,7 @@ export const initialSettings = (): typeof SettingsUi.Type => ({
 export const SavedPreferences = Schema.Struct({
   customVideoLinks: Schema.optionalKey(CustomVideoLinks),
   defaultCalendar: Schema.optionalKey(CalendarRef),
+  defaultConferencing: Schema.optionalKey(UserDefaultConferencing),
   eventInvites: Schema.Boolean,
   hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
@@ -109,6 +114,7 @@ export const SavedPreferences = Schema.Struct({
 const StoredCommon = {
   customVideoLinks: Schema.optionalKey(CustomVideoLinks),
   defaultCalendar: Schema.optionalKey(CalendarRef),
+  defaultConferencing: Schema.optionalKey(UserDefaultConferencing),
   eventInvites: Schema.optionalKey(Schema.Boolean),
   hiddenWeekdays: Schema.optionalKey(HiddenWeekdays),
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
@@ -148,6 +154,7 @@ export const normalizePreferences = (
 ): typeof SavedPreferences.Type => {
   const preferences: typeof SavedPreferences.Type = {
     customVideoLinks: stored.customVideoLinks ?? [],
+    defaultConferencing: stored.defaultConferencing ?? deskDefaultConferencing,
     eventInvites: stored.eventInvites ?? true,
     hiddenWeekdays: preferredHiddenWeekdays(stored),
     hideContextPanel: stored.hideContextPanel ?? false,

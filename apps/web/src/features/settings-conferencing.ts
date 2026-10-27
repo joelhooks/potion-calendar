@@ -6,6 +6,7 @@ import type { AppMessage, AppModel } from "../client/app.js";
 import { Message } from "../client/app.js";
 import { ConferencingSettingsChange } from "../client/settings/conferencing/model.js";
 import { AccountSettingsRoute, printRoute } from "../layout/route.js";
+import { conferencingDefaultSettings } from "./conferencing-default-settings.js";
 
 export const settingsConferencing = (
   model: AppModel,
@@ -245,9 +246,10 @@ export const settingsConferencing = (
       [h.Class("settings-section")],
       [
         h.h2([], ["Default conferencing"]),
+        ...conferencingDefaultSettings(model, h),
         h.p(
           [h.Class("settings-intro")],
-          ["Choose default conferencing in each calendar account's settings."]
+          ["Override your default in each calendar account's settings."]
         ),
         ...(accounts.length === 0
           ? [

@@ -4,12 +4,50 @@ import { Command } from "foldkit";
 
 import { Message } from "../../message.js";
 import { modifyPreferences } from "../preference-storage.js";
+import { UserDefaultConferencing, deskDefaultConferencing } from "./default.js";
 import {
   ConferencingSettingsChange,
   CustomVideoLinks,
   CustomVideoWrite,
   normalizedVideoLink,
 } from "./model.js";
+
+export const SaveDefaultConferencing = Command.define(
+  "SaveDefaultConferencing",
+  {
+    args: {
+      personId: Schema.String,
+      requestId: Schema.Int,
+      value: UserDefaultConferencing,
+    },
+    execute: ({ personId, requestId, value }) =>
+      modifyPreferences(personId, (current) => ({
+        ...current,
+        defaultConferencing: value,
+      })).pipe(
+        Effect.match({
+          onFailure: () =>
+            Message.ChangedConferencingSettings({
+              change: ConferencingSettingsChange.cases.DefaultFailed.make({
+                message:
+                  "Default conferencing could not be saved. Your previous choice is still in use.",
+                requestId,
+              }),
+              personId,
+            }),
+          onSuccess: (saved) =>
+            Message.ChangedConferencingSettings({
+              change: ConferencingSettingsChange.cases.DefaultSaved.make({
+                requestId,
+                value: saved.defaultConferencing ?? deskDefaultConferencing,
+              }),
+              personId,
+            }),
+        })
+      ),
+    messages: [Message.ChangedConferencingSettings],
+  }
+);
 
 export const SaveCustomVideoLinks = Command.define("SaveCustomVideoLinks", {
   args: {

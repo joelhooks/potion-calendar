@@ -1,7 +1,7 @@
 import { Option } from "effect";
 
 import type { AppModel } from "../../app.js";
-import { SaveCustomVideoLinks } from "./commands.js";
+import { SaveCustomVideoLinks, SaveDefaultConferencing } from "./commands.js";
 import { changeConferencingSettings } from "./machine.js";
 import type { ConferencingSettingsChange } from "./model.js";
 import { CustomVideoWrite, validateVideoDraft } from "./model.js";
@@ -18,6 +18,22 @@ export const updateConferencingSettings = (
   const previous = model.conferencingSettings;
   const next = changeConferencingSettings(previous, change);
   const updated = { ...model, conferencingSettings: next };
+
+  if (next.mode === "savingDefault" && previous.mode === "listing") {
+    return Option.match(next.pendingDefault, {
+      onNone: () => ({ model }),
+      onSome: (value) => ({
+        commands: [
+          SaveDefaultConferencing({
+            personId,
+            requestId: next.requestId,
+            value,
+          }),
+        ],
+        model: updated,
+      }),
+    });
+  }
 
   if (next.mode === "saving" && previous.mode === "editing") {
     return Option.match(validateVideoDraft(next.draft).value, {
