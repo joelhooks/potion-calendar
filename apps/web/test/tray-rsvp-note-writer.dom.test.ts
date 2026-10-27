@@ -120,7 +120,11 @@ it.effect.each(responses)(
       const preparedIntent = { ...intent, response };
       yield* h.runtime.dispatch(
         upcomingPerson,
-        EditingCommand.cases.RsvpPrepare.make({ event, intent: preparedIntent })
+        EditingCommand.cases.RsvpPrepare.make({
+          event,
+          intent: preparedIntent,
+          selectionKey: "fixture-selected",
+        })
       );
       yield* h.runtime.dispatch(
         upcomingPerson,
@@ -179,7 +183,11 @@ it.effect(
       );
       yield* h.runtime.dispatch(
         upcomingPerson,
-        EditingCommand.cases.RsvpPrepare.make({ event, intent })
+        EditingCommand.cases.RsvpPrepare.make({
+          event,
+          intent,
+          selectionKey: "fixture-selected",
+        })
       );
 
       const ready = yield* nextResponse(
@@ -194,6 +202,7 @@ it.effect(
         EditingCommand.cases.RsvpPrepare.make({
           event: other,
           intent: { ...intent, key: { ...intent.key, eventId: other.eventId } },
+          selectionKey: "fixture-selected",
         })
       );
 
@@ -221,7 +230,11 @@ it.effect(
       const h = yield* hosted();
       yield* h.runtime.dispatch(
         upcomingPerson,
-        EditingCommand.cases.RsvpPrepare.make({ event, intent })
+        EditingCommand.cases.RsvpPrepare.make({
+          event,
+          intent,
+          selectionKey: "fixture-selected",
+        })
       );
       yield* h.runtime.dispatch(
         upcomingPerson,
@@ -245,6 +258,7 @@ it.effect(
         EditingCommand.cases.RsvpPrepare.make({
           event,
           intent: { ...intent, response: "tentative" },
+          selectionKey: "fixture-selected",
         })
       );
 
@@ -284,8 +298,7 @@ it.effect(
 
       const cleared = yield* nextResponse(
         h.notices,
-        (value) =>
-          value.prepared === undefined && value.note === "Late-clear barrier"
+        (value) => value.prepared === undefined
       );
 
       expect(cleared?.note).toBe("Late-clear barrier");
@@ -307,7 +320,11 @@ it.effect(
       yield* Queue.take(h.calls);
       yield* h.runtime.dispatch(
         upcomingPerson,
-        EditingCommand.cases.RsvpPrepare.make({ event, intent })
+        EditingCommand.cases.RsvpPrepare.make({
+          event,
+          intent,
+          selectionKey: "fixture-selected",
+        })
       );
 
       const refused = yield* nextResponse(
@@ -332,6 +349,7 @@ it.effect("the person-scoped runtime refuses a foreign preparation owner", () =>
         EditingCommand.cases.RsvpPrepare.make({
           event,
           intent: { ...intent, personId: "other" },
+          selectionKey: "fixture-selected",
         })
       )
       .pipe(Effect.result);

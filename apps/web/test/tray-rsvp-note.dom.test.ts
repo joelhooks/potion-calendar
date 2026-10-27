@@ -19,6 +19,7 @@ import {
 } from "../src/client/calendar-state.js";
 import { DesktopNotice } from "../src/client/desktop/model.js";
 import { FocusRsvpNote } from "../src/client/desktop/rsvp-note.js";
+import { desktopSelection } from "../src/client/desktop/selection.js";
 import { EditorAction } from "../src/client/editing/editor-action.js";
 import { PreparedRsvpNote } from "../src/client/editing/rsvp-machine.js";
 import {
@@ -167,6 +168,9 @@ it.effect.each(responses)(
         command: EditingCommand.cases.RsvpPrepare.make({
           event,
           intent: value,
+          selectionKey: Option.getOrThrow(
+            Option.fromUndefinedOr(desktopSelection(model, value.key))
+          ).key,
         }),
         personId: upcomingPerson,
       });
@@ -351,9 +355,9 @@ it.effect.each([
 );
 
 it.effect(
-  "the explicit send revalidates the captured scope and occurrence after staging",
+  "native admission still refuses a stale lease while explicit details response keeps its selected exact copy",
   () =>
-    Effect.sync(() => {
+    Effect.gen(function* retiredScope() {
       const prepared = preparedModel(loaded()).model;
 
       const stale = {
@@ -368,8 +372,36 @@ it.effect(
         })
       );
 
-      expect(result.commands ?? []).toEqual([]);
-      expect(Option.isSome(result.model.error)).toBe(true);
+      const sent = [];
+
+      for (const command of result.commands ?? []) {
+        if (command.name === "DispatchEditing") {
+          const args = yield* Schema.decodeUnknownEffect(commandArgs)(
+            command.args
+          );
+
+          if (EditingCommand.guards.Rsvp(args.command)) {
+            sent.push(args.command);
+          }
+        }
+      }
+
+      expect(sent).toEqual([
+        EditingCommand.cases.Rsvp.make({ event, response: "accepted" }),
+      ]);
+      const native = update(stale, request(intent));
+      expect(Option.isSome(native.model.error)).toBe(true);
+
+      for (const command of native.commands ?? []) {
+        if (command.name === "DispatchEditing") {
+          const args = yield* Schema.decodeUnknownEffect(commandArgs)(
+            command.args
+          );
+
+          expect(EditingCommand.guards.RsvpPrepare(args.command)).toBe(false);
+          expect(EditingCommand.guards.Rsvp(args.command)).toBe(false);
+        }
+      }
     })
 );
 
@@ -548,7 +580,13 @@ it.effect(
           staged.commands?.[0]?.args
         )).command
       ).toEqual(
-        EditingCommand.cases.RsvpPrepare.make({ event: target, intent: value })
+        EditingCommand.cases.RsvpPrepare.make({
+          event: target,
+          intent: value,
+          selectionKey: Option.getOrThrow(
+            Option.fromUndefinedOr(desktopSelection(model, value.key))
+          ).key,
+        })
       );
 
       const admitted = update(

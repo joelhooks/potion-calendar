@@ -15,7 +15,7 @@ import type { AppModel, AppMessage } from "../app.js";
 import { eventKey } from "../calendar-state.js";
 import { DispatchEditing } from "../editing/commands.js";
 import { responseIsBusy } from "../editing/response-availability.js";
-import { PreparedRsvpNote } from "../editing/rsvp-machine.js";
+import { PreparedRsvpNote, RsvpDraftBinding } from "../editing/rsvp-machine.js";
 import { EditingCommand } from "../editing/runtime.js";
 import { Message } from "../message.js";
 import { isPhoneShell } from "../phone-shell/model.js";
@@ -23,14 +23,13 @@ import { nativeNotificationLease } from "../reminders/native-projection.js";
 import { desktopSelection } from "./selection.js";
 import { agendaSnapshot } from "./snapshot.js";
 
-export const rsvpNoteTarget = (
+const nativeNoteTarget = (
   model: AppModel,
   intent: typeof TrayRsvpNote.Type
 ): { display: DisplayEvent; source: CalendarEventValue } | undefined => {
   if (
     !Option.contains(model.person, intent.personId) ||
-    nativeNotificationLease(model) !== intent.lease ||
-    responseIsBusy(model)
+    nativeNotificationLease(model) !== intent.lease
   ) {
     return undefined;
   }
@@ -58,6 +57,48 @@ export const rsvpNoteTarget = (
     rsvpSelf(source) !== undefined
     ? { display, source }
     : undefined;
+};
+
+export const trayRsvpNoteExpiryPolicy = "retire-native-keep-draft";
+
+export const trayRsvpNoteAfterExpiryResponse = "ordinary-details-exact-copy";
+
+export const trayRsvpNoteMissingCopy = "refuse-send-keep-editable-draft";
+
+export const trayRsvpNoteDraftMutation = "local-no-native-freshness";
+
+export const rsvpNoteTarget = (
+  model: AppModel,
+  intent: typeof TrayRsvpNote.Type
+) => (responseIsBusy(model) ? undefined : nativeNoteTarget(model, intent));
+
+export const localRsvpDraftTarget = (
+  model: AppModel,
+  selected: DisplayEvent
+) => {
+  const current = model.editing.rsvp;
+  let binding = current.draftTarget;
+  const { prepared } = current;
+
+  if (binding === undefined && prepared !== undefined) {
+    binding = RsvpDraftBinding.cases.Prepared.make({
+      prepared,
+      selectionKey: selected.key,
+    });
+  }
+
+  const target = binding;
+
+  return target === undefined ||
+    target.selectionKey !== selected.key ||
+    !Option.contains(model.person, target.prepared.intent.personId)
+    ? undefined
+    : {
+        binding: target,
+        source: selected.copies.find((copy) =>
+          sameDesktopEventKey(copy.source, target.prepared.intent.key)
+        )?.source,
+      };
 };
 
 export const prepareRsvpNoteFromDesktop = (
@@ -99,6 +140,7 @@ export const prepareRsvpNoteFromDesktop = (
         command: EditingCommand.cases.RsvpPrepare.make({
           event: target.source,
           intent,
+          selectionKey: target.display.key,
         }),
         personId: intent.personId,
       }),
@@ -184,6 +226,16 @@ export const FocusRsvpNote = Command.define("FocusRsvpNote", {
   messages: [Message.CompletedRsvpNoteFocus],
 });
 
+const obsoletePreparation = (model: AppModel) => {
+  const { prepared } = model.editing.rsvp;
+
+  return prepared !== undefined &&
+    Option.contains(model.person, prepared.intent.personId) &&
+    nativeNoteTarget(model, prepared.intent) === undefined
+    ? prepared
+    : undefined;
+};
+
 export const withRsvpNoteFocus = <R>(
   before: AppModel,
   result: Update.Return<AppModel, AppMessage, R>
@@ -216,6 +268,23 @@ export const withRsvpNoteFocus = <R>(
         DispatchEditing({
           command: EditingCommand.cases.RsvpClearPreparation.make({ prepared }),
           personId: prepared.intent.personId,
+        }),
+      ],
+    };
+  }
+
+  const current = obsoletePreparation(result.model);
+
+  if (current !== undefined) {
+    return {
+      ...result,
+      commands: [
+        ...(result.commands ?? []),
+        DispatchEditing({
+          command: EditingCommand.cases.RsvpRetirePreparation.make({
+            prepared: current,
+          }),
+          personId: current.intent.personId,
         }),
       ],
     };

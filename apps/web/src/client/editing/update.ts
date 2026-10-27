@@ -11,6 +11,7 @@ import {
   visibleDays,
 } from "../../layout/navigation.js";
 import { visibleEvents } from "../../layout/presentation.js";
+import { rsvpSelf } from "../../layout/rsvp-eligibility.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel, AppMessage } from "../app.js";
 import { BulkView } from "../bulk/model.js";
@@ -22,7 +23,7 @@ import {
 } from "../bulk/selection.js";
 import { eventKey } from "../calendar-state.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
-import { rsvpNoteTarget } from "../desktop/rsvp-note.js";
+import { localRsvpDraftTarget } from "../desktop/rsvp-note.js";
 import { defaultCreationCalendar } from "../settings/update.js";
 import { homeZone } from "../time-zones/model.js";
 import { DispatchEditing } from "./commands.js";
@@ -40,6 +41,7 @@ import {
   instantSaveEligible,
   instantSavedReceipt,
 } from "./instant.js";
+import { responseIsBusy } from "./response-availability.js";
 import { RsvpResult } from "./rsvp-machine.js";
 import { EditingCommand, EditingNotice } from "./runtime.js";
 import type { EditingRuntime } from "./runtime.js";
@@ -245,29 +247,46 @@ const responseAction = (
     return { model };
   }
 
-  const { prepared } = model.editing.rsvp;
+  const target = localRsvpDraftTarget(model, selected);
   let { source } = selected;
 
-  if (
-    prepared !== undefined &&
-    selected.copies.some((copy) =>
-      sameDesktopEventKey(copy.source, prepared.intent.key)
-    )
-  ) {
-    const target = rsvpNoteTarget(model, prepared.intent);
+  if (target !== undefined) {
+    if (EditorAction.guards.RsvpNoteEdited(action)) {
+      const focused = Option.getOrUndefined(model.editing.rsvp.focused);
 
-    if (target === undefined) {
-      return {
-        model: {
-          ...model,
-          error: Option.some(
-            "This meeting changed. Reopen its response note before sending."
-          ),
-        },
-      };
+      if (
+        focused === undefined ||
+        !sameDesktopEventKey(focused, target.binding.prepared.intent.key)
+      ) {
+        return {
+          model: {
+            ...model,
+            error: Option.some(
+              "This response note no longer has its original meeting."
+            ),
+          },
+        };
+      }
+
+      source = focused;
+    } else {
+      if (
+        target.source === undefined ||
+        rsvpSelf(target.source) === undefined ||
+        responseIsBusy(model)
+      ) {
+        return {
+          model: {
+            ...model,
+            error: Option.some(
+              "This meeting copy is no longer available. Your response note is kept."
+            ),
+          },
+        };
+      }
+
+      ({ source } = target);
     }
-
-    ({ source } = target);
   }
 
   const command = EditorAction.guards.Rsvp(action)

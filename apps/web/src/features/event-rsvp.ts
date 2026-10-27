@@ -7,7 +7,10 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
 import { Message } from "../client/app.js";
-import { eventKey } from "../client/calendar-state.js";
+import {
+  localRsvpDraftTarget,
+  rsvpNoteTarget,
+} from "../client/desktop/rsvp-note.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { bindingHints } from "../client/keyboard/registry.js";
 import { isPhoneShell } from "../client/phone-shell/model.js";
@@ -28,7 +31,8 @@ const preparedSource = (
   if (
     prepared === undefined ||
     !Option.contains(model.person, prepared.intent.personId) ||
-    nativeNotificationLease(model) !== prepared.intent.lease
+    nativeNotificationLease(model) !== prepared.intent.lease ||
+    rsvpNoteTarget(model, prepared.intent) === undefined
   ) {
     return Option.none();
   }
@@ -50,20 +54,28 @@ export const eventRsvp = (
   const current = model.editing.rsvp;
   const preparation = Option.getOrUndefined(preparedSource(model, selected));
   const active = preparation?.prepared;
-  const source = preparation?.source ?? selected.source;
-  const self = rsvpSelf(source);
+  const target = localRsvpDraftTarget(model, selected);
 
-  if (self === undefined) {
+  const source =
+    target === undefined
+      ? (preparation?.source ?? selected.source)
+      : target.source;
+
+  const self = source === undefined ? undefined : rsvpSelf(source);
+
+  if (self === undefined && target === undefined) {
     return [];
   }
 
+  const key = target?.binding.prepared.intent.key ?? selected.source;
+
   const focused =
     Option.isSome(current.focused) &&
-    eventKey(current.focused.value) === eventKey(source);
+    sameDesktopEventKey(current.focused.value, key);
 
   const saving =
     Option.isSome(current.saving) &&
-    eventKey(current.saving.value.event) === eventKey(source);
+    sameDesktopEventKey(current.saving.value.event, key);
 
   const choices: readonly {
     readonly response: "accepted" | "declined" | "tentative";
@@ -94,8 +106,8 @@ export const eventRsvp = (
           choices.map((choice) =>
             h.button(
               [
-                h.Disabled(saving),
-                h.AriaPressed(String(self.responseStatus === choice.response)),
+                h.Disabled(saving || self === undefined),
+                h.AriaPressed(String(self?.responseStatus === choice.response)),
                 h.OnClick(
                   Message.EditingAction({
                     action: EditorAction.cases.Rsvp.make({
@@ -108,6 +120,16 @@ export const eventRsvp = (
             )
           )
         ),
+        ...(target !== undefined && source === undefined
+          ? [
+              h.p(
+                [h.Role("status"), h.Class("editor-hint")],
+                [
+                  "This meeting copy is no longer available. Your response note is kept.",
+                ]
+              ),
+            ]
+          : []),
         h.label(
           [h.Class("editor-field"), h.For("rsvp-note")],
           [

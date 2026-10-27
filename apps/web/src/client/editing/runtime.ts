@@ -54,7 +54,12 @@ export const EditingCommand = Schema.TaggedUnion({
   },
   RsvpClearPreparation: { prepared: PreparedRsvpNote },
   RsvpNote: { event: CalendarEvent, note: Schema.String },
-  RsvpPrepare: { event: CalendarEvent, intent: TrayRsvpNote },
+  RsvpPrepare: {
+    event: CalendarEvent,
+    intent: TrayRsvpNote,
+    selectionKey: Schema.NonEmptyString,
+  },
+  RsvpRetirePreparation: { prepared: PreparedRsvpNote },
 });
 
 export const EditingNotice = Schema.TaggedUnion({
@@ -194,8 +199,15 @@ export class EditingRuntime extends Context.Service<
                   send(rsvp, { event: Option.some(event), type: "FOCUS" }).pipe(
                     Effect.andThen(send(rsvp, { note, type: "NOTE" }))
                   ),
-                RsvpPrepare: ({ event, intent }) =>
-                  send(rsvp, { event, intent, type: "STAGE_NOTE" }),
+                RsvpPrepare: ({ event, intent, selectionKey }) =>
+                  send(rsvp, {
+                    event,
+                    intent,
+                    selectionKey,
+                    type: "STAGE_NOTE",
+                  }),
+                RsvpRetirePreparation: ({ prepared }) =>
+                  send(rsvp, { prepared, type: "RETIRE_NOTE" }),
               }),
             personId,
           };

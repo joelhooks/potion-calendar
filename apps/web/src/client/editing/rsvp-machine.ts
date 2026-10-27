@@ -31,7 +31,16 @@ export const PreparedRsvpNote = Schema.Struct({
   intent: TrayRsvpNote,
 });
 
+export const RsvpDraftBinding = Schema.TaggedUnion({
+  DetailsDraft: {
+    prepared: PreparedRsvpNote,
+    selectionKey: Schema.NonEmptyString,
+  },
+  Prepared: { prepared: PreparedRsvpNote, selectionKey: Schema.NonEmptyString },
+});
+
 export const RsvpView = Schema.Struct({
+  draftTarget: Schema.optional(RsvpDraftBinding),
   focused: Schema.Option(CalendarEvent),
   note: Schema.String,
   preparationError: Schema.optional(Schema.String),
@@ -46,7 +55,7 @@ interface Context {
   readonly note: string;
   readonly preparationError: string | undefined;
   readonly preparationSequence: number;
-  readonly prepared: typeof PreparedRsvpNote.Type | undefined;
+  readonly binding: typeof RsvpDraftBinding.Type | undefined;
   readonly result: typeof RsvpResult.Type | undefined;
   readonly sequence: number;
 }
@@ -100,8 +109,8 @@ const request = (
 
   const next: ContextUpdate = { intent, sequence: intent.id };
 
-  if (notePolicy !== "omit" && context.prepared !== undefined) {
-    next.prepared = undefined;
+  if (notePolicy !== "omit" && context.binding !== undefined) {
+    next.binding = undefined;
     next.preparationError = undefined;
   }
 
@@ -122,8 +131,8 @@ const focus = (
     note: same ? context.note : "",
   };
 
-  if (!same && context.prepared !== undefined) {
-    next.prepared = undefined;
+  if (!same && context.binding !== undefined) {
+    next.binding = undefined;
     next.preparationError = undefined;
   }
 
@@ -133,7 +142,8 @@ const focus = (
 const prepareNote = (
   context: Context,
   event: typeof CalendarEvent.Type,
-  intent: typeof TrayRsvpNote.Type
+  intent: typeof TrayRsvpNote.Type,
+  selectionKey: string
 ): Partial<Context> => {
   const instant =
     event.start !== undefined && "dateTime" in event.start
@@ -166,10 +176,34 @@ const prepareNote = (
 
   return {
     ...focus(context, Option.some(event)),
+    binding: RsvpDraftBinding.cases.Prepared.make({
+      prepared: { id, intent },
+      selectionKey,
+    }),
     preparationError: undefined,
     preparationSequence: id,
-    prepared: { id, intent },
   };
+};
+
+const retireNote = (
+  context: Context,
+  prepared: typeof PreparedRsvpNote.Type
+): Partial<Context> => {
+  const { binding } = context;
+
+  return binding !== undefined &&
+    binding.prepared.id === prepared.id &&
+    binding.prepared.intent.personId === prepared.intent.personId &&
+    binding.prepared.intent.lease === prepared.intent.lease &&
+    sameDesktopEventKey(binding.prepared.intent.key, prepared.intent.key)
+    ? {
+        binding: RsvpDraftBinding.cases.DetailsDraft.make({
+          prepared: binding.prepared,
+          selectionKey: binding.selectionKey,
+        }),
+        preparationError: undefined,
+      }
+    : {};
 };
 
 export const rsvpMachine = setupEffect({
@@ -182,30 +216,35 @@ export const rsvpMachine = setupEffect({
       FOCUS: Schema.Struct({ event: Schema.Option(CalendarEvent) }),
       NOTE: Schema.Struct({ note: Schema.String }),
       RESPOND: Schema.Struct({ event: CalendarEvent, response: Response }),
-      STAGE_NOTE: Schema.Struct({ event: CalendarEvent, intent: TrayRsvpNote }),
+      RETIRE_NOTE: Schema.Struct({ prepared: PreparedRsvpNote }),
+      STAGE_NOTE: Schema.Struct({
+        event: CalendarEvent,
+        intent: TrayRsvpNote,
+        selectionKey: Schema.NonEmptyString,
+      }),
     },
   },
 }).createMachine({
   context: {
+    binding: undefined,
     focused: Option.none(),
     intent: undefined,
     note: "",
     preparationError: undefined,
     preparationSequence: 0,
-    prepared: undefined,
     result: undefined,
     sequence: 0,
   },
   initial: "idle",
   on: {
-    CLEAR_NOTE: ({ context, event }) =>
-      context.prepared?.id === event.prepared.id &&
-      context.prepared.intent.personId === event.prepared.intent.personId &&
-      context.prepared.intent.lease === event.prepared.intent.lease
-        ? { context: { preparationError: undefined, prepared: undefined } }
-        : {},
+    CLEAR_NOTE: ({ context, event }) => ({
+      context: retireNote(context, event.prepared),
+    }),
     FOCUS: ({ context, event }) => ({ context: focus(context, event.event) }),
     NOTE: ({ event }) => ({ context: { note: event.note } }),
+    RETIRE_NOTE: ({ context, event }) => ({
+      context: retireNote(context, event.prepared),
+    }),
   },
   states: {
     idle: {
@@ -221,7 +260,12 @@ export const rsvpMachine = setupEffect({
                 "omit"
               ),
         STAGE_NOTE: ({ context, event }) => ({
-          context: prepareNote(context, event.event, event.intent),
+          context: prepareNote(
+            context,
+            event.event,
+            event.intent,
+            event.selectionKey
+          ),
         }),
       },
     },
@@ -267,8 +311,12 @@ export const projectRsvp = (
     view.preparationError = snapshot.context.preparationError;
   }
 
-  if (snapshot.context.prepared !== undefined) {
-    view.prepared = snapshot.context.prepared;
+  if (snapshot.context.binding !== undefined) {
+    view.draftTarget = snapshot.context.binding;
+
+    if (RsvpDraftBinding.guards.Prepared(snapshot.context.binding)) {
+      view.prepared = snapshot.context.binding.prepared;
+    }
   }
 
   return view;
