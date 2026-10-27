@@ -36,6 +36,10 @@ export const EditorAction = Schema.TaggedUnion({
   ConfirmConferencing: {},
   ConfirmRemoval: {},
   ConfirmScope: {},
+  ConvertType: {
+    sessionId: Schema.String,
+    value: Schema.Literals(["default", "focusTime", "outOfOffice"]),
+  },
   DeleteInstantly: {},
   DeleteNoEmail: {},
   DeleteSelected: {},

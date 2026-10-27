@@ -27,6 +27,7 @@ export const KeyboardUi = Schema.Struct({
     "date",
     "zones",
     "event-zone",
+    "event-type",
     "weekdays",
     "theme",
     "week-start",

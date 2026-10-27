@@ -1,22 +1,14 @@
-import {
-  statusEventAvailability,
-  statusEventType,
-} from "@calendar/calendar/contracts";
+import { statusEventType } from "@calendar/calendar/contracts";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
+import {
+  creationTypeAvailability,
+  createTypeLabels as labels,
+} from "../client/editing/create-type-choices.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { EditorView } from "../client/editing/editor-model.js";
 import { statusPolicyUnavailable } from "../client/editing/status-event-policy.js";
 import type { EditorProps } from "./editor-fields.js";
-
-const labels = {
-  birthday: "Birthday",
-  default: "Event",
-  focusTime: "Focus time",
-  fromGmail: "From Gmail",
-  outOfOffice: "Out of office",
-  workingLocation: "Working location",
-};
 
 const invitationFields = <Message>(
   h: HtmlBuilder<Message>,
@@ -96,12 +88,7 @@ export const eventTypeField = <Message>(
     );
   }
 
-  const calendar = props.calendars.find(
-    (item) =>
-      item.accountId === draft.accountId && item.calendarId === draft.calendarId
-  );
-
-  const availability = statusEventAvailability(calendar, draft.allDay);
+  const availability = creationTypeAvailability(props.calendars, draft);
 
   const busy =
     EditorView.guards.Saving(props.model) ||

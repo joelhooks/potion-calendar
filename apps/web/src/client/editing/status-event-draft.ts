@@ -1,6 +1,5 @@
 import {
   Provider,
-  statusEventAvailability,
   statusEventLabel,
   statusEventType,
 } from "@calendar/calendar/contracts";
@@ -8,6 +7,7 @@ import type { EventFieldsValue } from "@calendar/calendar/contracts";
 import { Effect, Schema } from "effect";
 
 import { hasEditorConferencing } from "./conferencing-draft.js";
+import { creationTypeAvailability } from "./create-type-choices.js";
 import type { LoadedEditor, EditorFailure } from "./editor-session-model.js";
 import { EditorInputFailure } from "./input-failure.js";
 
@@ -19,15 +19,7 @@ export const CreateEventType = Schema.Literals([
 
 export const draftStatusAvailability = (
   session: Pick<typeof LoadedEditor.Type, "calendars" | "draft">
-) =>
-  statusEventAvailability(
-    session.calendars.find(
-      (calendar) =>
-        calendar.accountId === session.draft.accountId &&
-        calendar.calendarId === session.draft.calendarId
-    ),
-    session.draft.allDay
-  );
+) => creationTypeAvailability(session.calendars, session.draft);
 
 const statusDraftProblem = (session: typeof LoadedEditor.Type) =>
   [

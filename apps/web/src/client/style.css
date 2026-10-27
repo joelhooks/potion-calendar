@@ -1457,6 +1457,14 @@ h3 {
 .app .mini-days .in-range {
   background: var(--pressed);
 }
+.event-rsvp #rsvp-note {
+  font: inherit;
+}
+.app .event-rsvp button[data-rsvp-staged="true"],
+.app .event-rsvp button[data-rsvp-staged="true"]:hover {
+  background: var(--pressed);
+  box-shadow: inset 0 -2px 0 var(--focus);
+}
 .app :focus-visible,
 .app .editor-dialog :focus-visible {
   outline-color: var(--focus);

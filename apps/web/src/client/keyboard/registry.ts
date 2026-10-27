@@ -13,6 +13,7 @@ import type { AppModel } from "../app.js";
 import { BulkView } from "../bulk/model.js";
 import { eventKey } from "../calendar-state.js";
 import { DesktopRequest } from "../desktop/model.js";
+import { commandTypeChoices } from "../editing/create-type-choices.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { currentConversion, EditorView } from "../editing/editor-model.js";
 import {
@@ -358,6 +359,21 @@ const joinAvailability = (model: AppModel): Availability => {
 };
 
 export const keyboardRegistry: readonly KeyboardAction[] = [
+  row(
+    "event-type",
+    "Change event type",
+    [],
+    "Editing",
+    "Event",
+    special("event-type"),
+    {
+      availability: (model) =>
+        commandTypeChoices(model.editing, model.calendar.calendars).length > 0
+          ? "enabled"
+          : "hidden",
+      scope: "dialog",
+    }
+  ),
   row(
     "go-to-selection",
     "Go to selection",

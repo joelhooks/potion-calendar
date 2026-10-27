@@ -5,6 +5,7 @@ import { renderToString } from "foldkit/experimental/server";
 
 import { view } from "../src/features/app.js";
 import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
+import { trayNoteAppearanceProof } from "./tray-note-appearance-proof.js";
 import { recoveryScenario } from "./tray-note-recovery-fixture.js";
 
 const responses = [
@@ -57,7 +58,7 @@ it.effect(
             expect(dom.querySelector("[data-tray-rsvp-note]")).toBeNull();
             expect(rendered.html).not.toContain("Add a note for");
             expect(h.calls).toHaveLength(0);
-            const content = `<!doctype html><html lang="en" data-theme="${theme}" data-fixture-pane="${width === 390 ? "phone" : "desktop"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>${pointer}</style></head><body>${rendered.html}<script>const dialog=document.querySelector('#phone-shell-dialog');if(dialog&&!dialog.open){dialog.showModal();}document.documentElement.dataset.fixtureReady='tray-note-recovery';</script></body></html>`;
+            const content = `<!doctype html><html lang="en" data-theme="${theme}" data-fixture-pane="${width === 390 ? "phone" : "desktop"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>${pointer}</style></head><body>${rendered.html}<script>const dialog=document.querySelector('#phone-shell-dialog');if(dialog&&!dialog.open){dialog.showModal();}document.documentElement.dataset.fixtureReady='tray-note-recovery';${trayNoteAppearanceProof(null)}</script></body></html>`;
             frames.push(
               `<section><h2>${width}px retired draft</h2><iframe title="${name} ${theme} ${width}" width="${width}" height="900" srcdoc="${attribute(content)}"></iframe></section>`
             );

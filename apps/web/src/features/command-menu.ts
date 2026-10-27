@@ -25,6 +25,7 @@ export const commandMenu = (
       "date",
       "zones",
       "event-zone",
+      "event-type",
       "weekdays",
       "theme",
       "week-start",
@@ -42,6 +43,7 @@ export const commandMenu = (
       ? zoneChooserHeading(model)
       : (new Map([
           ["event-zone", "Event time zone"],
+          ["event-type", "Change event type"],
           ["weekdays", "Hide/unhide weekdays"],
           ["theme", "Theme"],
           ["week-start", "Start week on"],

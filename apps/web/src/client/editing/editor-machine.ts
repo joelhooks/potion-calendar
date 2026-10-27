@@ -34,6 +34,7 @@ type EditorState =
   | "loading"
   | "editing"
   | "changing"
+  | "converting"
   | "confirmingConferencing"
   | "custom"
   | "validating"
@@ -106,10 +107,48 @@ const undoConversion = (context: EditorContext, id: string): Transition => {
       };
 };
 
+const acceptConversion = (
+  context: EditorContext,
+  output: Option.Option<typeof LoadedEditor.Type>
+): Transition => {
+  if (Option.isNone(output)) {
+    return {};
+  }
+
+  const session = output.value;
+  const target = session.draft.eventType;
+
+  if (
+    target !== "default" &&
+    target !== "focusTime" &&
+    target !== "outOfOffice"
+  ) {
+    return {};
+  }
+
+  const conversionVersion = context.conversionVersion + 1;
+
+  return {
+    context: {
+      conversion: {
+        after: session.draft,
+        before: sessionFor(context).draft,
+        notice: { id: `${session.id}:conversion-${conversionVersion}`, target },
+      },
+      conversionVersion,
+      session,
+    },
+  };
+};
+
 const routeAction = (
   context: EditorContext,
   action: typeof EditorAction.Type
 ): Transition => {
+  if (EditorAction.guards.ConvertType(action)) {
+    return {};
+  }
+
   if (EditorAction.guards.Cancel(action)) {
     return { context: { conversion: undefined }, target: "closed" };
   }
@@ -409,6 +448,39 @@ export const eventEditorMachine = setupEffect({
         },
       },
     },
+    converting: {
+      invoke: {
+        input: ({ context }) => ({
+          manual: true,
+          session: sessionFor(context),
+          target:
+            context.action !== undefined &&
+            EditorAction.guards.ConvertType(context.action)
+              ? context.action.value
+              : undefined,
+        }),
+        onDone: ({ context, event }) => {
+          const accepted = acceptConversion(context, event.output);
+
+          return {
+            context: {
+              ...accepted.context,
+              manualType: Option.isSome(event.output)
+                ? true
+                : context.manualType,
+            },
+            target: "routing",
+          };
+        },
+        src: "typeConversion",
+      },
+      on: {
+        ACTION: ({ context, event }) =>
+          EditorAction.guards.Cancel(event.action)
+            ? { context: { conversion: undefined }, target: "closed" }
+            : { context: { queue: [...context.queue, event.action] } },
+      },
+    },
     custom: {
       on: {
         ACTION: ({ context, event }) => customAction(context, event.action),
@@ -420,39 +492,26 @@ export const eventEditorMachine = setupEffect({
           manual: context.manualType,
           session: sessionFor(context),
         }),
-        onDone: ({ context, event }) => {
-          if (Option.isNone(event.output)) {
-            return {};
-          }
-
-          const session = event.output.value;
-          const target = session.draft.eventType;
-
-          if (target !== "focusTime" && target !== "outOfOffice") {
-            return {};
-          }
-
-          const conversionVersion = context.conversionVersion + 1;
-
-          return {
-            context: {
-              conversion: {
-                after: session.draft,
-                before: sessionFor(context).draft,
-                notice: {
-                  id: `${session.id}:conversion-${conversionVersion}`,
-                  target,
-                },
-              },
-              conversionVersion,
-              session,
-            },
-          };
-        },
+        onDone: ({ context, event }) => acceptConversion(context, event.output),
         src: "typeConversion",
       },
       on: {
-        ACTION: ({ context, event }) => routeAction(context, event.action),
+        ACTION: ({ context, event }) => {
+          const { action } = event;
+
+          if (!EditorAction.guards.ConvertType(action)) {
+            return routeAction(context, action);
+          }
+
+          const session = sessionFor(context);
+
+          return session.kind === "create" &&
+            session.id === action.sessionId &&
+            session.operation === "save" &&
+            permissionsForEditor(session).editMeeting
+            ? { context: { action }, target: "converting" }
+            : {};
+        },
       },
     },
     email: {
@@ -634,6 +693,7 @@ export const projectEditor = (
     operation: session.operation,
     original: session.original,
     permissions: permissionsForEditor(session),
+    sessionId: snapshot.matches("editing") ? session.id : undefined,
   };
 
   if (snapshot.matches("confirmingConferencing")) {

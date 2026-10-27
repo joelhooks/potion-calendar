@@ -13,6 +13,7 @@ import { bulkSummary } from "../bulk/selection.js";
 import { eventKey } from "../calendar-state.js";
 import type { ClipboardRuntime } from "../clipboard/runtime.js";
 import { SavePreferences, ScrollToSelection } from "../commands.js";
+import { commandTypeChoices } from "../editing/create-type-choices.js";
 import { EditorAction } from "../editing/editor-action.js";
 import { currentConversion, EditorView } from "../editing/editor-model.js";
 import type { EditingRuntime } from "../editing/runtime.js";
@@ -148,12 +149,15 @@ const openScreen = (
     | "days"
     | "date"
     | "event-zone"
+    | "event-type"
     | "weekdays"
     | "theme"
     | "week-start"
     | "colors"
 ): KeyboardResult =>
-  screen === "colors" && selectedColorEvent(model) === undefined
+  (screen === "colors" && selectedColorEvent(model) === undefined) ||
+  (screen === "event-type" &&
+    commandTypeChoices(model.editing, model.calendar.calendars).length === 0)
     ? { model }
     : {
         model: {
@@ -176,6 +180,7 @@ const openingScreen = Schema.Literals([
   "days",
   "date",
   "event-zone",
+  "event-type",
   "weekdays",
   "theme",
   "week-start",

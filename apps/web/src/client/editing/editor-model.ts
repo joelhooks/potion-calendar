@@ -87,7 +87,7 @@ export const EditorPermissions = Schema.Struct({
 
 export const ConversionNotice = Schema.Struct({
   id: Schema.String,
-  target: Schema.Literals(["focusTime", "outOfOffice"]),
+  target: Schema.Literals(["default", "focusTime", "outOfOffice"]),
 });
 
 const editorFields = {
@@ -99,6 +99,7 @@ const editorFields = {
   operation: Schema.Literals(["save", "delete"]),
   original: Schema.Option(CalendarEvent),
   permissions: EditorPermissions,
+  sessionId: Schema.optional(Schema.String),
 };
 
 export const EditorView = Schema.TaggedUnion({

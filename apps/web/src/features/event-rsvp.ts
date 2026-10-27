@@ -108,6 +108,9 @@ export const eventRsvp = (
               [
                 h.Disabled(saving || self === undefined),
                 h.AriaPressed(String(self?.responseStatus === choice.response)),
+                ...(active?.intent.response === choice.response && !saving
+                  ? [h.DataAttribute("rsvp-staged", "true")]
+                  : []),
                 h.OnClick(
                   Message.EditingAction({
                     action: EditorAction.cases.Rsvp.make({

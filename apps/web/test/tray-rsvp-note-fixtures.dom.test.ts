@@ -14,6 +14,7 @@ import { DesktopNotice } from "../src/client/desktop/model.js";
 import { EditingNotice } from "../src/client/editing/runtime.js";
 import { view } from "../src/features/app.js";
 import { publishFixtureArtifact } from "./publish-fixture-artifact.js";
+import { trayNoteAppearanceProof } from "./tray-note-appearance-proof.js";
 import {
   savedUpcomingEvent,
   upcomingFixture,
@@ -171,7 +172,14 @@ it.effect(
             expect(
               dom.querySelector<HTMLTextAreaElement>(selector)?.value
             ).toBe("Ready to discuss the timing.");
-            const script = `const dialog=document.querySelector('#phone-shell-dialog');if(dialog&&!dialog.open){dialog.showModal();}const selector=${JSON.stringify(selector)};document.querySelector(selector)?.focus();document.documentElement.dataset.fixtureReady='tray-rsvp-note';`;
+
+            const label = {
+              accepted: "Yes",
+              declined: "No",
+              tentative: "Maybe",
+            }[response];
+
+            const script = `const dialog=document.querySelector('#phone-shell-dialog');if(dialog&&!dialog.open){dialog.showModal();}const selector=${JSON.stringify(selector)};document.querySelector(selector)?.focus();document.documentElement.dataset.fixtureReady='tray-rsvp-note';${trayNoteAppearanceProof(label)}`;
             const content = `<!doctype html><html lang="en" data-fixture-pane="${width === 390 ? "phone" : "desktop"}" data-geometry="browser-owned"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>${pointer}</style></head><body>${rendered.html}<script>${script}</script></body></html>`;
             frames.push(
               `<section><h2>${width}px ${width === 390 ? "phone details sheet" : "desktop details"}</h2><iframe title="${name} ${theme} ${width}" width="${width}" height="900" srcdoc="${attribute(content)}"></iframe></section>`

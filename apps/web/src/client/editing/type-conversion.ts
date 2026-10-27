@@ -1,7 +1,7 @@
 import { createEffectLogic } from "@xstate/effect";
 import { Effect, Option } from "effect";
 
-import { hasEditorConferencing } from "./conferencing-draft.js";
+import { losslessTypeConversion } from "./create-type-choices.js";
 import type { LoadedEditor } from "./editor-session-model.js";
 import { selectCreateEventType } from "./status-event-draft.js";
 
@@ -33,14 +33,7 @@ export const autoTypeConversion = Effect.fn("Editor.autoTypeConversion")(
       session.kind !== "create" ||
       target === undefined ||
       target === session.draft.eventType ||
-      session.draft.statusInvitationChoice !== undefined ||
-      session.draft.attendees.length > 0 ||
-      session.draft.participantEmail.trim() !== "" ||
-      hasEditorConferencing(session) ||
-      session.draft.conferencing?.request?.kind === "googleMeet" ||
-      session.draft.location !== "" ||
-      session.draft.description !== "" ||
-      (session.draft.attachments?.length ?? 0) > 0
+      !losslessTypeConversion(session)
     ) {
       return Option.none();
     }
@@ -56,11 +49,21 @@ export const typeConversionLogic = createEffectLogic({
     readonly input: {
       readonly manual: boolean;
       readonly session: typeof LoadedEditor.Type;
+      readonly target?: "default" | "focusTime" | "outOfOffice" | undefined;
     };
-  }) =>
-    input.manual
+  }) => {
+    if (input.target !== undefined) {
+      return input.session.kind === "create" &&
+        input.target !== (input.session.draft.eventType ?? "default") &&
+        losslessTypeConversion(input.session)
+        ? selectCreateEventType(input.session, input.target).pipe(Effect.option)
+        : Effect.succeedNone;
+    }
+
+    return input.manual
       ? Effect.succeedNone
       : Effect.sleep(250).pipe(
           Effect.andThen(autoTypeConversion(input.session))
-        ),
+        );
+  },
 });

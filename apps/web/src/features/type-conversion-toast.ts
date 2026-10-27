@@ -1,6 +1,6 @@
-import { statusEventLabel } from "@calendar/calendar/contracts";
 import type { HtmlBuilder } from "foldkit/html";
 
+import { createTypeLabels } from "../client/editing/create-type-choices.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import type { ConversionNotice } from "../client/editing/editor-model.js";
 
@@ -24,7 +24,7 @@ export const typeConversionToast = <Message>(
       h.DataAttribute("conversion-undo", notice.id),
     ],
     [
-      h.span([], [`Converted to ${statusEventLabel(notice.target)}`]),
+      h.span([], [`Converted to ${createTypeLabels[notice.target]}`]),
       h.button(
         [
           h.Type("button"),

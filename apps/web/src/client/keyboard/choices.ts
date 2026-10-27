@@ -3,6 +3,12 @@ import { Option } from "effect";
 import { dateChoiceLabel, parseGoToDate } from "../../layout/go-to-date.js";
 import { dayInZone, maximumDisplayedDays } from "../../layout/navigation.js";
 import type { AppModel } from "../app.js";
+import {
+  commandTypeChoices,
+  createTypeLabels,
+} from "../editing/create-type-choices.js";
+import { EditorAction } from "../editing/editor-action.js";
+import { EditorView } from "../editing/editor-model.js";
 import { eventZoneChoices } from "../editing/zone-choices.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
@@ -237,6 +243,38 @@ const colorChoices = (
     query
   );
 
+const typeChoices = (
+  model: AppModel,
+  query: string
+): readonly CommandChoice[] => {
+  const { view } = model.editing;
+
+  if (!EditorView.guards.Editing(view) || view.sessionId === undefined) {
+    return [];
+  }
+
+  const { sessionId } = view;
+
+  return filterSubchoices(
+    commandTypeChoices(model.editing, model.calendar.calendars).map(
+      (value): CommandChoice => ({
+        disabled: false,
+        exact: false,
+        id: `type-${value}`,
+        keys: [],
+        message: Message.EditingAction({
+          action: EditorAction.cases.ConvertType.make({ sessionId, value }),
+          personId: Option.getOrUndefined(model.person),
+        }),
+        score: 1,
+        section: "Event",
+        title: createTypeLabels[value],
+      })
+    ),
+    query
+  );
+};
+
 const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
   const query = model.keyboard.query.trim().toLowerCase();
 
@@ -245,6 +283,10 @@ const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
     model.keyboard.screen === "week-start"
   ) {
     return preferenceChoices(model, query);
+  }
+
+  if (model.keyboard.screen === "event-type") {
+    return typeChoices(model, query);
   }
 
   if (model.keyboard.screen === "colors") {
