@@ -18,7 +18,10 @@ import {
   RemoteEvents,
 } from "../src/client/calendar-state.js";
 import { DesktopNotice } from "../src/client/desktop/model.js";
-import { FocusRsvpNote } from "../src/client/desktop/rsvp-note.js";
+import {
+  FocusRsvpNote,
+  rsvpNoteField,
+} from "../src/client/desktop/rsvp-note.js";
 import { desktopSelection } from "../src/client/desktop/selection.js";
 import { EditorAction } from "../src/client/editing/editor-action.js";
 import { PreparedRsvpNote } from "../src/client/editing/rsvp-machine.js";
@@ -479,6 +482,10 @@ it.effect.each(["phone", "desktop"])(
         .effect;
       expect(document.activeElement).toBe(document.body);
       field.dataset.trayRsvpNote = trayRsvpNoteToken(intent, 1);
+      expect(rsvpNoteField(targetPane, trayRsvpNoteToken(intent, 1))).toBe(
+        field
+      );
+      expect(rsvpNoteField(targetPane, "old-target")).toBeUndefined();
       yield* FocusRsvpNote({ pane: targetPane, prepared: { id: 1, intent } })
         .effect;
       expect(document.activeElement).toBe(field);

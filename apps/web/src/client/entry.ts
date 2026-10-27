@@ -14,6 +14,10 @@ import type { AppModel, AppMessage } from "./app.js";
 import { ClipboardRuntime } from "./clipboard/runtime.js";
 import { desktopProofObserver } from "./desktop/proof.js";
 import {
+  RsvpNoteFocus,
+  withRsvpNoteFocusOwnership,
+} from "./desktop/rsvp-note-focus.js";
+import {
   CalendarEditingClient,
   deletionWriterLayer,
 } from "./editing/calendar-client.js";
@@ -39,6 +43,7 @@ const editingServices = deletionWriterLayer.pipe(
 );
 
 const resources = Layer.mergeAll(
+  RsvpNoteFocus.layer,
   ClipboardRuntime.layer.pipe(
     Layer.provide(Layer.merge(BrowserCrypto.layer, editingServices))
   ),
@@ -86,7 +91,7 @@ const browserApplication = () => {
       occurrenceSubscriptions,
       gestureSubscriptions(registry)
     ),
-    update,
+    update: withRsvpNoteFocusOwnership(update),
     view: (model, h) => view(model, h, prepare, prepareMonth),
   });
 };

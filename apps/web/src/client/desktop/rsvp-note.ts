@@ -166,7 +166,7 @@ export const newPreparedRsvpNote = (before: AppModel, after: AppModel) => {
     : undefined;
 };
 
-const readyNote = (
+export const readyRsvpNote = (
   model: AppModel
 ): Option.Option<{
   pane: "phone" | "desktop";
@@ -198,6 +198,19 @@ const readyNote = (
       });
 };
 
+export const rsvpNoteField = (pane: "phone" | "desktop", token: string) =>
+  [
+    ...document.querySelectorAll<HTMLTextAreaElement>(
+      "textarea[data-tray-rsvp-note]"
+    ),
+  ].find(
+    (element) =>
+      element.dataset.trayRsvpNote === token &&
+      (pane === "phone"
+        ? element.closest("#phone-shell-dialog") !== null
+        : element.closest("#phone-shell-dialog") === null)
+  );
+
 export const FocusRsvpNote = Command.define("FocusRsvpNote", {
   args: {
     pane: Schema.Literals(["phone", "desktop"]),
@@ -209,17 +222,7 @@ export const FocusRsvpNote = Command.define("FocusRsvpNote", {
         Effect.sync(() => {
           const token = trayRsvpNoteToken(prepared.intent, prepared.id);
 
-          const target = [
-            ...document.querySelectorAll<HTMLTextAreaElement>(
-              "textarea[data-tray-rsvp-note]"
-            ),
-          ].find(
-            (element) =>
-              element.dataset.trayRsvpNote === token &&
-              (pane === "phone"
-                ? element.closest("#phone-shell-dialog") !== null
-                : element.closest("#phone-shell-dialog") === null)
-          );
+          const target = rsvpNoteField(pane, token);
 
           target?.focus();
 
@@ -244,8 +247,8 @@ export const withRsvpNoteFocus = <R>(
   before: AppModel,
   result: Update.Return<AppModel, AppMessage, R>
 ) => {
-  const next = Option.getOrUndefined(readyNote(result.model));
-  const previous = Option.getOrUndefined(readyNote(before));
+  const next = Option.getOrUndefined(readyRsvpNote(result.model));
+  const previous = Option.getOrUndefined(readyRsvpNote(before));
   const { prepared } = before.editing.rsvp;
 
   const selectionChanged =
