@@ -59,6 +59,7 @@ import { PromptWindow } from "./prompt-window.js";
 import { NativeSettings } from "./settings.js";
 import { soundPreviewEnabled } from "./sound-machine.js";
 import { performTrayAction } from "./tray-actions.js";
+import { prepareTrayRsvpNote } from "./tray-rsvp-note.js";
 
 export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
   function* makeDesktopRuntime(
@@ -307,6 +308,22 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                 ),
               OpenSettings: (value) => windowActions.settings(value.page),
               OpenWindow: () => windowActions.open(),
+              PrepareRsvpNote: (noteIntent) =>
+                prepareTrayRsvpNote(noteIntent, view, {
+                  focus: Effect.sync(focus),
+                  prepare: (note) =>
+                    pageAction(DesktopAction.cases.PrepareRsvpNote.make(note)),
+                  trusted: trayActionPort.trusted,
+                }).pipe(
+                  Effect.tapError((failure) =>
+                    Effect.sync(() => {
+                      dialog.showErrorBox(
+                        "Could not open response note",
+                        failure.message
+                      );
+                    })
+                  )
+                ),
               Quit: () =>
                 Effect.sync(() => {
                   app.quit();

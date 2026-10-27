@@ -119,6 +119,7 @@ export const Message = defineMessageUnion({
   },
   CompletedGridScroll: {},
   CompletedMonthRead: {},
+  CompletedRsvpNoteFocus: {},
   CycledTheme: {},
   DismissedGestureRefusal: { personId: Schema.String },
   DismissedIcsExport: { personId: Schema.String, revision: Schema.Int },

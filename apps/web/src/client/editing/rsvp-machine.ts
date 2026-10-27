@@ -1,6 +1,10 @@
 import { CalendarEvent, RsvpInput } from "@calendar/calendar/contracts";
+import {
+  sameDesktopEventKey,
+  TrayRsvpNote,
+} from "@calendar/core/desktop-bridge";
 import { createEffectLogic, setupEffect } from "@xstate/effect";
-import { Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
 import { types } from "xstate";
 import type { SnapshotFrom } from "xstate";
 
@@ -22,9 +26,16 @@ export const RsvpResult = Schema.TaggedUnion({
   Saved: { event: CalendarEvent, intent: RsvpIntent },
 });
 
+export const PreparedRsvpNote = Schema.Struct({
+  id: Schema.Int,
+  intent: TrayRsvpNote,
+});
+
 export const RsvpView = Schema.Struct({
   focused: Schema.Option(CalendarEvent),
   note: Schema.String,
+  preparationError: Schema.optional(Schema.String),
+  prepared: Schema.optional(PreparedRsvpNote),
   result: Schema.Option(RsvpResult),
   saving: Schema.Option(RsvpIntent),
 });
@@ -33,9 +44,14 @@ interface Context {
   readonly focused: Option.Option<typeof CalendarEvent.Type>;
   readonly intent: typeof RsvpIntent.Type | undefined;
   readonly note: string;
+  readonly preparationError: string | undefined;
+  readonly preparationSequence: number;
+  readonly prepared: typeof PreparedRsvpNote.Type | undefined;
   readonly result: typeof RsvpResult.Type | undefined;
   readonly sequence: number;
 }
+
+type ContextUpdate = { -readonly [Key in keyof Context]?: Context[Key] };
 
 const respond = createEffectLogic({
   effect: ({ input }) =>
@@ -82,7 +98,14 @@ const request = (
     request: notePolicy === "omit" ? input : { ...input, note: context.note },
   });
 
-  return { context: { intent, sequence: intent.id }, target: "saving" };
+  const next: ContextUpdate = { intent, sequence: intent.id };
+
+  if (notePolicy !== "omit" && context.prepared !== undefined) {
+    next.prepared = undefined;
+    next.preparationError = undefined;
+  }
+
+  return { context: next, target: "saving" };
 };
 
 const focus = (
@@ -94,7 +117,59 @@ const focus = (
     Option.isSome(context.focused) &&
     eventKey(event.value) === eventKey(context.focused.value);
 
-  return { focused: event, note: same ? context.note : "" };
+  const next: ContextUpdate = {
+    focused: event,
+    note: same ? context.note : "",
+  };
+
+  if (!same && context.prepared !== undefined) {
+    next.prepared = undefined;
+    next.preparationError = undefined;
+  }
+
+  return next;
+};
+
+const prepareNote = (
+  context: Context,
+  event: typeof CalendarEvent.Type,
+  intent: typeof TrayRsvpNote.Type
+): Partial<Context> => {
+  const instant =
+    event.start !== undefined && "dateTime" in event.start
+      ? Option.map(DateTime.make(event.start.dateTime), DateTime.toEpochMillis)
+      : Option.none<number>();
+
+  if (
+    rsvpSelf(event) === undefined ||
+    !sameDesktopEventKey(event, intent.key) ||
+    Option.getOrUndefined(instant) !== intent.start
+  ) {
+    return {
+      preparationError:
+        "This meeting is no longer available for a response note.",
+    };
+  }
+
+  if (
+    context.note.length > 0 &&
+    Option.isSome(context.focused) &&
+    eventKey(context.focused.value) !== eventKey(event)
+  ) {
+    return {
+      preparationError:
+        "Finish or clear the current response note before opening another meeting.",
+    };
+  }
+
+  const id = context.preparationSequence + 1;
+
+  return {
+    ...focus(context, Option.some(event)),
+    preparationError: undefined,
+    preparationSequence: id,
+    prepared: { id, intent },
+  };
 };
 
 export const rsvpMachine = setupEffect({
@@ -103,9 +178,11 @@ export const rsvpMachine = setupEffect({
     context: types<Context>(),
     events: {
       CHOOSE: Schema.Struct({ response: Response }),
+      CLEAR_NOTE: Schema.Struct({ prepared: PreparedRsvpNote }),
       FOCUS: Schema.Struct({ event: Schema.Option(CalendarEvent) }),
       NOTE: Schema.Struct({ note: Schema.String }),
       RESPOND: Schema.Struct({ event: CalendarEvent, response: Response }),
+      STAGE_NOTE: Schema.Struct({ event: CalendarEvent, intent: TrayRsvpNote }),
     },
   },
 }).createMachine({
@@ -113,11 +190,20 @@ export const rsvpMachine = setupEffect({
     focused: Option.none(),
     intent: undefined,
     note: "",
+    preparationError: undefined,
+    preparationSequence: 0,
+    prepared: undefined,
     result: undefined,
     sequence: 0,
   },
   initial: "idle",
   on: {
+    CLEAR_NOTE: ({ context, event }) =>
+      context.prepared?.id === event.prepared.id &&
+      context.prepared.intent.personId === event.prepared.intent.personId &&
+      context.prepared.intent.lease === event.prepared.intent.lease
+        ? { context: { preparationError: undefined, prepared: undefined } }
+        : {},
     FOCUS: ({ context, event }) => ({ context: focus(context, event.event) }),
     NOTE: ({ event }) => ({ context: { note: event.note } }),
   },
@@ -134,6 +220,9 @@ export const rsvpMachine = setupEffect({
                 event.response,
                 "omit"
               ),
+        STAGE_NOTE: ({ context, event }) => ({
+          context: prepareNote(context, event.event, event.intent),
+        }),
       },
     },
     saving: {
@@ -146,17 +235,41 @@ export const rsvpMachine = setupEffect({
         }),
         src: "respond",
       },
+      on: {
+        STAGE_NOTE: () => ({
+          context: {
+            preparationError:
+              "Wait for the current response to finish before opening a note.",
+          },
+        }),
+      },
     },
   },
 });
 
+type MutableRsvpView = {
+  -readonly [Key in keyof typeof RsvpView.Type]: (typeof RsvpView.Type)[Key];
+};
+
 export const projectRsvp = (
   snapshot: SnapshotFrom<typeof rsvpMachine>
-): typeof RsvpView.Type => ({
-  focused: snapshot.context.focused,
-  note: snapshot.context.note,
-  result: Option.fromUndefinedOr(snapshot.context.result),
-  saving: snapshot.matches("saving")
-    ? Option.fromUndefinedOr(snapshot.context.intent)
-    : Option.none(),
-});
+): typeof RsvpView.Type => {
+  const view: MutableRsvpView = {
+    focused: snapshot.context.focused,
+    note: snapshot.context.note,
+    result: Option.fromUndefinedOr(snapshot.context.result),
+    saving: snapshot.matches("saving")
+      ? Option.fromUndefinedOr(snapshot.context.intent)
+      : Option.none(),
+  };
+
+  if (snapshot.context.preparationError !== undefined) {
+    view.preparationError = snapshot.context.preparationError;
+  }
+
+  if (snapshot.context.prepared !== undefined) {
+    view.prepared = snapshot.context.prepared;
+  }
+
+  return view;
+};

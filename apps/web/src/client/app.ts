@@ -1,6 +1,9 @@
 import type { CalendarRefValue } from "@calendar/calendar/contracts";
 import { SessionSnapshot } from "@calendar/core/contracts";
-import { MeetingJoinOutcome } from "@calendar/core/desktop-bridge";
+import {
+  DesktopAction,
+  MeetingJoinOutcome,
+} from "@calendar/core/desktop-bridge";
 import { DateTime, Match, Option, Predicate, Schema } from "effect";
 import { AsyncData } from "foldkit";
 import type { Runtime, Update } from "foldkit";
@@ -86,6 +89,11 @@ import {
   updateNotificationSettings,
 } from "./desktop/notification-settings.js";
 import { respondFromDesktop } from "./desktop/respond.js";
+import {
+  prepareRsvpNoteFromDesktop,
+  newPreparedRsvpNote,
+  withRsvpNoteFocus,
+} from "./desktop/rsvp-note.js";
 import { desktopSelection } from "./desktop/selection.js";
 import { beginDesktopRequest, receiveDesktopNotice } from "./desktop/update.js";
 import { EditorView } from "./editing/editor-model.js";
@@ -896,6 +904,7 @@ const updateCore = (
         : { model },
     CompletedGridScroll: () => ({ model }),
     CompletedMonthRead: () => ({ model }),
+    CompletedRsvpNoteFocus: () => ({ model }),
     CycledTheme: () => {
       const themes: Record<
         typeof SettingsUi.Type.theme,
@@ -1346,6 +1355,8 @@ const updateCore = (
                 route: SettingsRoute.make({ page }),
               })
             ),
+          PrepareRsvpNote: (intent) =>
+            prepareRsvpNoteFromDesktop(model, intent),
           RequestedJoinMeeting: () =>
             dispatch(
               model,
@@ -1391,6 +1402,30 @@ const updateCore = (
     },
     ReceivedEditing: ({ notice, personId }) => {
       const next = receiveEditing(model, personId, notice);
+      const prepared = newPreparedRsvpNote(model, next.model);
+
+      if (prepared !== undefined) {
+        const shown = dispatch(
+          next.model,
+          Message.ReceivedDesktop({
+            notice: DesktopNotice.cases.Action.make({
+              action: DesktopAction.cases.ShowEvent.make({
+                key: prepared.intent.key,
+              }),
+            }),
+          })
+        );
+
+        const phone = dispatch(
+          shown.model,
+          Message.PhoneShellOpened({ mode: "details" })
+        );
+
+        return {
+          ...phone,
+          commands: [...(shown.commands ?? []), ...(phone.commands ?? [])],
+        };
+      }
 
       return next.reload
         ? reloadRange(refreshSearch(next.model), false, next.reconcile, model)
@@ -1912,8 +1947,8 @@ export const update = (model: AppModel, message: AppMessage): Result => {
       : result
   );
 
-  return {
+  return withRsvpNoteFocus(model, {
     ...attached,
     model: afterPhoneShellMessage(attached.model, message),
-  };
+  });
 };

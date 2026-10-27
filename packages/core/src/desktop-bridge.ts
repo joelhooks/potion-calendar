@@ -584,10 +584,46 @@ export const MeetingJoinOutcome = Schema.TaggedUnion({
   Requested: { key: AgendaKey },
 });
 
+export const TrayRsvpNote = Schema.Struct({
+  key: AgendaKey,
+  lease: Schema.String.check(Schema.isMinLength(1)),
+  personId: Schema.String.check(Schema.isMinLength(1)),
+  response: Schema.Literals(["accepted", "declined", "tentative"]),
+  start: nativeNotificationInstant,
+});
+
+export const trayRsvpNoteToken = (
+  intent: typeof TrayRsvpNote.Type,
+  id: number
+): string =>
+  JSON.stringify([
+    intent.personId,
+    intent.lease,
+    intent.key.accountId,
+    intent.key.calendarId,
+    intent.key.eventId,
+    intent.start,
+    intent.response,
+    id,
+  ]);
+
+export const trayRsvpNotePresentation = "main-window-details";
+
+export const trayRsvpNoteConfirmation = "existing-response-button";
+
+export const trayRsvpNoteCue = "draft-not-saved-response";
+
+export const trayRsvpNoteFocus = "after-commit-exact-target";
+
+export const trayRsvpNoteDraftPolicy = "preserve-and-refuse-other-target";
+
+export const trayRsvpNoteMissingScope = "disable-note-choices";
+
 export const DesktopAction = Schema.TaggedUnion({
   OpenSettings: {
     page: Schema.Literals(["general", "menu-bar", "notifications"]),
   },
+  PrepareRsvpNote: TrayRsvpNote.fields,
   RequestedJoinMeeting: {},
   RespondToEvent: {
     key: AgendaKey,

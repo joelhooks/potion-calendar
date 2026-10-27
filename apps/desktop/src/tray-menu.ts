@@ -131,11 +131,14 @@ export const trayMenuRows = (
       });
     }
 
-    actions.push(...trayResponseMenu(current, intent), {
-      click: show(current),
-      id: "tray-current-show-event",
-      label: "Show event",
-    });
+    actions.push(
+      ...trayResponseMenu(current, intent, view.agenda.notificationAgenda),
+      {
+        click: show(current),
+        id: "tray-current-show-event",
+        label: "Show event",
+      }
+    );
     rows.push(
       {
         enabled: false,

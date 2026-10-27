@@ -1,4 +1,5 @@
 import type { CalendarRefValue } from "@calendar/calendar/contracts";
+import { sameDesktopEventKey } from "@calendar/core/desktop-bridge";
 import { Match, Option, Schema } from "effect";
 import type { Update } from "foldkit";
 
@@ -21,6 +22,7 @@ import {
 } from "../bulk/selection.js";
 import { eventKey } from "../calendar-state.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
+import { rsvpNoteTarget } from "../desktop/rsvp-note.js";
 import { defaultCreationCalendar } from "../settings/update.js";
 import { homeZone } from "../time-zones/model.js";
 import { DispatchEditing } from "./commands.js";
@@ -243,13 +245,38 @@ const responseAction = (
     return { model };
   }
 
+  const { prepared } = model.editing.rsvp;
+  let { source } = selected;
+
+  if (
+    prepared !== undefined &&
+    selected.copies.some((copy) =>
+      sameDesktopEventKey(copy.source, prepared.intent.key)
+    )
+  ) {
+    const target = rsvpNoteTarget(model, prepared.intent);
+
+    if (target === undefined) {
+      return {
+        model: {
+          ...model,
+          error: Option.some(
+            "This meeting changed. Reopen its response note before sending."
+          ),
+        },
+      };
+    }
+
+    ({ source } = target);
+  }
+
   const command = EditorAction.guards.Rsvp(action)
     ? EditingCommand.cases.Rsvp.make({
-        event: selected.source,
+        event: source,
         response: action.response,
       })
     : EditingCommand.cases.RsvpNote.make({
-        event: selected.source,
+        event: source,
         note: action.value,
       });
 
@@ -513,6 +540,10 @@ const receiveResponse = (
   view: (typeof EditingNotice.cases.Rsvp.Type)["view"]
 ): NoticeResult => {
   let next = { ...model, editing: { ...model.editing, rsvp: view } };
+
+  if (view.preparationError !== undefined) {
+    next = { ...next, error: Option.some(view.preparationError) };
+  }
 
   if (Option.isSome(view.saving)) {
     next = {

@@ -1,3 +1,7 @@
+import {
+  sameDesktopEventKey,
+  trayRsvpNoteToken,
+} from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
@@ -6,30 +10,60 @@ import { Message } from "../client/app.js";
 import { eventKey } from "../client/calendar-state.js";
 import { EditorAction } from "../client/editing/editor-action.js";
 import { bindingHints } from "../client/keyboard/registry.js";
+import { isPhoneShell } from "../client/phone-shell/model.js";
+import { nativeNotificationLease } from "../client/reminders/native-projection.js";
 import type { DisplayEvent } from "../layout/presentation.js";
 import { responseLabel } from "../layout/response-label.js";
 import { rsvpSelf } from "../layout/rsvp-eligibility.js";
+
+const preparedSource = (
+  model: AppModel,
+  selected: DisplayEvent
+): Option.Option<{
+  prepared: NonNullable<AppModel["editing"]["rsvp"]["prepared"]>;
+  source: DisplayEvent["source"];
+}> => {
+  const { prepared } = model.editing.rsvp;
+
+  if (
+    prepared === undefined ||
+    !Option.contains(model.person, prepared.intent.personId) ||
+    nativeNotificationLease(model) !== prepared.intent.lease
+  ) {
+    return Option.none();
+  }
+
+  const copy = selected.copies.find((candidate) =>
+    sameDesktopEventKey(candidate.source, prepared.intent.key)
+  );
+
+  return copy === undefined
+    ? Option.none()
+    : Option.some({ prepared, source: copy.source });
+};
 
 export const eventRsvp = (
   model: AppModel,
   h: HtmlBuilder<AppMessage>,
   selected: DisplayEvent
 ): readonly Html[] => {
-  const self = rsvpSelf(selected.source);
+  const current = model.editing.rsvp;
+  const preparation = Option.getOrUndefined(preparedSource(model, selected));
+  const active = preparation?.prepared;
+  const source = preparation?.source ?? selected.source;
+  const self = rsvpSelf(source);
 
   if (self === undefined) {
     return [];
   }
 
-  const current = model.editing.rsvp;
-
   const focused =
     Option.isSome(current.focused) &&
-    eventKey(current.focused.value) === eventKey(selected.source);
+    eventKey(current.focused.value) === eventKey(source);
 
   const saving =
     Option.isSome(current.saving) &&
-    eventKey(current.saving.value.event) === eventKey(selected.source);
+    eventKey(current.saving.value.event) === eventKey(source);
 
   const choices: readonly {
     readonly response: "accepted" | "declined" | "tentative";
@@ -45,6 +79,16 @@ export const eventRsvp = (
       [h.Class("event-rsvp"), h.AriaLabel("Your response")],
       [
         h.h3([], ["Your response"]),
+        ...(active === undefined
+          ? []
+          : [
+              h.p(
+                [h.Role("status"), h.Class("editor-hint")],
+                [
+                  `Add a note for ${responseLabel(active.intent.response)}. Choose ${responseLabel(active.intent.response)} to send.`,
+                ]
+              ),
+            ]),
         h.div(
           [h.Class("detail-actions")],
           choices.map((choice) =>
@@ -70,6 +114,15 @@ export const eventRsvp = (
             h.span([], ["Optional note"]),
             h.textarea([
               h.Id("rsvp-note"),
+              ...(active === undefined
+                ? []
+                : [
+                    h.DataAttribute(
+                      "tray-rsvp-note",
+                      trayRsvpNoteToken(active.intent, active.id)
+                    ),
+                    ...(isPhoneShell(model) ? [h.Autofocus(true)] : []),
+                  ]),
               h.Value(focused ? current.note : ""),
               h.Disabled(saving),
               h.OnInput((value) =>

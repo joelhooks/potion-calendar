@@ -51,7 +51,12 @@ it.effect.prop(
           : "Update response"
       );
       expect(parent?.enabled).toBe(enabled);
-      const rows = parent?.submenu ?? [];
+
+      const rows =
+        parent?.submenu?.filter(
+          (row) => row.id?.startsWith("tray-response-") === true
+        ) ?? [];
+
       expect(rows.map((row) => [row.id, row.label, row.accelerator])).toEqual([
         ["tray-response-yes", "Yes", "Y"],
         ["tray-response-no", "No", "N"],
@@ -136,9 +141,11 @@ it.effect(
 
         expect(agenda[0]?.key.eventId).toBe("target");
         expect(
-          trayResponseMenu(agenda[0], () => {})[0]?.submenu?.map(
-            (row) => row.accelerator
-          )
+          trayResponseMenu(agenda[0], () => {})[0]
+            ?.submenu?.filter(
+              (row) => row.id?.startsWith("tray-response-") === true
+            )
+            .map((row) => row.accelerator)
         ).toEqual(["Y", "N", "M"]);
       }
     })

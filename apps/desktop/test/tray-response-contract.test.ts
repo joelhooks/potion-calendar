@@ -1,4 +1,4 @@
-import { desktopWire } from "@calendar/core/desktop-bridge";
+import { DesktopAction, desktopWire } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
 
@@ -35,5 +35,24 @@ it.effect(
           Option.isNone(Schema.decodeOption(desktopWire.action)(wire))
         ).toBe(true);
       }
+    })
+);
+
+it.effect(
+  "the desktop note action decodes scope and occurrence without importing a web recipient",
+  () =>
+    Effect.sync(() => {
+      const action = DesktopAction.cases.PrepareRsvpNote.make({
+        key,
+        lease: "lease",
+        personId: "person",
+        response: "tentative",
+        start: 1_792_573_200_000,
+      });
+
+      const wire = JSON.stringify({ ...action, note: "Do not import this" });
+
+      const value = Schema.decodeOption(desktopWire.action)(wire);
+      expect(Option.getOrUndefined(value)).toEqual(action);
     })
 );

@@ -2,6 +2,7 @@ import { watchActor } from "@calendar/capability/actor-watch";
 import {
   AgendaKey,
   AgendaSnapshot,
+  TrayRsvpNote,
   DesktopAction,
   DesktopSettings,
   MeetingJoinRequest,
@@ -37,6 +38,7 @@ export const NativeIntent = Schema.TaggedUnion({
   },
   OpenSettings: { page: DesktopAction.cases.OpenSettings.fields.page },
   OpenWindow: {},
+  PrepareRsvpNote: TrayRsvpNote.fields,
   Quit: {},
   RequestedJoinMeeting: {},
   RespondToEvent: DesktopAction.cases.RespondToEvent.fields,

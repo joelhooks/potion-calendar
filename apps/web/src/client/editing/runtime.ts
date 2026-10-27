@@ -1,5 +1,6 @@
 import { CalendarEvent } from "@calendar/calendar/contracts";
 import { watchActor } from "@calendar/capability/actor-watch";
+import { TrayRsvpNote } from "@calendar/core/desktop-bridge";
 import { createEffectActor, send, snapshots } from "@xstate/effect";
 import {
   Context,
@@ -33,7 +34,12 @@ import {
   WritePlan,
 } from "./editor-session-model.js";
 import { EditorInputFailure } from "./input-failure.js";
-import { RsvpView, projectRsvp, rsvpMachine } from "./rsvp-machine.js";
+import {
+  PreparedRsvpNote,
+  RsvpView,
+  projectRsvp,
+  rsvpMachine,
+} from "./rsvp-machine.js";
 
 export const EditingCommand = Schema.TaggedUnion({
   Action: { action: EditorAction },
@@ -46,7 +52,9 @@ export const EditingCommand = Schema.TaggedUnion({
     notePolicy: Schema.optional(Schema.Literal("omit")),
     response: Schema.Literals(["accepted", "declined", "tentative"]),
   },
+  RsvpClearPreparation: { prepared: PreparedRsvpNote },
   RsvpNote: { event: CalendarEvent, note: Schema.String },
+  RsvpPrepare: { event: CalendarEvent, intent: TrayRsvpNote },
 });
 
 export const EditingNotice = Schema.TaggedUnion({
@@ -180,10 +188,14 @@ export class EditingRuntime extends Context.Service<
                       }).pipe(
                         Effect.andThen(send(rsvp, { response, type: "CHOOSE" }))
                       ),
+                RsvpClearPreparation: ({ prepared }) =>
+                  send(rsvp, { prepared, type: "CLEAR_NOTE" }),
                 RsvpNote: ({ event, note }) =>
                   send(rsvp, { event: Option.some(event), type: "FOCUS" }).pipe(
                     Effect.andThen(send(rsvp, { note, type: "NOTE" }))
                   ),
+                RsvpPrepare: ({ event, intent }) =>
+                  send(rsvp, { event, intent, type: "STAGE_NOTE" }),
               }),
             personId,
           };
@@ -262,6 +274,17 @@ export class EditingRuntime extends Context.Service<
           if (Option.isNone(active) || active.value.personId !== personId) {
             return yield* new EditorInputFailure({
               message: "The editor is not ready for this signed-in person.",
+            });
+          }
+
+          const preparedOwner = EditingCommand.guards.RsvpPrepare(command)
+            ? command.intent.personId
+            : undefined;
+
+          if (preparedOwner !== undefined && preparedOwner !== personId) {
+            return yield* new EditorInputFailure({
+              message:
+                "This response note belongs to another signed-in person.",
             });
           }
 
