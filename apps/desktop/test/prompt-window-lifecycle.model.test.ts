@@ -15,6 +15,7 @@ import {
   Effect,
   Exit,
   Fiber,
+  Option,
   Predicate,
   Ref,
   Schema,
@@ -22,9 +23,13 @@ import {
 } from "effect";
 import { TestClock } from "effect/testing";
 
+import { DesktopError } from "../src/config.js";
 import { startPrompt } from "../src/prompt-machine.js";
 import type { promptMachine } from "../src/prompt-machine.js";
-import { promptDismissalIntervalMs } from "../src/prompt-window-lifecycle.js";
+import {
+  promptDismissalIntervalMs,
+  startPromptWindowLifecycle,
+} from "../src/prompt-window-lifecycle.js";
 import { makePromptWindow } from "../src/prompt-window.js";
 import type { PromptWindowNative } from "../src/prompt-window.js";
 
@@ -659,9 +664,12 @@ it.effect.prop(
         yield* Scope.close(scope, Exit.void);
         expect(window.destroys).toBe(1);
 
-        const late = yield* Effect.exit(
+        const lateCaller = yield* Effect.forkChild(
           adapter.preview("bell", Effect.succeed(true))
         );
+
+        yield* TestClock.adjust(0);
+        const late = yield* Effect.sync(() => lateCaller.pollUnsafe());
 
         expect(
           late,
@@ -710,4 +718,289 @@ it.effect.prop(
       expect(windows).toHaveLength(1);
       expect(windowAt(windows, 0).visible).toBe(true);
     }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "HIGH preview caller settles false when Present is queued before snapshot publication",
+  () =>
+    Effect.gen(function* queuedPresentPreview() {
+      const lifecycle = yield* startPromptWindowLifecycle();
+      const release = yield* Deferred.make<boolean>();
+      const previewRuns = yield* Ref.make(0);
+
+      const pending = yield* Effect.forkChild(
+        Effect.gen(function* submitBehindPresent() {
+          yield* send(lifecycle.actor, {
+            job: { work: Deferred.await(release).pipe(Effect.asVoid) },
+            type: "Present",
+          });
+
+          const unpublished = yield* Effect.sync(() =>
+            lifecycle.actor.getSnapshot().matches("destroyed")
+          );
+
+          expect(
+            unpublished,
+            "the real queued Present has not yet published a busy snapshot"
+          ).toBe(true);
+
+          return yield* lifecycle.preview(
+            Ref.update(previewRuns, (value) => value + 1).pipe(Effect.as(true))
+          );
+        })
+      );
+
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion,
+        "HIGH queued Present cannot leave its following preview caller pending"
+      ).toEqual(Exit.succeed(false));
+      expect(yield* Ref.get(previewRuns)).toBe(0);
+      yield* Deferred.succeed(release, true);
+      yield* TestClock.adjust(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "two previews queued before publication admit one work item and settle both callers",
+  { firstResult: Schema.Boolean },
+  ({ firstResult }) =>
+    Effect.gen(function* concurrentPreviewRequests() {
+      const lifecycle = yield* startPromptWindowLifecycle();
+      const release = yield* Deferred.make<boolean>();
+      const first = yield* Deferred.make<boolean, DesktopError>();
+      const second = yield* Deferred.make<boolean, DesktopError>();
+      const firstRuns = yield* Ref.make(0);
+      const secondRuns = yield* Ref.make(0);
+      const firstCaller = yield* Effect.forkChild(Deferred.await(first));
+      const secondCaller = yield* Effect.forkChild(Deferred.await(second));
+
+      const firstRequest = {
+        job: {
+          work: Deferred.complete(
+            first,
+            Ref.update(firstRuns, (value) => value + 1).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(firstResult)
+            )
+          ).pipe(Effect.asVoid),
+        },
+        result: first,
+        type: Schema.Literal("Preview").make("Preview"),
+      };
+
+      const secondRequest = {
+        job: {
+          work: Deferred.complete(
+            second,
+            Ref.update(secondRuns, (value) => value + 1).pipe(Effect.as(true))
+          ).pipe(Effect.asVoid),
+        },
+        result: second,
+        type: Schema.Literal("Preview").make("Preview"),
+      };
+
+      const unpublished = yield* Effect.sync(() => {
+        lifecycle.actor.send(firstRequest);
+        lifecycle.actor.send(secondRequest);
+
+        return lifecycle.actor.getSnapshot().matches("destroyed");
+      });
+
+      expect(
+        unpublished,
+        "both real Preview events are queued before the published state changes"
+      ).toBe(true);
+      yield* TestClock.adjust(0);
+      const rejected = yield* Effect.sync(() => secondCaller.pollUnsafe());
+
+      expect(
+        rejected,
+        "HIGH the second queued preview caller must settle false without starting work"
+      ).toEqual(Exit.succeed(false));
+      expect(yield* Ref.get(firstRuns)).toBe(1);
+      expect(yield* Ref.get(secondRuns)).toBe(0);
+      yield* Deferred.succeed(release, true);
+      yield* TestClock.adjust(0);
+      const completed = yield* Effect.sync(() => firstCaller.pollUnsafe());
+
+      expect(
+        completed,
+        "the admitted caller completes with its own result"
+      ).toEqual(Exit.succeed(firstResult));
+      expect(yield* Ref.get(firstRuns)).toBe(1);
+      expect(yield* Ref.get(secondRuns)).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "HIGH preview caller settles false after lifecycle completion or scope stop",
+  { terminal: Schema.Literals(["quit", "stop"]) },
+  ({ terminal }) =>
+    Effect.gen(function* terminalPreviewRequest() {
+      const serviceScope = yield* Scope.make();
+      yield* Effect.addFinalizer(() => Scope.close(serviceScope, Exit.void));
+
+      const lifecycle = yield* startPromptWindowLifecycle().pipe(
+        Effect.provideService(Scope.Scope, serviceScope)
+      );
+
+      const previewRuns = yield* Ref.make(0);
+
+      if (terminal === "quit") {
+        yield* lifecycle.perform("Quit", Effect.succeed(true));
+        yield* waitFor(lifecycle.actor, (snapshot) => snapshot.matches("quit"));
+      } else {
+        yield* Scope.close(serviceScope, Exit.void);
+      }
+
+      const pending = yield* Effect.forkChild(
+        lifecycle.preview(
+          Ref.update(previewRuns, (value) => value + 1).pipe(Effect.as(true))
+        )
+      );
+
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion,
+        "HIGH a terminal lifecycle cannot leave a preview caller pending"
+      ).toEqual(Exit.succeed(false));
+      expect(yield* Ref.get(previewRuns)).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "Quit queued before snapshot publication rejects its following preview without work",
+  () =>
+    Effect.gen(function* queuedQuitPreview() {
+      const lifecycle = yield* startPromptWindowLifecycle();
+      const previewRuns = yield* Ref.make(0);
+
+      const pending = yield* Effect.forkChild(
+        Effect.gen(function* submitBehindQuit() {
+          yield* send(lifecycle.actor, {
+            job: { work: Effect.void },
+            type: "Quit",
+          });
+
+          const unpublished = yield* Effect.sync(() =>
+            lifecycle.actor.getSnapshot().matches("destroyed")
+          );
+
+          expect(unpublished).toBe(true);
+
+          return yield* lifecycle.preview(
+            Ref.update(previewRuns, (value) => value + 1).pipe(Effect.as(true))
+          );
+        })
+      );
+
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion,
+        "a queued Quit settles the following preview false before any native work"
+      ).toEqual(Exit.succeed(false));
+      expect(yield* Ref.get(previewRuns)).toBe(0);
+      expect(lifecycle.actor.getSnapshot().matches("quit")).toBe(true);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "busy preview settlement never waits for the caller before content and quit proceed",
+  { busy: Schema.Literals(["Present", "Dismiss"]) },
+  ({ busy }) =>
+    Effect.gen(function* priorityThroughBusyRejection() {
+      const lifecycle = yield* startPromptWindowLifecycle();
+      const releaseWork = yield* Deferred.make<boolean>();
+      const releaseCaller = yield* Deferred.make<boolean>();
+      const delivered = yield* Ref.make(Option.none<boolean>());
+      const previewRuns = yield* Ref.make(0);
+      const presentRuns = yield* Ref.make(0);
+      yield* send(lifecycle.actor, {
+        job: { work: Deferred.await(releaseWork).pipe(Effect.asVoid) },
+        type: busy,
+      });
+      yield* waitFor(lifecycle.actor, (snapshot) =>
+        busy === "Present"
+          ? snapshot.matches("presenting")
+          : snapshot.matches("dismissing")
+      );
+
+      const caller = yield* Effect.forkChild(
+        lifecycle
+          .preview(
+            Ref.update(previewRuns, (value) => value + 1).pipe(Effect.as(true))
+          )
+          .pipe(
+            Effect.tap((value) => Ref.set(delivered, Option.some(value))),
+            Effect.andThen(Deferred.await(releaseCaller))
+          )
+      );
+
+      yield* TestClock.adjust(0);
+
+      expect(
+        yield* Ref.get(delivered),
+        "busy rejection delivers false even while its client continuation waits"
+      ).toEqual(Option.some(false));
+
+      const present = yield* Effect.forkChild(
+        lifecycle.perform(
+          "Present",
+          Ref.updateAndGet(presentRuns, (value) => value + 1)
+        )
+      );
+
+      yield* TestClock.adjust(0);
+      const presentationResult = yield* Effect.sync(() => present.pollUnsafe());
+
+      expect(
+        presentationResult,
+        "content never waits for the rejected client"
+      ).toEqual(Exit.succeed(1));
+
+      const quit = yield* Effect.forkChild(
+        lifecycle.perform("Quit", Effect.succeed(true))
+      );
+
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => quit.pollUnsafe());
+
+      expect(completion, "quit never waits for the rejected client").toEqual(
+        Exit.succeed(true)
+      );
+      expect(yield* Ref.get(previewRuns)).toBe(0);
+      expect(yield* Ref.get(presentRuns)).toBe(1);
+      yield* Deferred.succeed(releaseCaller, true);
+      yield* TestClock.adjust(0);
+      const resumed = yield* Effect.sync(() => caller.pollUnsafe());
+
+      expect(resumed).toEqual(Exit.succeed(true));
+    }).pipe(Effect.scoped)
+);
+
+it.effect("accepted preview retains its genuine typed work failure", () =>
+  Effect.gen(function* previewFailure() {
+    const lifecycle = yield* startPromptWindowLifecycle();
+    const failure = new DesktopError({ message: "Native sound load failed" });
+
+    const pending = yield* Effect.forkChild(
+      lifecycle.preview(Effect.fail(failure))
+    );
+
+    yield* TestClock.adjust(0);
+    const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+    expect(
+      Option.fromUndefinedOr(completion).pipe(
+        Option.flatMap(Exit.findErrorOption)
+      )
+    ).toEqual(Option.some(failure));
+  }).pipe(Effect.scoped)
 );

@@ -3,6 +3,7 @@ import {
   createEffectActor,
   createEffectLogic,
   setupEffect,
+  waitFor,
 } from "@xstate/effect";
 import { Deferred, Effect, Schema } from "effect";
 import { types } from "xstate";
@@ -15,6 +16,11 @@ interface WindowJob {
   readonly work: Effect.Effect<void>;
 }
 
+interface PreviewRequest {
+  readonly job: WindowJob;
+  readonly result: Deferred.Deferred<boolean, DesktopError>;
+}
+
 export const promptWindowLifecycle = () => {
   const perform = createEffectLogic({
     effect: ({ input }: { readonly input: WindowJob | undefined }) =>
@@ -25,6 +31,10 @@ export const promptWindowLifecycle = () => {
   });
 
   return setupEffect({
+    actions: {
+      rejectBusyPreview: ({ event }: { readonly event: PreviewRequest }) =>
+        Deferred.succeed(event.result, false).pipe(Effect.asVoid),
+    },
     actors: { perform },
     schemas: {
       context: types<{ readonly job: WindowJob | undefined }>(),
@@ -32,7 +42,7 @@ export const promptWindowLifecycle = () => {
         Closed: Schema.Struct({}),
         Dismiss: types<{ readonly job: WindowJob }>(),
         Present: types<{ readonly job: WindowJob }>(),
-        Preview: types<{ readonly job: WindowJob }>(),
+        Preview: types<PreviewRequest>(),
         Quit: types<{ readonly job: WindowJob }>(),
       },
     },
@@ -52,6 +62,9 @@ export const promptWindowLifecycle = () => {
         reenter: true,
         target: ".presenting",
       }),
+      Preview: (args, enq) => {
+        enq(args.actions.rejectBusyPreview, args);
+      },
       Quit: ({ event }) => ({
         context: { job: event.job },
         target: ".quitting",
@@ -102,7 +115,15 @@ export const promptWindowLifecycle = () => {
           onDone: { target: "quit" },
           src: "perform",
         },
-        on: { Closed: {}, Dismiss: {}, Present: {}, Preview: {}, Quit: {} },
+        on: {
+          Closed: {},
+          Dismiss: {},
+          Present: {},
+          Preview: (args, enq) => {
+            enq(args.actions.rejectBusyPreview, args);
+          },
+          Quit: {},
+        },
       },
     },
   });
@@ -142,30 +163,25 @@ export const startPromptWindowLifecycle = Effect.fn(
   ) {
     const result = yield* Deferred.make<boolean, DesktopError>();
 
-    const admitted = yield* Effect.sync(() => {
-      const snapshot = actor.getSnapshot();
-
-      const rejectBusyPreview =
-        !snapshot.matches("destroyed") && !snapshot.matches("live");
-
-      if (snapshot.status !== "active" || rejectBusyPreview) {
-        return false;
-      }
-
-      actor.send({
-        job: {
-          work: Deferred.complete(
-            result,
-            work.pipe(Effect.onInterrupt(() => Deferred.succeed(result, false)))
-          ).pipe(Effect.asVoid),
-        },
-        type: "Preview",
-      });
-
-      return true;
+    actor.send({
+      job: {
+        work: Deferred.complete(
+          result,
+          work.pipe(Effect.onInterrupt(() => Deferred.succeed(result, false)))
+        ).pipe(Effect.asVoid),
+      },
+      result,
+      type: "Preview",
     });
 
-    return admitted ? yield* Deferred.await(result) : false;
+    return yield* Effect.raceFirst(
+      Deferred.await(result),
+      waitFor(actor, (snapshot) => snapshot.status !== "active").pipe(
+        Effect.catchTag("ActorStoppedError", () => Effect.void),
+        Effect.andThen(Deferred.succeed(result, false)),
+        Effect.andThen(Deferred.await(result))
+      )
+    );
   });
 
   return { actor, perform, preview };
