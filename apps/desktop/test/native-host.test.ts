@@ -1,10 +1,14 @@
 import { defaultDesktopPreferences } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { send, waitFor } from "@xstate/effect";
-import { Deferred, Effect, Option, Ref, Stream } from "effect";
+import { DateTime, Deferred, Effect, Option, Queue, Ref, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import { NativeIntent, startNativeHost } from "../src/native-host.js";
 import type { NativeView } from "../src/native-host.js";
+import { trayIconState } from "../src/tray-icon.js";
+import type { TrayIconState } from "../src/tray-icon.js";
+import { trayEvent } from "./tray-current-fixture.js";
 
 it.effect(
   "clock and agenda changes do not cancel an accepted native action",
@@ -95,6 +99,68 @@ it.effect(
         { timeout: "2 seconds" }
       ).pipe(Effect.orDie);
       expect(yield* Ref.get(rendered)).toBe(1000);
+      yield* send(host.actor, { type: "Quit" });
+      yield* host.done;
+    })
+);
+
+it.effect.each([
+  { day: 28, month: 2, next: 29 },
+  { day: 29, month: 2, next: 1 },
+  { day: 31, month: 12, next: 1 },
+])(
+  "existing minute clock rolls $month/$day to $next and applies agenda changes",
+  ({ month, day, next }) =>
+    Effect.gen(function* localRollover() {
+      const now = DateTime.toEpochMillis(
+        DateTime.makeZonedUnsafe(
+          { day, hour: 23, minute: 59, month, year: 2028 },
+          { adjustForTimeZone: true, timeZone: DateTime.zoneMakeLocal() }
+        )
+      );
+
+      yield* TestClock.setTime(now);
+      const images = yield* Queue.unbounded<TrayIconState>();
+
+      const host = yield* startNativeHost(
+        {
+          intents: Stream.never,
+          perform: () => Effect.void,
+          render: (view) =>
+            Queue.offer(images, trayIconState(view)).pipe(Effect.asVoid),
+        },
+        { now, preferences: defaultDesktopPreferences() }
+      );
+
+      expect(yield* Queue.take(images)).toEqual({ day, mark: "date-only" });
+      yield* waitFor(
+        host.actor,
+        (snapshot) => snapshot.matches({ active: "idle" }),
+        { timeout: "2 seconds" }
+      ).pipe(Effect.orDie);
+      yield* TestClock.adjust(60_000);
+      expect(yield* Queue.take(images)).toEqual({
+        day: next,
+        mark: "date-only",
+      });
+      const event = trayEvent("after-midnight");
+      yield* send(host.actor, {
+        snapshot: {
+          events: [
+            {
+              ...event,
+              end: now + 120_000,
+              rsvp: { enabled: true, response: "tentative" },
+              start: now + 60_000,
+            },
+          ],
+        },
+        type: "Agenda",
+      });
+      expect(yield* Queue.take(images)).toEqual({
+        day: next,
+        mark: "tentative",
+      });
       yield* send(host.actor, { type: "Quit" });
       yield* host.done;
     })

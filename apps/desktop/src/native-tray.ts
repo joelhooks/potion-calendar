@@ -1,47 +1,93 @@
 import { Clock, Context, DateTime, Effect, Layer, Option, Ref } from "effect";
 import { Menu, Tray, nativeImage } from "electron";
-import type { MenuItemConstructorOptions } from "electron";
+import type { MenuItemConstructorOptions, NativeImage } from "electron";
 
 import { previewLabel } from "./agenda.js";
 import { DesktopError } from "./config.js";
 import { NativeIntent } from "./native-host.js";
 import type { NativeIntentValue, NativeView } from "./native-host.js";
-import { calendarDotPng, iconPng } from "./tray-icon.js";
+import {
+  calendarDotPng,
+  trayIconPng,
+  trayIconState,
+  trayIconStandardScale,
+  trayIconRetinaScale,
+  trayIconTemplate,
+} from "./tray-icon.js";
 import { trayMenuRows } from "./tray-menu.js";
 import type { TrayMenuItem } from "./tray-menu.js";
 
-const calendarFrame = (x: number, y: number): boolean =>
-  x >= 4 &&
-  x <= 27 &&
-  y >= 5 &&
-  y <= 28 &&
-  (x <= 6 || x >= 25 || y <= 7 || y >= 26 || y === 12);
+export interface TrayBitmap {
+  readonly isEmpty: () => boolean;
+  readonly addRepresentation: (options: {
+    buffer: Buffer;
+    scaleFactor: number;
+  }) => void;
+  readonly setTemplateImage: (value: boolean) => void;
+}
 
-const templateIcon = () => {
-  const pixels = Buffer.alloc(32 * 32 * 4);
+export type TrayRow<Image> = Omit<
+  MenuItemConstructorOptions,
+  "icon" | "submenu"
+> & {
+  icon?: Image;
+  submenu?: TrayRow<Image>[];
+};
 
-  for (let y = 0; y < 32; y += 1) {
-    for (let x = 0; x < 32; x += 1) {
-      const border = calendarFrame(x, y);
+export interface TrayHandle<Image, MenuValue> {
+  readonly isDestroyed: () => boolean;
+  readonly destroy: () => void;
+  readonly setImage: (image: Image) => void;
+  readonly setToolTip: (value: string) => void;
+  readonly setTitle: (value: string) => void;
+  readonly setContextMenu: (menu: MenuValue) => void;
+  readonly closeContextMenu: () => void;
+  readonly popUpContextMenu: () => void;
+}
 
-      const rings = (x === 10 || x === 21) && y >= 2 && y <= 9;
-      const day = x >= 12 && x <= 19 && y >= 17 && y <= 22;
+export interface TrayPlatform<Image extends TrayBitmap, MenuValue> {
+  readonly createImage: (
+    buffer: Buffer,
+    options: { scaleFactor: number }
+  ) => Image;
+  readonly createTray: (image: Image) => TrayHandle<Image, MenuValue>;
+  readonly createMenu: (rows: TrayRow<Image>[]) => MenuValue;
+  readonly onMenuShow: (menu: MenuValue, listener: () => void) => void;
+  readonly onMenuClose: (menu: MenuValue, listener: () => void) => void;
+}
 
-      if (border || rings || day) {
-        pixels[(y * 32 + x) * 4 + 3] = 255;
-      }
-    }
-  }
+const electronTrayPlatform: TrayPlatform<NativeImage, Menu> = {
+  createImage: (buffer, options) =>
+    nativeImage.createFromBuffer(buffer, options),
+  createMenu: (rows) => Menu.buildFromTemplate(rows),
+  createTray: (image) => new Tray(image),
+  onMenuClose: (menu, listener) => {
+    menu.on("menu-will-close", listener);
+  },
+  onMenuShow: (menu, listener) => {
+    menu.on("menu-will-show", listener);
+  },
+};
 
-  const image = nativeImage.createFromBuffer(iconPng(pixels, 32, 32), {
-    scaleFactor: 2,
+const templateIcon = <Image extends TrayBitmap>(
+  view: NativeView,
+  createImage: (buffer: Buffer, options: { scaleFactor: number }) => Image
+): Image => {
+  const model = trayIconState(view);
+
+  const image = createImage(trayIconPng(model, trayIconStandardScale), {
+    scaleFactor: trayIconStandardScale,
   });
 
   if (image.isEmpty()) {
     throw new Error("Native calendar icon could not decode");
   }
 
-  image.setTemplateImage(true);
+  image.addRepresentation({
+    buffer: trayIconPng(model, trayIconRetinaScale),
+    scaleFactor: trayIconRetinaScale,
+  });
+  image.setTemplateImage(trayIconTemplate);
 
   return image;
 };
@@ -59,32 +105,39 @@ const day = (value: number) =>
     weekday: "short",
   });
 
-const nativeTrayItem = (row: TrayMenuItem): MenuItemConstructorOptions => {
+const nativeTrayItem = <Image extends TrayBitmap>(
+  row: TrayMenuItem,
+  createImage: (buffer: Buffer, options: { scaleFactor: number }) => Image
+): TrayRow<Image> => {
   const { calendarColor, submenu, ...item } = row;
 
-  const result: MenuItemConstructorOptions = { ...item };
+  const result: TrayRow<Image> = { ...item };
 
   if (calendarColor !== undefined) {
-    result.icon = nativeImage.createFromBuffer(calendarDotPng(calendarColor), {
+    result.icon = createImage(calendarDotPng(calendarColor), {
       scaleFactor: 2,
     });
   }
 
   if (submenu !== undefined) {
-    result.submenu = submenu.map(nativeTrayItem);
+    result.submenu = submenu.map((child) => nativeTrayItem(child, createImage));
   }
 
   return result;
 };
 
-export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
-  function* makeNativeTray(
+export const makeNativeTrayWith = Effect.fn("Desktop.makeNativeTray")(
+  function* makeNativeTrayWith<Image extends TrayBitmap, MenuValue>(
+    platform: TrayPlatform<Image, MenuValue>,
     intent: (value: NativeIntentValue) => void,
     menuState: (value: "open" | "closed") => void
   ) {
     const context = yield* Effect.context();
     const runSync = Effect.runSyncWith(context);
-    const current = yield* Ref.make<Option.Option<Tray>>(Option.none());
+
+    const current = yield* Ref.make<
+      Option.Option<TrayHandle<Image, MenuValue>>
+    >(Option.none());
 
     const close = Effect.sync(() => {
       const value = runSync(Ref.get(current));
@@ -112,16 +165,19 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
         try: () => {
           const previous = runSync(Ref.get(current));
 
+          const image = templateIcon(currentView, platform.createImage);
+
           const tray =
             Option.isSome(previous) && !previous.value.isDestroyed()
               ? previous.value
-              : new Tray(templateIcon());
+              : platform.createTray(image);
 
           runSync(Ref.set(current, Option.some(tray)));
+          tray.setImage(image);
           tray.setToolTip("Potion Calendar");
 
           const rows = trayMenuRows(currentView, { day, time }, intent).map(
-            nativeTrayItem
+            (row) => nativeTrayItem(row, platform.createImage)
           );
 
           rows.push(
@@ -147,11 +203,11 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
               label: "Quit Potion Calendar",
             }
           );
-          const menu = Menu.buildFromTemplate(rows);
-          menu.on("menu-will-show", () => {
+          const menu = platform.createMenu(rows);
+          platform.onMenuShow(menu, () => {
             menuState("open");
           });
-          menu.on("menu-will-close", () => {
+          platform.onMenuClose(menu, () => {
             menuState("closed");
           });
           tray.setContextMenu(menu);
@@ -196,6 +252,11 @@ export const makeNativeTray = Effect.fn("Desktop.makeNativeTray")(
     };
   }
 );
+
+export const makeNativeTray = (
+  intent: (value: NativeIntentValue) => void,
+  menuState: (value: "open" | "closed") => void
+) => makeNativeTrayWith(electronTrayPlatform, intent, menuState);
 
 export class NativeTray extends Context.Service<
   NativeTray,

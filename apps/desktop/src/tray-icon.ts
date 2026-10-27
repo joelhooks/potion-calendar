@@ -1,5 +1,129 @@
 import { crc32, deflateSync } from "node:zlib";
 
+import { DateTime } from "effect";
+
+import { trayAgenda } from "./agenda.js";
+import type { NativeView } from "./native-host.js";
+
+export const trayIconLogicalSize = 16;
+
+export const trayIconStandardScale = 1;
+
+export const trayIconRetinaScale = 2;
+
+export const trayIconTemplate = true;
+
+export const trayIconDateZone = DateTime.zoneMakeLocal;
+
+export const trayIconRolloverPolicy = "existing-host-render";
+
+export const trayIconDeclinedResponse = "date-only";
+
+export const trayIconDigitScaleByRepresentation = { 1: 1, 2: 2 };
+
+export const trayIconDateDigits: ReadonlyMap<string, readonly string[]> =
+  new Map([
+    ["0", ["111", "101", "101", "101", "111"]],
+    ["1", ["010", "110", "010", "010", "111"]],
+    ["2", ["111", "001", "111", "100", "111"]],
+    ["3", ["111", "001", "111", "001", "111"]],
+    ["4", ["101", "101", "111", "001", "001"]],
+    ["5", ["111", "100", "111", "001", "111"]],
+    ["6", ["111", "100", "111", "101", "111"]],
+    ["7", ["111", "001", "010", "010", "010"]],
+    ["8", ["111", "101", "111", "101", "111"]],
+    ["9", ["111", "101", "111", "001", "111"]],
+  ]);
+
+export const trayIconGlyphStyle: Readonly<
+  Record<"accepted" | "tentative" | "unanswered", readonly string[]>
+> = {
+  accepted: ["00001", "00010", "10100", "01000", "00000"],
+  tentative: ["01110", "00010", "00100", "00000", "00100"],
+  unanswered: ["01110", "10001", "10001", "10001", "01110"],
+};
+
+export interface TrayIconState {
+  readonly day: number;
+  readonly mark: "date-only" | "accepted" | "tentative" | "unanswered";
+}
+
+export const trayIconState = (view: NativeView): TrayIconState => {
+  const { current } = trayAgenda(view.agenda, view.preferences, view.now);
+  const response = current?.rsvp?.response;
+
+  const instant = DateTime.makeZonedUnsafe(view.now, {
+    timeZone: trayIconDateZone(),
+  });
+
+  let mark: TrayIconState["mark"] = "date-only";
+
+  if (response === "accepted" || response === "tentative") {
+    mark = response;
+  } else if (response === null || response === "needsAction") {
+    mark = "unanswered";
+  } else if (response === "declined") {
+    mark = trayIconDeclinedResponse;
+  }
+
+  return { day: DateTime.toParts(instant).day, mark };
+};
+
+const paintGlyph = (
+  mask: Uint8Array,
+  glyph: readonly string[],
+  left: number,
+  top: number
+): void => {
+  for (const [y, row] of glyph.entries()) {
+    for (const [x, bit] of row.split("").entries()) {
+      if (bit === "1") {
+        mask[(top + y) * trayIconLogicalSize + left + x] = 255;
+      }
+    }
+  }
+};
+
+const calendarFrame = (x: number, y: number): boolean =>
+  y >= 3 && (x === 1 || x === 13 || y === 3 || y === 6 || y === 14);
+
+const trayIconMask = (model: TrayIconState): Uint8Array => {
+  const mask = new Uint8Array(trayIconLogicalSize ** 2);
+
+  for (let y = 1; y <= 14; y += 1) {
+    for (let x = 1; x <= 13; x += 1) {
+      const frame = calendarFrame(x, y);
+      const rings = (x === 4 || x === 10) && y <= 4;
+      const badgeSpace = model.mark !== "date-only" && x >= 10 && y >= 10;
+
+      if ((frame || rings) && !badgeSpace) {
+        mask[y * trayIconLogicalSize + x] = 255;
+      }
+    }
+  }
+
+  const digits = String(model.day);
+  const left = 3 + Math.floor((7 - (digits.length * 4 - 1)) / 2);
+
+  for (const [index, digit] of digits.split("").entries()) {
+    const glyph = trayIconDateDigits.get(digit);
+
+    if (glyph === undefined) {
+      throw new RangeError("Unsupported tray date digit");
+    }
+
+    paintGlyph(mask, glyph, left + index * 4, 8);
+  }
+
+  if (model.mark !== "date-only") {
+    const badge = trayIconGlyphStyle[model.mark];
+
+    paintGlyph(mask, badge, 11, 11);
+  }
+
+  return mask;
+};
+
 const chunk = (kind: string, content: Uint8Array): Buffer => {
   const data = Buffer.concat([Buffer.from(kind, "ascii"), content]);
   const length = Buffer.alloc(4);
@@ -57,4 +181,22 @@ export const calendarDotPng = (color: string): Buffer => {
   }
 
   return iconPng(pixels, 16, 16);
+};
+
+export const trayIconPng = (model: TrayIconState, scale: 1 | 2): Buffer => {
+  const mask = trayIconMask(model);
+  const width = trayIconLogicalSize * scale;
+  const pixels = Buffer.alloc(width ** 2 * 4);
+  const stroke = trayIconDigitScaleByRepresentation[scale];
+
+  for (let y = 0; y < width; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      pixels[(y * width + x) * 4 + 3] =
+        mask[
+          Math.floor(y / stroke) * trayIconLogicalSize + Math.floor(x / stroke)
+        ] ?? 0;
+    }
+  }
+
+  return iconPng(pixels, width, width);
 };
