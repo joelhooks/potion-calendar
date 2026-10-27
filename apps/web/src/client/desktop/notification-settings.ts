@@ -83,6 +83,20 @@ export const ApplyNotificationSettings = Command.define(
 
 type Result = Update.Return<AppModel, AppMessage>;
 
+export const notificationSettingsResetPolicy = (
+  current: AppModel["desktop"]["notificationSettings"]
+): AppModel["desktop"]["notificationSettings"] =>
+  current === undefined
+    ? undefined
+    : {
+        ...initialNotificationSettings(),
+        permission: Option.match(AsyncData.getData(current.permission), {
+          onNone: () => RemoteMacNotificationPermission.Idle(),
+          onSome: (data) => RemoteMacNotificationPermission.Success({ data }),
+        }),
+        request: current.request + 1,
+      };
+
 export const updateNotificationSettings = (
   model: AppModel,
   change: typeof NotificationSettingsChange.Type

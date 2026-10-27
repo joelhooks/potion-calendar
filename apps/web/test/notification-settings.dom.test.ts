@@ -9,7 +9,10 @@ import { Scene } from "foldkit/test";
 import { fromString } from "foldkit/url";
 
 import { Message, update } from "../src/client/app.js";
-import { NotificationSettingsChange } from "../src/client/desktop/notification-model.js";
+import {
+  NotificationSettingsChange,
+  initialNotificationSettings,
+} from "../src/client/desktop/notification-model.js";
 import { ApplyNotificationSettings } from "../src/client/desktop/notification-settings.js";
 import { DispatchEditing } from "../src/client/editing/commands.js";
 import { PrepareEditingDialogs } from "../src/client/editing/dialog-mount.js";
@@ -66,13 +69,25 @@ it.effect(
 );
 
 it.effect.prop(
-  "request correlation preserves native permission Unknown and rejects old or operation-mismatched results",
+  "positive request correlation preserves native permission Unknown and rejects old or operation-mismatched results",
   {
-    stale: Schema.Int.check(Schema.isBetween({ maximum: 0, minimum: -1000 })),
+    stale: Schema.Int.check(Schema.isBetween({ maximum: 1000, minimum: 1 })),
   },
   ({ stale }) =>
     Effect.sync(() => {
-      const model = notificationSettingsFixture();
+      const base = notificationSettingsFixture();
+
+      const model = {
+        ...base,
+        desktop: {
+          ...base.desktop,
+          notificationSettings: {
+            ...(base.desktop.notificationSettings ??
+              initialNotificationSettings()),
+            request: stale + 1,
+          },
+        },
+      };
 
       const pending = update(
         model,
@@ -84,7 +99,7 @@ it.effect.prop(
       expect(pending.commands).toHaveLength(1);
       expect(pending.commands?.[0]?.args).toEqual({
         operation: NotificationSettingsRequest.cases.Open.make({ version: 1 }),
-        request: 2,
+        request: stale + 2,
       });
 
       for (const change of [
@@ -97,7 +112,7 @@ it.effect.prop(
             permission: { authorization: "unknown", supported: false },
             version: 1,
           }),
-          request: 2,
+          request: stale + 2,
         }),
       ]) {
         expect(
@@ -125,7 +140,7 @@ it.effect.prop(
               message: "Handoff refused",
               version: 1,
             }),
-            request: 2,
+            request: stale + 2,
           }),
         })
       );

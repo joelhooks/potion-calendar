@@ -81,6 +81,7 @@ import {
   initialDesktop,
 } from "./desktop/model.js";
 import {
+  notificationSettingsResetPolicy,
   readNotificationSettingsForRoute,
   updateNotificationSettings,
 } from "./desktop/notification-settings.js";
@@ -1517,6 +1518,18 @@ const updateCore = (
     ReceivedSession: ({ snapshot }) => {
       const initial = initialModel(model.calendar.now, model.timeZones.system);
 
+      const notificationSettings = notificationSettingsResetPolicy(
+        model.desktop.notificationSettings
+      );
+
+      const desktop = {
+        availability: model.desktop.availability,
+        canSaveIcs: model.desktop.canSaveIcs,
+        error: Option.none(),
+        request: model.desktop.request,
+        settings: model.desktop.settings,
+      };
+
       const cleared = {
         ...initial,
         accountDeletion: deletionAfterSession(model, snapshot),
@@ -1528,13 +1541,10 @@ const updateCore = (
         conferencingSettings: initialConferencingSettings(
           model.conferencingSettings.requestId + 1
         ),
-        desktop: {
-          availability: model.desktop.availability,
-          canSaveIcs: model.desktop.canSaveIcs,
-          error: Option.none(),
-          request: model.desktop.request,
-          settings: model.desktop.settings,
-        },
+        desktop:
+          notificationSettings === undefined
+            ? desktop
+            : { ...desktop, notificationSettings },
         profile:
           snapshot !== null && Option.contains(model.person, snapshot.user.id)
             ? model.profile

@@ -91,8 +91,13 @@ for (const { scene, theme, width } of fixtures) {
         }
 
         const proof = `const dialog=document.querySelector('#phone-settings-dialog');if(dialog&&!dialog.open)dialog.showModal();if(document.documentElement.scrollWidth>innerWidth)throw Error('Notification settings overflow');const root=document.querySelector('.settings-content');if(!root)throw Error('Missing Notifications recipient');for(const element of root.querySelectorAll('button,select')){const r=element.getBoundingClientRect();if(r.width&&(r.left<0||r.right>innerWidth+1))throw Error('Notification control clipped');}document.documentElement.dataset.notificationSettingsProof='pass';`;
+
+        const spacingProof = native
+          ? `const mac=document.querySelector('section[aria-label="macOS notifications"]');const content=mac?.querySelector('.settings-conferencing-entry');const actions=mac?.querySelector('.settings-calendar-actions');if(!content||!actions)throw Error('Missing native spacing recipient');for(const group of [content,...content.querySelectorAll('.settings-conferencing-entry')]){const blocks=[...group.children].map(node=>node.getBoundingClientRect()).filter(r=>r.width&&r.height);for(let i=1;i<blocks.length;i++){if(blocks[i].top-blocks[i-1].bottom<5.5)throw Error('Native notification text spacing collapsed');}}const buttons=[...actions.querySelectorAll('button')].map(node=>node.getBoundingClientRect()).filter(r=>r.width&&r.height);for(let i=1;i<buttons.length;i++){const previous=buttons[i-1],next=buttons[i];const sameRow=Math.min(previous.bottom,next.bottom)>Math.max(previous.top,next.top);const gap=sameRow?next.left-previous.right:next.top-previous.bottom;if(gap<8)throw Error('Native notification buttons have less than eight pixels separation');}document.documentElement.dataset.notificationSettingsSpacingProof='pass';`
+          : "";
+
         const file = `../../.git/notification-settings-${scene}-${theme}-${width}-fixture.html`;
-        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="fixture-viewport" content="${width}x900"><title>Notification settings ${scene} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script>${proof}</script></body></html>`;
+        const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="fixture-viewport" content="${width}x900"><title>Notification settings ${scene} ${theme} ${width}</title><style>${css}</style></head><body>${rendered.html}<script>${proof}${spacingProof}</script></body></html>`;
         yield* publishFixtureArtifact(file, html);
         expect(yield* fs.readFileString(file)).toBe(html);
       }).pipe(Effect.provide(NodeServices.layer))
