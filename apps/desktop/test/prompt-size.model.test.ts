@@ -1,4 +1,8 @@
-import { PromptSize, promptWire } from "@calendar/core/desktop-bridge";
+import {
+  PromptSize,
+  promptActionMenuPaddingPx,
+  promptWire,
+} from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { Arbitrary, Effect, Option, Schema } from "effect";
 
@@ -52,6 +56,57 @@ it.effect.prop(
     })
 );
 
+it.effect.prop(
+  "menu allowance is bounded, non-accumulating, reversible and subordinate to frame and work-area bounds",
+  {
+    area: Schema.Int.check(Schema.isBetween({ maximum: 1600, minimum: 100 })),
+    height: Schema.Int.check(Schema.isBetween({ maximum: 2000, minimum: 1 })),
+    revision: Schema.Int.check(Schema.isBetween({ maximum: 1000, minimum: 1 })),
+  },
+  ({ area, height, revision }) =>
+    Effect.gen(function* menuHeightHistory() {
+      const report = yield* Schema.decodeEffect(promptWire.size)(
+        yield* Schema.encodeEffect(promptWire.size)({
+          height,
+          menuPadding: promptActionMenuPaddingPx,
+          revision,
+        })
+      );
+
+      const expected = Math.min(area, Math.max(140, height) + 160 + 28);
+      expect(promptMeasuredHeight(report, revision, -1, area, 28)).toBe(
+        expected
+      );
+      expect(
+        promptMeasuredHeight(report, revision, expected, area, 28)
+      ).toBeUndefined();
+      expect(
+        promptMeasuredHeight(report, revision + 1, -1, area, 28)
+      ).toBeUndefined();
+      expect(
+        promptMeasuredHeight(
+          { height, menuPadding: 0, revision },
+          revision,
+          -1,
+          area,
+          28
+        )
+      ).toBe(Math.min(area, Math.max(140, height) + 28));
+
+      for (const menuPadding of [-1, 161, 1.5, Number.POSITIVE_INFINITY]) {
+        expect(
+          Option.isNone(
+            Schema.decodeOption(PromptSize)({
+              height,
+              menuPadding,
+              revision,
+            })
+          )
+        ).toBe(true);
+      }
+    })
+);
+
 it.effect(
   "real preload codec sends measured height and revision only, rejecting non-finite reports",
   () =>
@@ -85,6 +140,17 @@ it.effect(
         revision: 8,
       });
       expect(rejected).toBe(1);
+      bridge.reportSize?.({
+        height: 250,
+        menuPadding: promptActionMenuPaddingPx,
+        revision: 8,
+      });
+      expect(
+        yield* Schema.decodeUnknownEffect(promptWire.size)(sent[1])
+      ).toEqual({ height: 250, menuPadding: 160, revision: 8 });
+      bridge.reportSize?.({ height: 250, menuPadding: 161, revision: 8 });
+      expect(sent).toHaveLength(2);
+      expect(rejected).toBe(2);
     })
 );
 

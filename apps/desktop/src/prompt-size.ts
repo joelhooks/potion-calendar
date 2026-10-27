@@ -16,7 +16,9 @@ export const promptMeasuredHeight = (
 
   const height = Math.min(
     workAreaHeight,
-    Math.max(140, Math.ceil(report.height)) + Math.max(0, frameHeight)
+    Math.max(140, Math.ceil(report.height)) +
+      (report.menuPadding ?? 0) +
+      Math.max(0, frameHeight)
   );
 
   return height === currentHeight ? undefined : height;

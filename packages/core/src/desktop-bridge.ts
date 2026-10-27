@@ -645,8 +645,15 @@ export const PromptAction = Schema.Union([
   }),
 ]);
 
+export const promptActionMenuPaddingPx = 160;
+
 export const PromptSize = Schema.Struct({
   height: Schema.Finite,
+  menuPadding: Schema.optional(
+    Schema.Int.check(
+      Schema.isBetween({ maximum: promptActionMenuPaddingPx, minimum: 0 })
+    )
+  ),
   revision: Schema.Int,
 });
 

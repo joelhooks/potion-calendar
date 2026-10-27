@@ -1,3 +1,4 @@
+import { promptActionMenuPaddingPx } from "@calendar/core/desktop-bridge";
 import type { PromptBridge } from "@calendar/core/desktop-bridge";
 import { Predicate } from "effect";
 
@@ -7,6 +8,7 @@ export const createPromptMeasurement = (
 ) => {
   let revision = 0;
   let frame: number | undefined;
+  let menuPadding = 0;
 
   const measure = () => {
     if (api?.reportSize === undefined || root === null || frame !== undefined) {
@@ -15,10 +17,13 @@ export const createPromptMeasurement = (
 
     frame = window.requestAnimationFrame(() => {
       frame = undefined;
-      api.reportSize?.({
+
+      const report = {
         height: root.getBoundingClientRect().height,
         revision,
-      });
+      };
+
+      api.reportSize?.(menuPadding === 0 ? report : { ...report, menuPadding });
     });
   };
 
@@ -42,8 +47,13 @@ export const createPromptMeasurement = (
         frame = undefined;
       }
     },
+    menu: (open: boolean) => {
+      menuPadding = open ? promptActionMenuPaddingPx : 0;
+      measure();
+    },
     presented: (current: number) => {
       revision = current;
+      menuPadding = 0;
       measure();
     },
   };

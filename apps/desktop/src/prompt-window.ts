@@ -13,43 +13,104 @@ import type {
   PlayablePromptSound,
 } from "@calendar/core/desktop-bridge";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
-import { BrowserWindow, ipcMain, screen, session } from "electron";
+import {
+  BrowserWindow,
+  ipcMain as electronIpcMain,
+  screen as electronScreen,
+  session,
+} from "electron";
 
 import { DesktopError } from "./config.js";
 import type { PromptPresentation } from "./prompt-machine.js";
 import { resizePromptWindow, revealPromptWindow } from "./prompt-placement.js";
 import { nextPromptView } from "./prompt-preferences.js";
 import { promptFallbackHeight, promptMeasuredHeight } from "./prompt-size.js";
+import {
+  promptDismissalIntervalMs,
+  startPromptWindowLifecycle,
+} from "./prompt-window-lifecycle.js";
 import { previewWithSound, revealWithSound } from "./sound-machine.js";
 import { preparePromptSound } from "./sound-port.js";
 import type { PromptSoundPort } from "./sound-port.js";
 
-export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
-  function* makePromptWindow(
-    onAction: (
-      action: typeof PromptAction.Type,
-      event: AgendaEventValue
-    ) => void,
-    onClosed: () => void
-  ) {
-    const context = yield* Effect.context();
-    const runSync = Effect.runSyncWith(context);
+type PromptNavigationListener = (event: { preventDefault: () => void }) => void;
 
-    const current = yield* Ref.make<Option.Option<BrowserWindow>>(
-      Option.none()
-    );
+interface PromptNativeFrame {
+  readonly url: string;
+}
 
-    const soundRequest = yield* Ref.make(0);
-    const windowLock = yield* Semaphore.make(1);
+interface PromptIpcEvent {
+  readonly sender: PromptNativeContents;
+  readonly senderFrame: PromptNativeFrame | null;
+}
 
-    const view = yield* Ref.make<typeof PromptView.Type>({
-      events: [],
-      revision: 0,
-    });
+type PromptIpcListener = (
+  event: PromptIpcEvent,
+  value: Parameters<Parameters<typeof electronIpcMain.on>[1]>[1]
+) => void;
 
-    const pageUrl = new URL("prompt.html", import.meta.url);
+interface PromptNativeContents {
+  readonly getURL: () => string;
+  readonly isLoadingMainFrame: () => boolean;
+  readonly mainFrame: PromptNativeFrame;
+  readonly send: (channel: string, value: string) => void;
+  readonly setWindowOpenHandler: (
+    handler: () => { readonly action: "deny" }
+  ) => void;
+  readonly on: ((
+    name: "will-navigate",
+    receive: PromptNavigationListener
+  ) => void) &
+    ((name: "will-redirect", receive: PromptNavigationListener) => void) &
+    ((name: "will-attach-webview", receive: PromptNavigationListener) => void);
+}
+
+export interface PromptNativeWindow {
+  readonly destroy: () => void;
+  readonly getBounds: BrowserWindow["getBounds"];
+  readonly getContentBounds: BrowserWindow["getContentBounds"];
+  readonly isDestroyed: () => boolean;
+  readonly isVisible: () => boolean;
+  readonly loadFile: (path: string) => Promise<void>;
+  readonly on: (name: "closed", receive: () => void) => void;
+  readonly setPosition: (x: number, y: number) => void;
+  readonly setSize: (width: number, height: number) => void;
+  readonly showInactive: () => void;
+  readonly webContents: PromptNativeContents;
+}
+
+export interface PromptWindowNative {
+  readonly prepare: () => (
+    options: Electron.BrowserWindowConstructorOptions
+  ) => PromptNativeWindow;
+  readonly ipcMain: {
+    readonly handle: (
+      channel: string,
+      listener: (event: PromptIpcEvent) => string
+    ) => void;
+    readonly on: (channel: string, listener: PromptIpcListener) => void;
+    readonly removeHandler: (channel: string) => void;
+    readonly removeListener: (
+      channel: string,
+      listener: PromptIpcListener
+    ) => void;
+  };
+  readonly screen: {
+    readonly getCursorScreenPoint: () => Electron.Point;
+    readonly getDisplayMatching: (bounds: Electron.Rectangle) => {
+      readonly workArea: Electron.Rectangle;
+    };
+    readonly getDisplayNearestPoint: (point: Electron.Point) => {
+      readonly workArea: Electron.Rectangle;
+    };
+    readonly getPrimaryDisplay: () => { readonly workArea: Electron.Rectangle };
+  };
+}
+
+const nativePromptWindow: PromptWindowNative = {
+  ipcMain: electronIpcMain,
+  prepare: () => {
     const partition = session.fromPartition("potion-prompt");
-
     partition.setPermissionRequestHandler(
       // oxlint-disable-next-line promise/prefer-await-to-callbacks -- Electron requires a synchronous native permission decision.
       (_contents, _permission, callback) => {
@@ -72,6 +133,44 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       }
     );
 
+    return (options) =>
+      new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, session: partition },
+      });
+  },
+  screen: electronScreen,
+};
+
+export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
+  function* makePromptWindow(
+    onAction: (
+      action: typeof PromptAction.Type,
+      event: AgendaEventValue
+    ) => void,
+    onClosed: () => void,
+    native: PromptWindowNative = nativePromptWindow
+  ) {
+    const { ipcMain, screen } = native;
+    const context = yield* Effect.context();
+    const runSync = Effect.runSyncWith(context);
+
+    const current = yield* Ref.make<Option.Option<PromptNativeWindow>>(
+      Option.none()
+    );
+
+    const soundRequest = yield* Ref.make(0);
+    const windowLock = yield* Semaphore.make(1);
+
+    const view = yield* Ref.make<typeof PromptView.Type>({
+      events: [],
+      revision: 0,
+    });
+
+    const lifecycle = yield* startPromptWindowLifecycle();
+    const pageUrl = new URL("prompt.html", import.meta.url);
+    const create = native.prepare();
+
     const dispose = Effect.sync(() => {
       const window = runSync(Ref.get(current));
       runSync(Ref.set(current, Option.none()));
@@ -87,15 +186,41 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       }
     });
 
-    const close = Ref.get(view).pipe(
-      Effect.flatMap((content) =>
-        content.events.length === 0 ? Effect.void : dispose
-      )
-    );
+    const dismiss = Effect.gen(function* dismissPromptWindow() {
+      const window = yield* Ref.get(current);
 
-    const trusted = (
-      event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
-    ) => {
+      if (Option.isNone(window) || window.value.isDestroyed()) {
+        return;
+      }
+
+      const cleared = yield* Ref.updateAndGet(view, (previous) => ({
+        events: [],
+        revision: previous.revision + 1,
+      }));
+
+      const message = Schema.encodeOption(promptWire.view)(cleared);
+
+      if (Option.isSome(message)) {
+        window.value.webContents.send(promptChannels.view, message.value);
+      }
+
+      yield* Effect.sleep(promptDismissalIntervalMs);
+      const latest = yield* Ref.get(current);
+      const content = yield* Ref.get(view);
+
+      if (
+        Option.isSome(latest) &&
+        latest.value === window.value &&
+        content.revision === cleared.revision &&
+        content.events.length === 0
+      ) {
+        yield* dispose;
+      }
+    });
+
+    const close = lifecycle.perform("Dismiss", dismiss);
+
+    const trusted = (event: PromptIpcEvent) => {
       const window = runSync(Ref.get(current));
 
       return (
@@ -188,7 +313,8 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
     ipcMain.on(promptChannels.size, sizeListener);
 
     yield* Effect.addFinalizer(() =>
-      dispose.pipe(
+      lifecycle.perform("Quit", dispose).pipe(
+        Effect.orDie,
         Effect.andThen(
           Effect.sync(() => {
             ipcMain.removeHandler(promptChannels.read);
@@ -199,7 +325,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       )
     );
 
-    const soundPort = (window: BrowserWindow): PromptSoundPort => ({
+    const soundPort = (window: PromptNativeWindow): PromptSoundPort => ({
       send: (request) => {
         const message = Schema.encodeOption(promptWire.sound)(request);
 
@@ -233,7 +359,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
         const window =
           Option.isSome(existing) && !existing.value.isDestroyed()
             ? existing.value
-            : new BrowserWindow({
+            : create({
                 alwaysOnTop: true,
                 fullscreenable: false,
                 height: 140,
@@ -252,7 +378,6 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
                     new URL("prompt-preload.cjs", import.meta.url)
                   ),
                   sandbox: true,
-                  session: partition,
                   webSecurity: true,
                   webviewTag: false,
                 },
@@ -272,6 +397,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
                   revision: previous.revision + 1,
                 }))
               );
+              lifecycle.actor.send({ type: "Closed" });
               onClosed();
             }
           });
@@ -309,70 +435,82 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       Semaphore.withPermit(windowLock)
     );
 
-    const present = Effect.fn("Desktop.presentPrompt")(function* present(
-      events: readonly AgendaEventValue[],
-      presentation: PromptPresentation
-    ) {
-      const nextView = yield* Ref.updateAndGet(view, (previous) =>
-        nextPromptView(previous, events, presentation)
-      );
+    const presentContent = Effect.fn("Desktop.presentPromptContent")(
+      function* presentContent(
+        events: readonly AgendaEventValue[],
+        presentation: PromptPresentation
+      ) {
+        const nextView = yield* Ref.updateAndGet(view, (previous) =>
+          nextPromptView(previous, events, presentation)
+        );
 
-      const window = yield* prepareWindow();
-      const port = soundPort(window);
-      yield* Effect.try({
-        catch: (cause) =>
-          new DesktopError({
-            cause,
-            message: "Meeting prompt could not update",
-          }),
-        try: () => {
-          if (!window.isDestroyed()) {
-            const area = screen.getDisplayMatching(window.getBounds()).workArea;
-            resizePromptWindow(
-              window,
-              promptFallbackHeight(events.length, area.height),
-              area
-            );
-            const message = Schema.encodeOption(promptWire.view)(nextView);
-
-            if (Option.isSome(message)) {
-              window.webContents.send(promptChannels.view, message.value);
-            }
-          }
-        },
-      });
-
-      if (!presentation.reveal) {
-        return;
-      }
-
-      const request = yield* Ref.updateAndGet(
-        soundRequest,
-        (previous) => previous + 1
-      );
-
-      yield* revealWithSound(presentation.sound, {
-        load: (sound) => preparePromptSound(port, request, sound),
-        play: (sound) =>
-          Effect.sync(() => {
-            if (!window.isDestroyed()) {
-              port.send(PromptSoundRequest.cases.Play.make({ request, sound }));
-            }
-          }),
-        reveal: Effect.try({
+        const window = yield* prepareWindow();
+        const port = soundPort(window);
+        yield* Effect.try({
           catch: (cause) =>
             new DesktopError({
               cause,
-              message: "Meeting prompt could not appear",
+              message: "Meeting prompt could not update",
             }),
           try: () => {
             if (!window.isDestroyed()) {
-              revealPromptWindow(window, screen);
+              const area = screen.getDisplayMatching(
+                window.getBounds()
+              ).workArea;
+
+              resizePromptWindow(
+                window,
+                promptFallbackHeight(events.length, area.height),
+                area
+              );
+              const message = Schema.encodeOption(promptWire.view)(nextView);
+
+              if (Option.isSome(message)) {
+                window.webContents.send(promptChannels.view, message.value);
+              }
             }
           },
-        }),
-      });
-    });
+        });
+
+        if (!presentation.reveal) {
+          return;
+        }
+
+        const request = yield* Ref.updateAndGet(
+          soundRequest,
+          (previous) => previous + 1
+        );
+
+        yield* revealWithSound(presentation.sound, {
+          load: (sound) => preparePromptSound(port, request, sound),
+          play: (sound) =>
+            Effect.sync(() => {
+              if (!window.isDestroyed()) {
+                port.send(
+                  PromptSoundRequest.cases.Play.make({ request, sound })
+                );
+              }
+            }),
+          reveal: Effect.try({
+            catch: (cause) =>
+              new DesktopError({
+                cause,
+                message: "Meeting prompt could not appear",
+              }),
+            try: () => {
+              if (!window.isDestroyed()) {
+                revealPromptWindow(window, screen);
+              }
+            },
+          }),
+        });
+      }
+    );
+
+    const present = (
+      events: readonly AgendaEventValue[],
+      presentation: PromptPresentation
+    ) => lifecycle.perform("Present", presentContent(events, presentation));
 
     const active = Ref.get(current).pipe(
       Effect.map(
@@ -383,40 +521,50 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       )
     );
 
-    const preview = Effect.fn("Desktop.previewPromptSound")(function* preview(
+    const previewContent = Effect.fn("Desktop.previewPromptSoundContent")(
+      function* previewContent(
+        sound: typeof PromptSound.Type,
+        enabled: Effect.Effect<boolean>
+      ) {
+        return yield* previewWithSound(sound, {
+          active,
+          enabled,
+          prepare: Effect.gen(function* preparePreview() {
+            const window = yield* prepareWindow();
+            const port = soundPort(window);
+
+            const request = yield* Ref.updateAndGet(
+              soundRequest,
+              (previous) => previous + 1
+            );
+
+            return {
+              cancel: Effect.sync(() => {
+                port.send(PromptSoundRequest.cases.Cancel.make({ request }));
+              }),
+              load: (tone: typeof PlayablePromptSound.Type) =>
+                preparePromptSound(port, request, tone),
+              play: (tone: typeof PlayablePromptSound.Type) =>
+                Effect.sync(() => {
+                  if (!window.isDestroyed()) {
+                    port.send(
+                      PromptSoundRequest.cases.Play.make({
+                        request,
+                        sound: tone,
+                      })
+                    );
+                  }
+                }),
+            };
+          }),
+        });
+      }
+    );
+
+    const preview = (
       sound: typeof PromptSound.Type,
       enabled: Effect.Effect<boolean>
-    ) {
-      return yield* previewWithSound(sound, {
-        active,
-        enabled,
-        prepare: Effect.gen(function* preparePreview() {
-          const window = yield* prepareWindow();
-          const port = soundPort(window);
-
-          const request = yield* Ref.updateAndGet(
-            soundRequest,
-            (previous) => previous + 1
-          );
-
-          return {
-            cancel: Effect.sync(() => {
-              port.send(PromptSoundRequest.cases.Cancel.make({ request }));
-            }),
-            load: (tone: typeof PlayablePromptSound.Type) =>
-              preparePromptSound(port, request, tone),
-            play: (tone: typeof PlayablePromptSound.Type) =>
-              Effect.sync(() => {
-                if (!window.isDestroyed()) {
-                  port.send(
-                    PromptSoundRequest.cases.Play.make({ request, sound: tone })
-                  );
-                }
-              }),
-          };
-        }),
-      });
-    });
+    ) => lifecycle.perform("Present", previewContent(sound, enabled));
 
     return {
       active,

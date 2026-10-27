@@ -24,6 +24,8 @@ const api = window.potionPrompt;
 
 const root = document.querySelector("main");
 
+const measurement = createPromptMeasurement(root, api);
+
 const card = (
   event: AgendaEventValue,
   preferences: typeof PromptPreferences.Type | undefined,
@@ -130,6 +132,9 @@ const card = (
     menu.hidden = true;
     article.dataset.menuOpen = "false";
     menuButton.setAttribute("aria-expanded", "false");
+    measurement.menu(
+      root !== null && root.querySelector('[data-menu-open="true"]') !== null
+    );
 
     if (restoreFocus) {
       menuButton.focus();
@@ -145,6 +150,7 @@ const card = (
     swipe({ pointer: gesture.context.pointer, type: "Cancel" });
     menu.hidden = false;
     menuButton.setAttribute("aria-expanded", "true");
+    measurement.menu(true);
 
     const position = promptMenuPosition(
       menuButton.getBoundingClientRect(),
@@ -341,7 +347,26 @@ const card = (
   return article;
 };
 
-const measurement = createPromptMeasurement(root, api);
+const repositionMenu = () => {
+  for (const article of root?.querySelectorAll('[data-menu-open="true"]') ??
+    []) {
+    const menu = article.querySelector<HTMLElement>('[role="menu"]');
+    const toggle = article.querySelector<HTMLElement>("[data-prompt-menu]");
+
+    if (menu === null || toggle === null) {
+      continue;
+    }
+
+    const position = promptMenuPosition(
+      toggle.getBoundingClientRect(),
+      menu.getBoundingClientRect(),
+      { height: window.innerHeight, width: window.innerWidth }
+    );
+
+    menu.style.left = `${position.left}px`;
+    menu.style.top = `${position.top}px`;
+  }
+};
 
 const render = (view: typeof PromptView.Type) => {
   if (root === null) {
@@ -374,6 +399,7 @@ const load = async (bridge: PromptBridge) => {
 };
 
 if (api !== undefined) {
+  window.addEventListener("resize", repositionMenu);
   const stop = api.onView(render);
 
   const receiveSound = createSoundReceiver(createToneAudio(), (reply) => {
@@ -390,6 +416,7 @@ if (api !== undefined) {
     () => {
       stop();
       stopSound?.();
+      window.removeEventListener("resize", repositionMenu);
       measurement.dispose();
     },
     { once: true }
