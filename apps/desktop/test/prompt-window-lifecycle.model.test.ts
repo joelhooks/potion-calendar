@@ -3,13 +3,23 @@ import { pathToFileURL } from "node:url";
 import {
   defaultDesktopPreferences,
   promptChannels,
+  PromptSoundRequest,
   promptWire,
 } from "@calendar/core/desktop-bridge";
 import type { AgendaEventValue } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { send, waitFor } from "@xstate/effect";
 import type { EffectActor } from "@xstate/effect";
-import { Effect, Exit, Fiber, Schema, Scope } from "effect";
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Predicate,
+  Ref,
+  Schema,
+  Scope,
+} from "effect";
 import { TestClock } from "effect/testing";
 
 import { startPrompt } from "../src/prompt-machine.js";
@@ -28,6 +38,8 @@ class FakeWindow {
   visible = false;
   sendsAfterDestroy = 0;
   views: string[] = [];
+  sounds: string[] = [];
+  soundStarted: Deferred.Deferred<string> | undefined;
   callbacks = new Map<string, () => void>();
   url = "";
   bounds = { height: 170, width: 380, x: 0, y: 0 };
@@ -43,6 +55,14 @@ class FakeWindow {
 
       if (channel === promptChannels.view) {
         this.views.push(value);
+      }
+
+      if (channel === promptChannels.sound) {
+        this.sounds.push(value);
+
+        if (this.soundStarted !== undefined) {
+          Deferred.doneUnsafe(this.soundStarted, Effect.succeed(value));
+        }
       }
     },
     setWindowOpenHandler: () => {},
@@ -86,7 +106,7 @@ class FakeWindow {
   }
 }
 
-const nativeFixture = () => {
+const nativeFixture = (soundStarted?: Deferred.Deferred<string>) => {
   const windows: FakeWindow[] = [];
 
   const listeners = new Map<
@@ -109,6 +129,7 @@ const nativeFixture = () => {
     },
     prepare: () => () => {
       const window = new FakeWindow();
+      window.soundStarted = soundStarted;
       windows.push(window);
 
       return window;
@@ -153,6 +174,30 @@ const windowAt = (windows: readonly FakeWindow[], index: number) => {
 
   return window;
 };
+
+const reportSoundReady = Effect.fn("Test.reportSoundReady")(
+  function* reportSoundReady(
+    listeners: ReturnType<typeof nativeFixture>["listeners"],
+    window: FakeWindow,
+    request: number
+  ) {
+    const reply = yield* Schema.encodeEffect(promptWire.soundReply)({
+      phase: "load",
+      ready: true,
+      request,
+    });
+
+    yield* Effect.sync(() => {
+      listeners.get(promptChannels.soundReply)?.(
+        {
+          sender: window.webContents,
+          senderFrame: window.webContents.mainFrame,
+        },
+        reply
+      );
+    });
+  }
+);
 
 it.effect(
   "last-item removal clears the real adapter view now but destroys only at the virtual dismissal deadline",
@@ -420,5 +465,249 @@ it.effect(
       expect(windows).toHaveLength(1);
       expect(window.destroys).toBe(1);
       expect(window.sendsAfterDestroy).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "HIGH rejected preview during dismissal cannot supersede the original destruction deadline",
+  {
+    before: Schema.Int.check(Schema.isBetween({ maximum: 199, minimum: 0 })),
+    kind: Schema.Literals(["none", "disabled", "retained"]),
+  },
+  ({ before, kind }) =>
+    Effect.gen(function* rejectedPreviewHistory() {
+      const { native, windows } = nativeFixture();
+
+      const adapter = yield* makePromptWindow(
+        () => {},
+        () => {},
+        native
+      );
+
+      yield* adapter.present([meeting], presentation);
+      const window = windowAt(windows, 0);
+
+      yield* Effect.forkChild(adapter.close);
+      yield* TestClock.adjust(before);
+      const views = window.views.length;
+      const sounds = window.sounds.length;
+
+      expect(
+        yield* adapter.preview(
+          kind === "none" ? "none" : "bell",
+          Effect.succeed(kind !== "disabled")
+        )
+      ).toBe(false);
+      expect(window.views).toHaveLength(views);
+      expect(window.sounds).toHaveLength(sounds);
+      yield* TestClock.adjust(promptDismissalIntervalMs - before);
+      expect(
+        window.destroys,
+        "HIGH rejected preview must preserve the original dismissal deadline"
+      ).toBe(1);
+      expect(windows).toHaveLength(1);
+      expect(window.sendsAfterDestroy).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "HIGH preview during in-flight content presentation cannot supersede its actor or content",
+  { enabled: Schema.Boolean, sound: Schema.Literals(["none", "bell"]) },
+  ({ sound, enabled }) =>
+    Effect.gen(function* presentationPreviewHistory() {
+      const started = yield* Deferred.make<string>();
+      const { native, windows, listeners } = nativeFixture(started);
+
+      const adapter = yield* makePromptWindow(
+        () => {},
+        () => {},
+        native
+      );
+
+      const pending = yield* Effect.forkChild(
+        adapter.present([meeting], { ...presentation, sound: "bell" })
+      );
+
+      const request = yield* Schema.decodeEffect(promptWire.sound)(
+        yield* Deferred.await(started)
+      );
+
+      const window = windowAt(windows, 0);
+
+      expect(request._tag).toBe("Load");
+
+      const attempt = yield* Effect.forkChild(
+        adapter.preview(sound, Effect.succeed(enabled))
+      );
+
+      yield* TestClock.adjust(0);
+      const rejection = yield* Effect.sync(() => attempt.pollUnsafe());
+
+      expect(
+        rejection,
+        "HIGH busy preview must reject without starting or awaiting sound work"
+      ).toEqual(Exit.succeed(false));
+      expect(window.sounds).toHaveLength(1);
+      yield* reportSoundReady(listeners, window, request.request);
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion?._tag,
+        "HIGH preview must not interrupt or strand the in-flight presentation"
+      ).toBe("Success");
+      expect(latest(window)).toMatchObject({ value: { events: [meeting] } });
+      expect(window.visible).toBe(true);
+      expect(window.destroys).toBe(0);
+      expect(windows).toHaveLength(1);
+      expect(window.sendsAfterDestroy).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "eligible sound preview preserves its tone and rechecks eligibility after real loading without presenting content",
+  { allowed: Schema.Boolean, sound: Schema.Literals(["blip", "bell", "tap"]) },
+  ({ sound, allowed }) =>
+    Effect.gen(function* eligiblePreviewHistory() {
+      const started = yield* Deferred.make<string>();
+      const enabled = yield* Ref.make(true);
+      const { native, windows, listeners } = nativeFixture(started);
+
+      const adapter = yield* makePromptWindow(
+        () => {},
+        () => {},
+        native
+      );
+
+      const pending = yield* Effect.forkChild(
+        adapter.preview(sound, Ref.get(enabled))
+      );
+
+      const request = yield* Schema.decodeEffect(promptWire.sound)(
+        yield* Deferred.await(started)
+      );
+
+      const window = windowAt(windows, 0);
+      expect(request).toEqual(
+        PromptSoundRequest.cases.Load.make({ request: request.request, sound })
+      );
+      yield* Ref.set(enabled, allowed);
+      yield* reportSoundReady(listeners, window, request.request);
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion,
+        "preview returns the current eligibility result after native sound loading"
+      ).toEqual(Exit.succeed(allowed));
+
+      const requests = yield* Effect.forEach((raw: string) =>
+        Schema.decodeEffect(promptWire.sound)(raw)
+      )(window.sounds);
+
+      expect(requests.filter(Predicate.isTagged("Play"))).toEqual(
+        allowed
+          ? [
+              PromptSoundRequest.cases.Play.make({
+                request: request.request,
+                sound,
+              }),
+            ]
+          : []
+      );
+      expect(requests.at(-1)?._tag).toBe("Cancel");
+      expect(window.views).toHaveLength(0);
+      expect(window.visible).toBe(false);
+      expect(windows).toHaveLength(1);
+      expect(window.sendsAfterDestroy).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "content presentation and quit preempt a sound preview with a settled false result and no late sound work",
+  { by: Schema.Literals(["content", "quit"]) },
+  ({ by }) =>
+    Effect.gen(function* previewPreemptionHistory() {
+      const started = yield* Deferred.make<string>();
+      const { native, windows, listeners } = nativeFixture(started);
+      const scope = yield* Scope.make();
+
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+
+      const adapter = yield* makePromptWindow(
+        () => {},
+        () => {},
+        native
+      ).pipe(Scope.provide(scope));
+
+      const pending = yield* Effect.forkChild(
+        adapter.preview("bell", Effect.succeed(true))
+      );
+
+      const request = yield* Schema.decodeEffect(promptWire.sound)(
+        yield* Deferred.await(started)
+      );
+
+      const window = windowAt(windows, 0);
+
+      if (by === "content") {
+        yield* adapter.present([meeting], presentation);
+        expect(latest(window)).toMatchObject({ value: { events: [meeting] } });
+        expect(window.visible).toBe(true);
+        expect(window.destroys).toBe(0);
+      } else {
+        yield* Scope.close(scope, Exit.void);
+        expect(window.destroys).toBe(1);
+
+        const late = yield* Effect.exit(
+          adapter.preview("bell", Effect.succeed(true))
+        );
+
+        expect(
+          late,
+          "quit rejects late preview without native preparation"
+        ).toEqual(Exit.succeed(false));
+      }
+
+      yield* reportSoundReady(listeners, window, request.request);
+      yield* TestClock.adjust(0);
+      const completion = yield* Effect.sync(() => pending.pollUnsafe());
+
+      expect(
+        completion,
+        "content or quit settles the preempted preview as false"
+      ).toEqual(Exit.succeed(false));
+
+      const requests = yield* Effect.forEach((raw: string) =>
+        Schema.decodeEffect(promptWire.sound)(raw)
+      )(window.sounds);
+
+      expect(requests.filter(Predicate.isTagged("Play"))).toHaveLength(0);
+      expect(windows).toHaveLength(1);
+      expect(window.sendsAfterDestroy).toBe(0);
+    }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "none and disabled previews create no window and do not affect the next real presentation",
+  { sound: Schema.Literals(["none", "bell"]) },
+  ({ sound }) =>
+    Effect.gen(function* noOpPreviewHistory() {
+      const { native, windows } = nativeFixture();
+
+      const adapter = yield* makePromptWindow(
+        () => {},
+        () => {},
+        native
+      );
+
+      expect(yield* adapter.preview(sound, Effect.succeed(false))).toBe(false);
+      expect(windows).toHaveLength(0);
+      yield* adapter.present([meeting], presentation);
+      expect(latest(windowAt(windows, 0))).toMatchObject({
+        value: { events: [meeting] },
+      });
+      expect(windows).toHaveLength(1);
+      expect(windowAt(windows, 0).visible).toBe(true);
     }).pipe(Effect.scoped)
 );

@@ -32,6 +32,7 @@ export const promptWindowLifecycle = () => {
         Closed: Schema.Struct({}),
         Dismiss: types<{ readonly job: WindowJob }>(),
         Present: types<{ readonly job: WindowJob }>(),
+        Preview: types<{ readonly job: WindowJob }>(),
         Quit: types<{ readonly job: WindowJob }>(),
       },
     },
@@ -57,7 +58,14 @@ export const promptWindowLifecycle = () => {
       }),
     },
     states: {
-      destroyed: {},
+      destroyed: {
+        on: {
+          Preview: ({ event }) => ({
+            context: { job: event.job },
+            target: "previewing",
+          }),
+        },
+      },
       dismissing: {
         invoke: {
           input: ({ context }) => context.job,
@@ -65,8 +73,22 @@ export const promptWindowLifecycle = () => {
           src: "perform",
         },
       },
-      live: {},
+      live: {
+        on: {
+          Preview: ({ event }) => ({
+            context: { job: event.job },
+            target: "previewing",
+          }),
+        },
+      },
       presenting: {
+        invoke: {
+          input: ({ context }) => context.job,
+          onDone: { target: "live" },
+          src: "perform",
+        },
+      },
+      previewing: {
         invoke: {
           input: ({ context }) => context.job,
           onDone: { target: "live" },
@@ -80,7 +102,7 @@ export const promptWindowLifecycle = () => {
           onDone: { target: "quit" },
           src: "perform",
         },
-        on: { Closed: {}, Dismiss: {}, Present: {}, Quit: {} },
+        on: { Closed: {}, Dismiss: {}, Present: {}, Preview: {}, Quit: {} },
       },
     },
   });
@@ -115,5 +137,36 @@ export const startPromptWindowLifecycle = Effect.fn(
     return yield* Deferred.await(result);
   });
 
-  return { actor, perform };
+  const preview = Effect.fn("Desktop.performPromptPreview")(function* preview(
+    work: Effect.Effect<boolean, DesktopError>
+  ) {
+    const result = yield* Deferred.make<boolean, DesktopError>();
+
+    const admitted = yield* Effect.sync(() => {
+      const snapshot = actor.getSnapshot();
+
+      const rejectBusyPreview =
+        !snapshot.matches("destroyed") && !snapshot.matches("live");
+
+      if (snapshot.status !== "active" || rejectBusyPreview) {
+        return false;
+      }
+
+      actor.send({
+        job: {
+          work: Deferred.complete(
+            result,
+            work.pipe(Effect.onInterrupt(() => Deferred.succeed(result, false)))
+          ).pipe(Effect.asVoid),
+        },
+        type: "Preview",
+      });
+
+      return true;
+    });
+
+    return admitted ? yield* Deferred.await(result) : false;
+  });
+
+  return { actor, perform, preview };
 });

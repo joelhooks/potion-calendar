@@ -561,10 +561,16 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       }
     );
 
-    const preview = (
+    const preview = Effect.fn("Desktop.previewPromptSound")(function* preview(
       sound: typeof PromptSound.Type,
       enabled: Effect.Effect<boolean>
-    ) => lifecycle.perform("Present", previewContent(sound, enabled));
+    ) {
+      if (sound === "none" || (yield* active) || !(yield* enabled)) {
+        return false;
+      }
+
+      return yield* lifecycle.preview(previewContent(sound, enabled));
+    });
 
     return {
       active,
