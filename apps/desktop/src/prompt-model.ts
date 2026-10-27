@@ -65,6 +65,10 @@ export interface PromptContext {
     { readonly start: number; readonly until: number }
   >;
   readonly visible: readonly AgendaEventValue[];
+  readonly visibleOwner: Pick<
+    typeof PromptAdmissionAuthority.Type,
+    "lease" | "personId"
+  > | null;
 }
 
 export type PromptInput = Pick<
@@ -78,6 +82,7 @@ export const initialPrompt = (input: PromptInput): PromptContext => ({
   remembered: new Map(),
   snoozed: new Map(),
   visible: [],
+  visibleOwner: null,
 });
 
 const eligibleMeeting = (
@@ -278,5 +283,11 @@ export const dismissAllPrompts = (context: PromptContext): PromptContext => {
     remembered.set(promptIdentity(event.key), event.start);
   }
 
-  return { ...context, pending: [], remembered, visible: [] };
+  return {
+    ...context,
+    pending: [],
+    remembered,
+    visible: [],
+    visibleOwner: null,
+  };
 };

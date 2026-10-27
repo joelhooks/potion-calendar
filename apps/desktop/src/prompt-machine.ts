@@ -165,6 +165,7 @@ export const promptMachine = (work: PromptWork) => {
     }: {
       readonly input: {
         readonly events: readonly AgendaEventValue[];
+        readonly owner: PromptContext["visibleOwner"];
         readonly presentation: PromptPresentation;
       };
     }) => work.present(input.events, input.presentation).pipe(Effect.as(input)),
@@ -263,11 +264,21 @@ export const promptMachine = (work: PromptWork) => {
       closing: {
         invoke: {
           onDone: ({ context }) => ({
-            context: { ...context, pending: [], visible: [] },
+            context: {
+              ...context,
+              pending: [],
+              visible: [],
+              visibleOwner: null,
+            },
             target: "idle",
           }),
           onError: ({ context }) => ({
-            context: { ...context, pending: [], visible: [] },
+            context: {
+              ...context,
+              pending: [],
+              visible: [],
+              visibleOwner: null,
+            },
             target: "idle",
           }),
           src: "close",
@@ -282,6 +293,8 @@ export const promptMachine = (work: PromptWork) => {
       presenting: {
         invoke: {
           input: ({ context }) => {
+            const authority = context.snapshot.notificationAgenda;
+
             const reveal = context.pending.some(
               (event) =>
                 !context.visible.some(
@@ -294,6 +307,10 @@ export const promptMachine = (work: PromptWork) => {
 
             return {
               events: context.pending,
+              owner:
+                authority === undefined
+                  ? null
+                  : { lease: authority.lease, personId: authority.personId },
               presentation: {
                 preferences: projectPromptPreferences(
                   context.snapshot,
@@ -305,7 +322,10 @@ export const promptMachine = (work: PromptWork) => {
             };
           },
           onDone: ({ context, event }) => ({
-            context: presentedPrompts(context),
+            context: {
+              ...presentedPrompts(context),
+              visibleOwner: event.output.owner,
+            },
             target:
               JSON.stringify({
                 events: context.pending,
@@ -322,7 +342,12 @@ export const promptMachine = (work: PromptWork) => {
                 : "evaluating",
           }),
           onError: ({ context }) => ({
-            context: { ...context, pending: [], visible: [] },
+            context: {
+              ...context,
+              pending: [],
+              visible: [],
+              visibleOwner: null,
+            },
             target: "closing",
           }),
           src: "present",
@@ -377,7 +402,8 @@ export const preparePromptAdmission = Effect.fn(
   actor: EffectActor<ReturnType<typeof promptMachine>>,
   input: PromptInput,
   attempt: string,
-  admission?: PromptAdmissionPermitValue
+  admission?: PromptAdmissionPermitValue,
+  settlement: "processed" | "presented" = "processed"
 ) {
   const agenda = input.snapshot.notificationAgenda;
 
@@ -418,6 +444,8 @@ export const preparePromptAdmission = Effect.fn(
     DesktopError | PromptAdmissionSuperseded
   >((resume) => {
     let settled = false;
+    let processed: typeof PromptInputAcknowledgement.Type | undefined;
+    const initialContext = actor.getSnapshot().context;
     const subscriptions = new Set<{ unsubscribe: () => void }>();
 
     const cleanup = () => {
@@ -460,6 +488,41 @@ export const preparePromptAdmission = Effect.fn(
       );
     };
 
+    const settleOwnership = (
+      snapshot: ReturnType<typeof actor.getSnapshot>
+    ) => {
+      if (
+        processed === undefined ||
+        snapshot.context === initialContext ||
+        !sameAuthority(snapshot.context.snapshot.notificationAgenda ?? null)
+      ) {
+        return;
+      }
+
+      const ownsVisible =
+        snapshot.context.visibleOwner?.lease === agenda.lease &&
+        snapshot.context.visibleOwner.personId === agenda.personId;
+
+      const claims = processed.claims.filter(
+        (claim) =>
+          ownsVisible &&
+          snapshot.context.visible.some(
+            (event) =>
+              promptIdentity(event.key) === promptIdentity(claim.key) &&
+              event.start === claim.start
+          )
+      );
+
+      if (
+        snapshot.matches("visible") ||
+        snapshot.matches("idle") ||
+        snapshot.matches("closing") ||
+        (ownsVisible && claims.length === processed.claims.length)
+      ) {
+        settle(Effect.succeed(claims));
+      }
+    };
+
     track(
       actor.on("InputProcessed", (acknowledgement) => {
         if (settled || acknowledgement.attempt !== attempt) {
@@ -472,7 +535,12 @@ export const preparePromptAdmission = Effect.fn(
           return;
         }
 
-        settle(Effect.succeed(acknowledgement.claims));
+        if (settlement === "processed" || acknowledgement.claims.length === 0) {
+          settle(Effect.succeed(acknowledgement.claims));
+        } else {
+          processed = acknowledgement;
+          settleOwnership(actor.getSnapshot());
+        }
       })
     );
 
@@ -506,6 +574,8 @@ export const preparePromptAdmission = Effect.fn(
             } else {
               refuse();
             }
+          } else if (settlement === "presented") {
+            settleOwnership(snapshot);
           }
         },
       })

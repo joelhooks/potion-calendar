@@ -243,7 +243,8 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
                   snapshot,
                 },
                 randomUUID(),
-                permit
+                permit,
+                "presented"
               );
             }),
           run: (task) => {
