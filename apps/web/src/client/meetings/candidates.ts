@@ -1,3 +1,4 @@
+import type { CustomVideoLink } from "@calendar/calendar/conferencing";
 import type {
   CalendarEventValue,
   CalendarValue,
@@ -12,6 +13,7 @@ import { calendarKey } from "../calendar-state.js";
 import type { UpcomingMeetingMinutes } from "../settings/model.js";
 
 export interface MeetingInput {
+  readonly customVideoLinks?: readonly (typeof CustomVideoLink.Type)[];
   readonly events: readonly CalendarEventValue[];
   readonly calendars: readonly CalendarValue[];
   readonly hidden: readonly string[];
@@ -90,7 +92,8 @@ export const meetingCandidates = (
               conferenceUrl: conferenceLink(
                 source.conferenceUrl,
                 source.location,
-                source.description
+                source.description,
+                input.customVideoLinks
               ),
               end: endMillis,
               item,

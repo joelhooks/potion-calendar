@@ -6,6 +6,7 @@ import type { HtmlBuilder } from "foldkit/html";
 import type { AppModel, AppMessage } from "../src/client/app.js";
 import { RemoteEvents } from "../src/client/calendar-state.js";
 import { upcomingMeetingPanel } from "../src/features/upcoming-meeting.js";
+import { customMeetingModel } from "./custom-link-meetings-fixture.js";
 import { meetingModel, savedMeeting } from "./meetings-fixture.js";
 
 const panelDocument = (model: AppModel, h: HtmlBuilder<AppMessage>) => ({
@@ -22,6 +23,28 @@ const render = (model: AppModel) =>
       new DOMParser().parseFromString(document.html, "text/html")
     )
   );
+
+it.effect(
+  "the panel recognises owned plain and HTML custom links but never a removed or foreign catalog link",
+  () =>
+    Effect.gen(function* customPanel() {
+      for (const scene of [
+        "owned",
+        "anchor",
+        "removed",
+        "foreign",
+      ] satisfies readonly Parameters<typeof customMeetingModel>[0][]) {
+        const dom = yield* render(customMeetingModel(scene));
+        const panel = dom.querySelector("#upcoming-meeting");
+        const available = scene === "owned" || scene === "anchor";
+        expect(panel?.textContent?.includes("Join meeting")).toBe(available);
+        expect(
+          panel?.textContent?.includes("Meeting has no conferencing")
+        ).toBe(!available);
+        expect(panel?.textContent).toContain("Select event");
+      }
+    })
+);
 
 it.effect(
   "a saved participant meeting without conferencing offers selection rather than a fake join",

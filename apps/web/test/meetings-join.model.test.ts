@@ -1,19 +1,57 @@
 import { MeetingJoinOutcome } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
+import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
 import { RemoteEvents } from "../src/client/calendar-state.js";
 import { commandChoices } from "../src/client/keyboard/choices.js";
 import { resolveBinding } from "../src/client/keyboard/input.js";
 import { keyboardRegistry } from "../src/client/keyboard/registry.js";
+import { browserMeetings } from "../src/client/meetings/browser.js";
 import { JoinMeeting } from "../src/client/meetings/commands.js";
 import { JoinSelection } from "../src/client/meetings/model.js";
 import { MeetingPort } from "../src/client/meetings/port.js";
 import { joinSelection } from "../src/client/meetings/selection.js";
 import { UpcomingMeetingMinutes } from "../src/client/settings/model.js";
 import { visibleEvents } from "../src/layout/presentation.js";
+import {
+  customMeetingModel,
+  customMeetingRoom,
+} from "./custom-link-meetings-fixture.js";
 import { meetingModel, savedMeeting } from "./meetings-fixture.js";
+
+it.effect(
+  "a confirmed catalog URL opens through the unchanged browser MeetingPort with opener isolation",
+  () =>
+    Effect.gen(function* openOwnedCatalogUrl() {
+      const opened = vi.fn<typeof window.open>().mockReturnValue(null);
+      vi.stubGlobal("window", { open: opened });
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          vi.unstubAllGlobals();
+        })
+      );
+      expect(window.potionDesktop).toBeUndefined();
+      const model = customMeetingModel("anchor");
+
+      const command = JoinMeeting({
+        personId: Option.getOrThrow(model.person),
+        selection: joinSelection(model),
+      });
+
+      const finished = yield* command.effect.pipe(
+        Effect.provideService(MeetingPort, browserMeetings())
+      );
+
+      expect(opened).toHaveBeenCalledExactlyOnceWith(
+        new URL(customMeetingRoom.link).href,
+        "_blank",
+        "noopener,noreferrer"
+      );
+      expect(Option.isNone(update(model, finished).model.error)).toBe(true);
+    }).pipe(Effect.scoped)
+);
 
 it.effect.prop(
   "a selected event exclusively controls joining regardless of its horizon, participants or response",

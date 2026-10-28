@@ -3,20 +3,19 @@ import type { AgendaKeyValue } from "@calendar/core/desktop-bridge";
 import { MeetingJoinOutcome } from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 
-import { conferenceLink } from "../../layout/conferencing.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { primarySelection } from "../../layout/selection-set.js";
 import type { AppModel } from "../app.js";
 import { nextJoinMeeting } from "./candidates.js";
+import { savedMeetingConferenceLink } from "./conferencing.js";
 import { JoinSelection } from "./model.js";
 import { savedEvent, savedMeetings } from "./source.js";
 
-const linkFor = (source: CalendarEventValue): typeof JoinSelection.Type => {
-  const conferenceUrl = conferenceLink(
-    source.conferenceUrl,
-    source.location,
-    source.description
-  );
+const linkFor = (
+  model: AppModel,
+  source: CalendarEventValue
+): typeof JoinSelection.Type => {
+  const conferenceUrl = savedMeetingConferenceLink(model, source);
 
   return conferenceUrl === undefined
     ? JoinSelection.cases.Unavailable.make({
@@ -54,7 +53,7 @@ export const joinSelection = (
             message: "This meeting is no longer available.",
           }),
         })
-      : linkFor(item.source);
+      : linkFor(model, item.source);
   }
 
   if (Option.isSome(primarySelection(model.calendar.selected))) {
@@ -71,7 +70,7 @@ export const joinSelection = (
             message: "The selected event is no longer available.",
           }),
         })
-      : linkFor(source);
+      : linkFor(model, source);
   }
 
   const candidate = nextJoinMeeting(
@@ -86,5 +85,5 @@ export const joinSelection = (
           reason: "noUpcoming",
         }),
       })
-    : linkFor(candidate.item.source);
+    : linkFor(model, candidate.item.source);
 };

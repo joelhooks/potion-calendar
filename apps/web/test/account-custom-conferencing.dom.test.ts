@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { Effect, Option, Predicate } from "effect";
 import { Scene } from "foldkit/test";
 
 import { Message, update } from "../src/client/app.js";
@@ -48,6 +48,58 @@ const customSave = Effect.fn("test.successfulCustomSave")(
 
     return { mutation, session };
   }
+);
+
+it.effect(
+  "an exact saved HTML-anchor custom URL must not be appended a second time",
+  () =>
+    Effect.gen(function* saveExistingAnchor() {
+      for (const description of [
+        `<a href="${customRoom.link}">Room</a>`,
+        `<a href='${customRoom.link}'>Room</a>`,
+        `<a href="https://other.example.test/">${customRoom.link}</a>`,
+      ]) {
+        const session = yield* inheritanceSession(
+          accountCustomModel("selected")
+        );
+
+        yield* session.add("guest@example.test");
+        yield* session.dispatch(
+          EditorAction.cases.TextEdited.make({
+            field: "description",
+            value: description,
+          })
+        );
+        yield* session.take(
+          (notice) =>
+            Predicate.isTagged(notice, "Editor") &&
+            Predicate.isTagged(notice.view, "Editing") &&
+            notice.view.draft.description === description
+        );
+        const saved = yield* session.save();
+
+        const posts = saved.requests.filter(
+          (request) => request.method === "POST"
+        );
+
+        expect(posts).toHaveLength(1);
+        const body = writeBody(posts[0]?.body);
+        expect(
+          body.description,
+          "an exact saved HTML-anchor custom URL must not be appended a second time"
+        ).toBe(description);
+        expect(body).not.toHaveProperty("conferenceData");
+        const mutation = Option.getOrThrow(saved.mutation);
+        expect(EditorMutation.guards.Saved(mutation)).toBe(true);
+
+        if (EditorMutation.guards.Saved(mutation)) {
+          expect(Option.isNone(savedConferencingNotice(mutation))).toBe(true);
+          expect(Option.isNone(session.get().editing.conferencingResult)).toBe(
+            true
+          );
+        }
+      }
+    }).pipe(Effect.scoped)
 );
 
 it.effect(

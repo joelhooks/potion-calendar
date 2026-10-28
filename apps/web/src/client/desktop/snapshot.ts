@@ -1,4 +1,3 @@
-import { conferenceLink } from "@calendar/calendar/conferencing";
 import type {
   CalendarEventValue,
   EventTimeValue,
@@ -24,6 +23,7 @@ import { rsvpSelf } from "../../layout/rsvp-eligibility.js";
 import type { AppModel } from "../app.js";
 import { calendarKey } from "../calendar-state.js";
 import { responseIsBusy } from "../editing/response-availability.js";
+import { savedMeetingConferenceLink } from "../meetings/conferencing.js";
 import { upcomingSelection } from "../upcoming/update.js";
 
 const minuteMilliseconds = 60_000;
@@ -79,11 +79,13 @@ const eventTimes = (
     : Option.none();
 };
 
-const conferenceUrl = (event: CalendarEventValue): string | null =>
+const conferenceUrl = (
+  model: AppModel,
+  event: CalendarEventValue
+): string | null =>
   Option.getOrNull(
     Schema.decodeOption(ConferenceUrl)(
-      conferenceLink(event.conferenceUrl, event.location, event.description) ??
-        ""
+      savedMeetingConferenceLink(model, event) ?? ""
     )
   );
 
@@ -94,15 +96,15 @@ const eventResponse = (
   (event.status === "tentative" ? "tentative" : "accepted");
 
 const projectSavedEvent = (
+  model: AppModel,
   event: CalendarEventValue,
-  zone: string,
   calendarColor: string,
   responseBusy: boolean,
   ownEmails: readonly string[] | undefined,
   origin: string | undefined
 ): Option.Option<AgendaEventValue> => {
   const responseStatus = eventResponse(event);
-  const times = eventTimes(event, zone);
+  const times = eventTimes(event, model.calendar.zone);
 
   if (
     event.status === "cancelled" ||
@@ -132,7 +134,7 @@ const projectSavedEvent = (
     ...times.value,
     attachments,
     calendarColor,
-    conferenceUrl: conferenceUrl(event),
+    conferenceUrl: conferenceUrl(model, event),
     hasLocation: (event.location?.trim().length ?? 0) > 0,
     hasParticipants: (event.attendees?.length ?? 0) > 0,
     key: {
@@ -266,8 +268,8 @@ export const agendaSnapshot = (
 
   const events = merged.flatMap((item) => {
     const projected = projectSavedEvent(
+      model,
       item.source,
-      model.calendar.zone,
       item.calendar.backgroundColor ?? "#64748b",
       responseIsBusy(model),
       ownEmails,

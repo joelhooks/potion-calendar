@@ -1,3 +1,6 @@
+import { containsCustomVideoLink } from "./custom-video-link.js";
+import type { CustomVideoLink } from "./custom-video-link.js";
+
 const recognized = [
   "meet.google.com",
   "zoom.us",
@@ -21,7 +24,8 @@ const webUrl = (candidate: string): string | undefined => {
 export const conferenceLink = (
   native?: string,
   location?: string,
-  description?: string
+  description?: string,
+  customVideoLinks: readonly (typeof CustomVideoLink.Type)[] = []
 ): string | undefined => {
   const explicit = native === undefined ? undefined : webUrl(native);
 
@@ -52,5 +56,7 @@ export const conferenceLink = (
     }
   }
 
-  return undefined;
+  return customVideoLinks.find((entry) =>
+    containsCustomVideoLink(description, entry.link)
+  )?.link;
 };

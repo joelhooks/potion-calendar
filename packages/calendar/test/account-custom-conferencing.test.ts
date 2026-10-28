@@ -3,6 +3,7 @@ import { Effect, Layer, Option, Ref, Result, Schema } from "effect";
 
 import { CalendarService } from "../src/calendar.js";
 import { ConferencingDefaults } from "../src/conferencing-defaults.js";
+import { conferenceLink } from "../src/conferencing-link.js";
 import {
   appendCustomVideoLink,
   CustomVideoLink,
@@ -19,6 +20,60 @@ import {
   response,
   timedEvent,
 } from "./fake-google.js";
+
+it.effect.prop(
+  "exact href values and anchor text preserve custom URLs without accepting prefixes or sentence punctuation",
+  {
+    token: Schema.Int.check(Schema.isBetween({ maximum: 100_000, minimum: 0 })),
+  },
+  ({ token }) =>
+    Effect.sync(() => {
+      for (const link of [
+        `https://room.example/room-${token}`,
+        `https://room.example/team's-${token}`,
+      ]) {
+        const entry = { id: "html-room", link, name: "HTML room" };
+
+        const exact = [
+          `<a href="${link}">Room</a>`,
+          `<a HREF = "${link}">Room</a>`,
+          `<a href="https://other.example/">${link}</a>`,
+          `<p>${link}</p>`,
+          ...(link.includes("'") ? [] : [`<a href='${link}'>Room</a>`]),
+        ];
+
+        for (const description of exact) {
+          expect(
+            appendCustomVideoLink(description, link),
+            "an exact HTML custom URL must not be appended twice"
+          ).toBe(description);
+          expect(
+            conferenceLink(undefined, undefined, description, [entry])
+          ).toBe(link);
+        }
+
+        for (const description of [
+          `<a href="${link}/child">Room</a>`,
+          `<a href="${link}-suffix">Room</a>`,
+          `<a href="https://other.example/?url=${link}">Room</a>`,
+          `<a data-href="${link}">Room</a>`,
+          `<p>prefix${link}</p>`,
+          ...[".", ",", ")"].flatMap((suffix) => [
+            link + suffix,
+            `<p>${link}${suffix}</p>`,
+          ]),
+        ]) {
+          expect(
+            appendCustomVideoLink(description, link),
+            "only a complete custom URL in an approved context may suppress append"
+          ).toBe(`${description}\n${link}`);
+          expect(
+            conferenceLink(undefined, undefined, description, [entry])
+          ).toBeUndefined();
+        }
+      }
+    })
+);
 
 it.effect.prop(
   "exact accepted custom URLs including apostrophes preserve description while longer URLs still require an append",

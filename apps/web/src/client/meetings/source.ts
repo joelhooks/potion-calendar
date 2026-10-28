@@ -6,6 +6,7 @@ import { AsyncData } from "foldkit";
 import { primaryAccountId } from "../../layout/primary-account.js";
 import type { AppModel } from "../app.js";
 import { meetingCandidates } from "./candidates.js";
+import { confirmedCustomVideoLinks, safeMeetingUrl } from "./conferencing.js";
 
 export const savedEvent = (
   model: AppModel,
@@ -50,9 +51,13 @@ export const savedMeetings = (model: AppModel) => {
   return meetingCandidates({
     accounts: accounts.map((account) => account.id),
     calendars: model.calendar.calendars,
+    customVideoLinks: confirmedCustomVideoLinks(model),
     events: Option.isSome(saved) ? saved.value.events : [],
     hidden: model.calendar.hidden,
     primaryAccount: primaryAccountId(session),
     zone: model.calendar.zone,
-  });
+  }).map((candidate) => ({
+    ...candidate,
+    conferenceUrl: safeMeetingUrl(candidate.conferenceUrl),
+  }));
 };

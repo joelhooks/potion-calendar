@@ -67,14 +67,52 @@ const containsBoundedText = (text: string, value: string): boolean => {
   return false;
 };
 
+const containsHtmlHref = (text: string, link: string): boolean => {
+  for (const match of text.matchAll(
+    /(?:^|[\s<])href\s*=\s*(?<quote>["'])/giu
+  )) {
+    const { quote } = match.groups ?? {};
+
+    if (quote !== '"' && quote !== "'") {
+      continue;
+    }
+
+    const start = match.index + match[0].length;
+    const end = text.indexOf(quote, start);
+
+    if (end !== -1 && text.slice(start, end) === link) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+export const containsCustomVideoLink = (
+  description: string | undefined,
+  link: string
+): boolean => {
+  if (link === "") {
+    return false;
+  }
+
+  const text = description ?? "";
+  const forms = [link, `<${link}>`, `"${link}"`, `'${link}'`];
+
+  return (
+    forms.some((form) => containsBoundedText(text, form)) ||
+    containsHtmlHref(text, link) ||
+    text.includes(`>${link}<`)
+  );
+};
+
 export const appendCustomVideoLink = (
   description: string | undefined,
   link: string
 ): string => {
   const text = description ?? "";
-  const forms = [link, `<${link}>`, `"${link}"`, `'${link}'`];
 
-  if (forms.some((form) => containsBoundedText(text, form))) {
+  if (containsCustomVideoLink(text, link)) {
     return text;
   }
 

@@ -12,6 +12,11 @@ import {
 import { RemoteEvents } from "../src/client/calendar-state.js";
 import { agendaSnapshot } from "../src/client/desktop/snapshot.js";
 import { EditorView } from "../src/client/editing/editor-model.js";
+import {
+  customMeetingAgenda,
+  customMeetingModel,
+  customMeetingRoom,
+} from "./custom-link-meetings-fixture.js";
 import { editorDraft, editorViewFields } from "./editor-fixture.js";
 import {
   savedUpcomingEvent,
@@ -59,6 +64,20 @@ const loaded = (
     })
   ).model;
 };
+
+it.effect(
+  "the native agenda publishes an owned custom URL and retains foreign-link events without a Join URL",
+  () =>
+    Effect.sync(() => {
+      const owned = customMeetingAgenda(customMeetingModel("owned"));
+      const foreign = customMeetingAgenda(customMeetingModel("foreign"));
+      expect(owned.events).toHaveLength(1);
+      expect(foreign.events).toHaveLength(1);
+      expect(owned.events[0]?.conferenceUrl).toBe(customMeetingRoom.link);
+      expect(foreign.events[0]?.conferenceUrl).toBeNull();
+      expect(owned.events[0]?.key).toEqual(foreign.events[0]?.key);
+    })
+);
 
 it.effect.prop(
   "the default publication includes in-progress saved events and only its rolling three-day horizon",
