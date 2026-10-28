@@ -3,6 +3,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
 import type { GestureResult } from "../client/editing/gesture-model.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { gridGeometry, rangePixels } from "../layout/geometry.js";
 import type { TimeGridGeometry } from "../layout/geometry.js";
 import { dayFromIso } from "../layout/navigation.js";
@@ -20,7 +21,8 @@ const previewText = (
   h: HtmlBuilder<AppMessage>,
   preview: typeof GestureResult.Type,
   format: ResolvedTimeFormat,
-  compact: boolean
+  compact: boolean,
+  locale: string
 ): readonly Html[] => {
   const title = Option.isSome(preview.target)
     ? (preview.target.value.event.title ?? "Event")
@@ -31,7 +33,7 @@ const previewText = (
   const time = h.span(
     [h.Class("event-time")],
     [
-      `${clockLabel(clockMinute(preview.range.startTime), format)}–${clockLabel(clockMinute(preview.range.endTime), format)}`,
+      `${clockLabel(clockMinute(preview.range.startTime), format, locale)}–${clockLabel(clockMinute(preview.range.endTime), format, locale)}`,
     ]
   );
 
@@ -105,7 +107,13 @@ export const gesturePreview = (
               }
         ),
       ],
-      previewText(h, preview, resolvedTimeFormat(model), compact)
+      previewText(
+        h,
+        preview,
+        resolvedTimeFormat(model),
+        compact,
+        resolvedAppLocale(model)
+      )
     ),
   ];
 };

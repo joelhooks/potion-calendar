@@ -8,7 +8,8 @@ export const phoneMonthCell = (
   h: HtmlBuilder<AppMessage>,
   day: number,
   today: number,
-  count: number
+  count: number,
+  locale = "en-US"
 ): Html =>
   h.div(
     [
@@ -22,9 +23,9 @@ export const phoneMonthCell = (
         [
           h.Class("month-date"),
           h.OnClick(Message.ClickedDate({ day })),
-          h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
+          h.AriaLabel(dayLabel(day, { dateStyle: "full" }, locale)),
         ],
-        [dayLabel(day, { day: "numeric" })]
+        [dayLabel(day, { day: "numeric" }, locale)]
       ),
       ...(count === 0
         ? []
@@ -34,7 +35,7 @@ export const phoneMonthCell = (
                 h.Class("phone-month-summary"),
                 h.OnClick(Message.ClickedDate({ day })),
                 h.AriaLabel(
-                  `Show ${count} ${count === 1 ? "event" : "events"} on ${dayLabel(day, { dateStyle: "full" })}`
+                  `Show ${count} ${count === 1 ? "event" : "events"} on ${dayLabel(day, { dateStyle: "full" }, locale)}`
                 ),
                 h.Style({
                   display: "block",

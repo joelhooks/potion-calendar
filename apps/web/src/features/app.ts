@@ -21,6 +21,7 @@ import { PrepareMonthViewport } from "../client/month/viewport.js";
 import { isPhoneShell } from "../client/phone-shell/model.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { homeZone } from "../client/time-zones/model.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { visibleDays } from "../layout/navigation.js";
 import { CalendarRoute } from "../layout/route.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
@@ -102,6 +103,7 @@ const editingLayers = (
       chooseTimeZone: Message.KeyboardAction({ id: "event-zone" }),
       footerNotice: conversion === undefined ? undefined : toast,
       initialFocus: model.keyboard.focus,
+      locale: resolvedAppLocale(model),
       locationMaps: model.settings.locationMaps,
       model: model.editing.view,
       primaryZone: homeZone(model),

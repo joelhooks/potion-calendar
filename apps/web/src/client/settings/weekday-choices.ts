@@ -1,3 +1,7 @@
+import {
+  localizedWeekday,
+  resolvedAppLocale,
+} from "../../layout/app-locale.js";
 import { hiddenTimeWeekdays } from "../../layout/navigation.js";
 import type { AppModel } from "../app.js";
 import type { CommandChoice } from "../keyboard/choices.js";
@@ -14,9 +18,12 @@ export const weekdayNames = [
   "Saturday",
 ] as const;
 
-export const orderedWeekdays = (startsOn: number) =>
+export const orderedWeekdays = (startsOn: number, locale = "en-US") =>
   weekdayNames
-    .map((name, value) => ({ name, value }))
+    .map((name, value) => ({
+      name: locale === "en-US" ? name : localizedWeekday(value, locale),
+      value,
+    }))
     .toSorted(
       (a, b) => ((a.value - startsOn + 7) % 7) - ((b.value - startsOn + 7) % 7)
     );
@@ -24,23 +31,24 @@ export const orderedWeekdays = (startsOn: number) =>
 export const weekdayChoices = (model: AppModel): readonly CommandChoice[] => {
   const hidden = hiddenTimeWeekdays(model.calendar.navigation);
 
-  const days = orderedWeekdays(model.calendar.navigation.weekStartsOn ?? 0).map(
-    ({ name, value }): CommandChoice => ({
-      disabled: hidden.length === 6 && !hidden.includes(value),
-      exact: false,
-      id: `weekday-${value}`,
-      keys: [],
-      message: Message.ChangedSettings({
-        change: SettingsChange.cases.Weekday.make({
-          shown: hidden.includes(value),
-          value,
-        }),
+  const days = orderedWeekdays(
+    model.calendar.navigation.weekStartsOn ?? 0,
+    resolvedAppLocale(model)
+  ).map(({ name, value }): CommandChoice => ({
+    disabled: hidden.length === 6 && !hidden.includes(value),
+    exact: false,
+    id: `weekday-${value}`,
+    keys: [],
+    message: Message.ChangedSettings({
+      change: SettingsChange.cases.Weekday.make({
+        shown: hidden.includes(value),
+        value,
       }),
-      score: 1,
-      section: "View",
-      title: `${hidden.includes(value) ? "Show" : "Hide"} ${name}`,
-    })
-  );
+    }),
+    score: 1,
+    section: "View",
+    title: `${hidden.includes(value) ? "Show" : "Hide"} ${name}`,
+  }));
 
   const show = model.calendar.navigation.hideWeekends;
 

@@ -14,8 +14,9 @@ export const gutterReferenceDay = (
 export const zoneClock = (
   instant: number,
   zone: string,
-  format: ResolvedTimeFormat
-): string => formatClock(minuteInZone(instant, zone), format);
+  format: ResolvedTimeFormat,
+  locale = "en-US"
+): string => formatClock(minuteInZone(instant, zone), format, locale);
 
 export const gutterInstant = (
   day: number,
@@ -40,11 +41,12 @@ export const gutterClock = (
   hour: number,
   activeZone: string,
   zone: string,
-  format: ResolvedTimeFormat
+  format: ResolvedTimeFormat,
+  locale = "en-US"
 ): string =>
   Option.match(gutterInstant(day, hour, activeZone), {
     onNone: () => "—",
-    onSome: (instant) => zoneClock(instant, zone, format),
+    onSome: (instant) => zoneClock(instant, zone, format, locale),
   });
 
 export const zoneOffset = (instant: number, zone: string): string =>

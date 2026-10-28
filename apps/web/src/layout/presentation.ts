@@ -14,6 +14,7 @@ import {
 } from "../client/calendar-state.js";
 import { selectedOccurrenceEvent } from "../client/selection-commands/projection.js";
 import { allDayHeight, packAllDay } from "./all-day.js";
+import { deskDefaultFormattingCalendar } from "./app-locale.js";
 import { eventColor } from "./colors.js";
 import { projectEditingEvents } from "./editing-events.js";
 import { mergeEquivalentEvents } from "./equivalent-events.js";
@@ -410,11 +411,13 @@ export const accountFailure = (
 
 export const dayLabel = (
   day: number,
-  options: Intl.DateTimeFormatOptions
+  options: Intl.DateTimeFormatOptions,
+  locale = "en-US"
 ): string =>
   DateTime.formatUtc(DateTime.makeUnsafe(day * 86_400_000), {
     ...options,
-    locale: "en-US",
+    calendar: deskDefaultFormattingCalendar,
+    locale,
   });
 
 export { clockLabel } from "./time-format.js";
@@ -424,15 +427,24 @@ export interface DetailWhen {
   readonly time?: string;
 }
 
-const allDayDateRange = (event: DisplayEvent, currentYear: number): string => {
+const allDayDateRange = (
+  event: DisplayEvent,
+  currentYear: number,
+  locale: string
+): string => {
   const first = partsFromDay(event.startDay);
   const last = partsFromDay(event.endDay - 1);
 
   if (first.year !== last.year) {
-    return `${dayLabel(event.startDay, { day: "numeric", month: "short", year: "numeric" })} – ${dayLabel(event.endDay - 1, { day: "numeric", month: "short", year: "numeric" })}`;
+    return `${dayLabel(event.startDay, { day: "numeric", month: "short", year: "numeric" }, locale)} – ${dayLabel(event.endDay - 1, { day: "numeric", month: "short", year: "numeric" }, locale)}`;
   }
 
-  const from = dayLabel(event.startDay, { day: "numeric", month: "short" });
+  const from = dayLabel(
+    event.startDay,
+    { day: "numeric", month: "short" },
+    locale
+  );
+
   const year = first.year === currentYear ? "" : `, ${first.year}`;
 
   if (event.endDay - event.startDay === 1) {
@@ -442,7 +454,7 @@ const allDayDateRange = (event: DisplayEvent, currentYear: number): string => {
   const until =
     first.month === last.month
       ? String(last.day)
-      : dayLabel(event.endDay - 1, { day: "numeric", month: "short" });
+      : dayLabel(event.endDay - 1, { day: "numeric", month: "short" }, locale);
 
   return `${from} – ${until}${year}`;
 };
@@ -451,15 +463,17 @@ const timedEndpoint = (
   day: number,
   minute: number,
   showYear: boolean,
-  format: ResolvedTimeFormat
+  format: ResolvedTimeFormat,
+  locale: string
 ): string =>
-  `${dayLabel(day, { day: "numeric", month: "short", weekday: "short", year: showYear ? "numeric" : undefined })}, ${clockLabel(minute, format)}`;
+  `${dayLabel(day, { day: "numeric", month: "short", weekday: "short", year: showYear ? "numeric" : undefined }, locale)}, ${clockLabel(minute, format, locale)}`;
 
 export const eventWhen = (
   event: DisplayEvent,
   zone: string,
   currentYear: number,
-  format: ResolvedTimeFormat = "12"
+  format: ResolvedTimeFormat = "12",
+  locale = "en-US"
 ): DetailWhen => {
   const { start, end } = event.source;
 
@@ -468,7 +482,7 @@ export const eventWhen = (
   }
 
   if ("date" in start) {
-    return { date: allDayDateRange(event, currentYear) };
+    return { date: allDayDateRange(event, currentYear, locale) };
   }
 
   if (!("dateTime" in end)) {
@@ -490,8 +504,8 @@ export const eventWhen = (
 
   if (firstDay === lastDay) {
     return {
-      date: dayLabel(firstDay, { dateStyle: "full" }),
-      time: `${clockLabel(firstMinute, format)} – ${clockLabel(lastMinute, format)} · ${zone}`,
+      date: dayLabel(firstDay, { dateStyle: "full" }, locale),
+      time: `${clockLabel(firstMinute, format, locale)} – ${clockLabel(lastMinute, format, locale)} · ${zone}`,
     };
   }
 
@@ -500,6 +514,6 @@ export const eventWhen = (
     partsFromDay(lastDay).year !== currentYear;
 
   return {
-    date: `${timedEndpoint(firstDay, firstMinute, showYear, format)} – ${timedEndpoint(lastDay, lastMinute, showYear, format)} · ${zone}`,
+    date: `${timedEndpoint(firstDay, firstMinute, showYear, format, locale)} – ${timedEndpoint(lastDay, lastMinute, showYear, format, locale)} · ${zone}`,
   };
 };

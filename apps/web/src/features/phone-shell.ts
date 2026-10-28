@@ -4,6 +4,7 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 import type { AppModel, AppMessage } from "../client/app.js";
 import { Message } from "../client/app.js";
 import { monthNavigation } from "../client/month/host.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { visibleDays } from "../layout/navigation.js";
 import { dayLabel, visibleEvents } from "../layout/presentation.js";
 import { detailPanel, sidebar } from "./calendar.js";
@@ -45,12 +46,20 @@ export const phoneToolbar = (
 
   const range =
     first === last
-      ? dayLabel(first, { day: "numeric", month: "long", year: "numeric" })
-      : `${dayLabel(first, { day: "numeric", month: "short" })} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" })}`;
+      ? dayLabel(
+          first,
+          { day: "numeric", month: "long", year: "numeric" },
+          resolvedAppLocale(model)
+        )
+      : `${dayLabel(first, { day: "numeric", month: "short" }, resolvedAppLocale(model))} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" }, resolvedAppLocale(model))}`;
 
   const title =
     navigation.mode === "month"
-      ? dayLabel(navigation.anchor, { month: "long", year: "numeric" })
+      ? dayLabel(
+          navigation.anchor,
+          { month: "long", year: "numeric" },
+          resolvedAppLocale(model)
+        )
       : range;
 
   const selected = visibleEvents(model).some((event) => event.selected);

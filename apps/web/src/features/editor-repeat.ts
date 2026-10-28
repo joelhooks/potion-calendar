@@ -4,6 +4,7 @@ import { EditorAction } from "../client/editing/editor-action.js";
 import type { RepeatTextField } from "../client/editing/editor-action.js";
 import { EditorView } from "../client/editing/editor-model.js";
 import type { Weekday } from "../client/editing/editor-model.js";
+import { localizedWeekday } from "../layout/app-locale.js";
 import { editorDialog } from "./editor-dialog.js";
 import { editorInput } from "./editor-fields.js";
 import type { EditorProps } from "./editor-fields.js";
@@ -31,6 +32,14 @@ const weekdayLabels: Readonly<Record<typeof Weekday.Type, string>> = {
   TU: "Tuesday",
   WE: "Wednesday",
 };
+
+const weekdayLabel = (
+  weekday: typeof Weekday.Type,
+  locale = "en-US"
+): string =>
+  locale === "en-US"
+    ? weekdayLabels[weekday]
+    : localizedWeekday(weekdays.indexOf(weekday), locale);
 
 export const repeatField = <Message>(
   h: HtmlBuilder<Message>,
@@ -186,7 +195,7 @@ const weeklyFields = <Message>(
                   )
                 ),
               ]),
-              weekdayLabels[weekday],
+              weekdayLabel(weekday, props.locale),
             ]
           )
         )
@@ -221,7 +230,7 @@ const monthlyFields = <Message>(
               "weekday",
               "Weekday",
               weekdays.map((weekday) => ({
-                label: weekdayLabels[weekday],
+                label: weekdayLabel(weekday, props.locale),
                 value: weekday,
               }))
             ),

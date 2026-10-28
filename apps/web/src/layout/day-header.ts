@@ -10,18 +10,22 @@ export const dayHeaderForm = (columnWidth: number): DayHeaderForm => {
   return columnWidth >= 32 ? "initial" : "number";
 };
 
-export const dayHeaderLabel = (day: number, columnWidth: number) => {
+export const dayHeaderLabel = (
+  day: number,
+  columnWidth: number,
+  locale = "en-US"
+) => {
   const form = dayHeaderForm(columnWidth);
-  const number = dayLabel(day, { day: "numeric" });
+  const number = dayLabel(day, { day: "numeric" }, locale);
 
   const labels = {
-    full: dayLabel(day, { day: "numeric", weekday: "short" }),
-    initial: `${number} ${dayLabel(day, { weekday: "narrow" })}`,
+    full: dayLabel(day, { day: "numeric", weekday: "short" }, locale),
+    initial: `${number} ${dayLabel(day, { weekday: "narrow" }, locale)}`,
     number,
   };
 
   return {
-    ariaLabel: dayLabel(day, { dateStyle: "full" }),
+    ariaLabel: dayLabel(day, { dateStyle: "full" }, locale),
     form,
     text: labels[form],
   };

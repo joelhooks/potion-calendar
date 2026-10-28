@@ -1,4 +1,4 @@
-import { Option, Result } from "effect";
+import { Option, Result, Struct } from "effect";
 import { AsyncData } from "foldkit";
 
 import { normalizeLocationMaps } from "../../layout/location-maps.js";
@@ -65,9 +65,14 @@ export const preferenceSnapshot = (
     ? base
     : { ...base, visibilityMigration: model.calendar.visibilityMigration };
 
+  const withLanguage =
+    model.settings.language === undefined
+      ? withVisibility
+      : { ...withVisibility, language: model.settings.language };
+
   return Option.match(model.settings.defaultCalendar, {
-    onNone: () => withVisibility,
-    onSome: (defaultCalendar) => ({ ...withVisibility, defaultCalendar }),
+    onNone: () => withLanguage,
+    onSome: (defaultCalendar) => ({ ...withLanguage, defaultCalendar }),
   });
 };
 
@@ -97,6 +102,11 @@ export const applyPreferences = (
           initialMigration,
           inventory.accounts.map((account) => account.accountId)
         );
+
+  const languageSettings =
+    preferences.language === undefined
+      ? Struct.omit(model.settings, ["language"])
+      : { ...model.settings, language: preferences.language };
 
   return {
     ...model,
@@ -132,7 +142,7 @@ export const applyPreferences = (
       legacyEntries: preferences.customVideoLinks ?? [],
     },
     settings: {
-      ...model.settings,
+      ...languageSettings,
       defaultCalendar: Option.fromNullishOr(preferences.defaultCalendar),
       eventInvites: preferences.eventInvites,
       hideContextPanel: preferences.hideContextPanel ?? false,
@@ -226,6 +236,13 @@ export const changeSettings = (
     EventInvites: ({ enabled }) => ({
       ...model,
       settings: { ...model.settings, eventInvites: enabled },
+    }),
+    Language: ({ value }) => ({
+      ...model,
+      settings: Option.match(value, {
+        onNone: () => Struct.omit(model.settings, ["language"]),
+        onSome: (language) => ({ ...model.settings, language }),
+      }),
     }),
     LocationMaps: ({ value }) => ({
       ...model,

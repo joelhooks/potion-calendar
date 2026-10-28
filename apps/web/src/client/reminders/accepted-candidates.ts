@@ -1,6 +1,7 @@
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 
+import { resolvedAppLocale } from "../../layout/app-locale.js";
 import { primaryAccountId } from "../../layout/primary-account.js";
 import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
@@ -30,6 +31,7 @@ export const acceptedReminderCandidates = (model: AppModel) => {
     ],
     format: resolvedTimeFormat(model),
     hidden: model.calendar.hidden,
+    locale: resolvedAppLocale(model),
     now: model.calendar.now,
     primaryAccount,
     zone: model.calendar.zone,

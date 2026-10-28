@@ -1,5 +1,6 @@
 import { Option } from "effect";
 
+import { resolvedAppLocale } from "../../layout/app-locale.js";
 import { dateChoiceLabel, parseGoToDate } from "../../layout/go-to-date.js";
 import { dayInZone, maximumDisplayedDays } from "../../layout/navigation.js";
 import type { AppModel } from "../app.js";
@@ -13,7 +14,10 @@ import { eventZoneChoices } from "../editing/zone-choices.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import { SettingsChange } from "../settings/model.js";
-import { weekdayChoices, weekdayNames } from "../settings/weekday-choices.js";
+import {
+  orderedWeekdays,
+  weekdayChoices,
+} from "../settings/weekday-choices.js";
 import { timeZoneChoices } from "../time-zones/choices.js";
 import { displayedKeyTokens } from "./hints.js";
 import {
@@ -197,23 +201,24 @@ const preferenceChoices = (
           section: "Settings & help",
           title,
         }))
-      : weekdayNames.flatMap((title, value): readonly CommandChoice[] =>
-          value === (model.calendar.navigation.weekStartsOn ?? 0)
-            ? []
-            : [
-                {
-                  disabled: !enabled,
-                  exact: false,
-                  id: `week-start-${value}`,
-                  keys: [],
-                  message: Message.ChangedSettings({
-                    change: SettingsChange.cases.WeekStart.make({ value }),
-                  }),
-                  score: 1,
-                  section: "View",
-                  title,
-                },
-              ]
+      : orderedWeekdays(0, resolvedAppLocale(model)).flatMap(
+          ({ name: title, value }): readonly CommandChoice[] =>
+            value === (model.calendar.navigation.weekStartsOn ?? 0)
+              ? []
+              : [
+                  {
+                    disabled: !enabled,
+                    exact: false,
+                    id: `week-start-${value}`,
+                    keys: [],
+                    message: Message.ChangedSettings({
+                      change: SettingsChange.cases.WeekStart.make({ value }),
+                    }),
+                    score: 1,
+                    section: "View",
+                    title,
+                  },
+                ]
         ),
     query
   );
@@ -313,7 +318,7 @@ const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
 
   if (model.keyboard.screen === "date") {
     const today = dayInZone(model.calendar.now, model.calendar.zone);
-    const day = parseGoToDate(query, today);
+    const day = parseGoToDate(query, today, resolvedAppLocale(model));
 
     return day === undefined
       ? []
@@ -326,7 +331,7 @@ const buildCommandChoices = (model: AppModel): readonly CommandChoice[] => {
             message: Message.KeyboardDate({ day, flash: true }),
             score: 1,
             section: "Navigation",
-            title: dateChoiceLabel(day, today),
+            title: dateChoiceLabel(day, today, resolvedAppLocale(model)),
           },
         ];
   }

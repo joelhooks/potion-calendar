@@ -14,6 +14,13 @@ import {
 } from "../client/settings/model.js";
 import { orderedWeekdays } from "../client/settings/weekday-choices.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
+import {
+  AppLanguage,
+  deskDefaultBrowserLanguageLabel,
+  deskDefaultUiCopyLocale,
+  languageChoice,
+  resolvedAppLocale,
+} from "../layout/app-locale.js";
 import { LocationMaps } from "../layout/location-maps.js";
 import { hiddenTimeWeekdays } from "../layout/navigation.js";
 import { persistentZones, zoneLabel } from "../layout/time-zones.js";
@@ -75,33 +82,35 @@ const visibleWeekdaySetting = (
         [
           h.div(
             [h.Class("settings-weekdays")],
-            orderedWeekdays(model.calendar.navigation.weekStartsOn ?? 0).map(
-              ({ name, value }) =>
-                h.label(
-                  [],
-                  [
-                    h.input([
-                      h.Type("checkbox"),
-                      h.AriaLabel(`Show ${name}`),
-                      h.Checked(
-                        !hiddenTimeWeekdays(model.calendar.navigation).includes(
-                          value
-                        )
-                      ),
-                      h.OnClick(
-                        Message.ChangedSettings({
-                          change: SettingsChange.cases.Weekday.make({
-                            shown: hiddenTimeWeekdays(
-                              model.calendar.navigation
-                            ).includes(value),
-                            value,
-                          }),
-                        })
-                      ),
-                    ]),
-                    name.slice(0, 3),
-                  ]
-                )
+            orderedWeekdays(
+              model.calendar.navigation.weekStartsOn ?? 0,
+              resolvedAppLocale(model)
+            ).map(({ name, value }) =>
+              h.label(
+                [],
+                [
+                  h.input([
+                    h.Type("checkbox"),
+                    h.AriaLabel(`Show ${name}`),
+                    h.Checked(
+                      !hiddenTimeWeekdays(model.calendar.navigation).includes(
+                        value
+                      )
+                    ),
+                    h.OnClick(
+                      Message.ChangedSettings({
+                        change: SettingsChange.cases.Weekday.make({
+                          shown: hiddenTimeWeekdays(
+                            model.calendar.navigation
+                          ).includes(value),
+                          value,
+                        }),
+                      })
+                    ),
+                  ]),
+                  name.slice(0, 3),
+                ]
+              )
             )
           ),
           h.p(
@@ -173,15 +182,9 @@ export const settingsGeneral = (
           "settings-week-start",
           "Start week on",
           model.calendar.navigation.weekStartsOn ?? 0,
-          [
-            "Sunday",
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-          ].map((name, index) => [index, name]),
+          orderedWeekdays(0, resolvedAppLocale(model)).map(
+            ({ name, value }) => [value, name]
+          ),
           (raw) =>
             Option.map(Schema.decodeOption(WeekStart)(Number(raw)), (value) =>
               SettingsChange.cases.WeekStart.make({ value })
@@ -263,6 +266,25 @@ export const settingsGeneral = (
       [h.Class("settings-section")],
       [
         h.h2([], ["Appearance"]),
+        choice(
+          h,
+          "settings-language",
+          "Language",
+          model.settings.language ?? "browser",
+          [
+            ["browser", deskDefaultBrowserLanguageLabel],
+            ...AppLanguage.literals.map(
+              (locale): readonly [typeof AppLanguage.Type, string] => [
+                locale,
+                `${locale} · ${new Intl.DisplayNames(deskDefaultUiCopyLocale, { type: "language" }).of(locale) ?? locale}`,
+              ]
+            ),
+          ],
+          (raw) =>
+            Option.map(languageChoice(raw), (value) =>
+              SettingsChange.cases.Language.make({ value })
+            )
+        ),
         choice(
           h,
           "settings-clock",

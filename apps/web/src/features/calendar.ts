@@ -17,6 +17,7 @@ import { selectedParticipantEmail } from "../client/email-participants.js";
 import { monthNavigation } from "../client/month/host.js";
 import { resolvedTheme } from "../client/settings/model.js";
 import { TimeZoneAction } from "../client/time-zones/model.js";
+import { localizedWeekday, resolvedAppLocale } from "../layout/app-locale.js";
 import { calendarReadFailures } from "../layout/calendar-read-state.js";
 import { conferenceLink } from "../layout/conferencing.js";
 import { creatorPresentation } from "../layout/event-creator.js";
@@ -53,6 +54,7 @@ import { eventRsvp } from "./event-rsvp.js";
 const defaultChipAppearance = { theme: "light", timeFormat: "12" } as const;
 
 interface ChipAppearance {
+  readonly locale?: string;
   readonly phone?: boolean;
   readonly theme: "light" | "dark";
   readonly timeFormat: ResolvedTimeFormat;
@@ -73,8 +75,8 @@ const chipText = (
     [h.Class("event-time")],
     [
       compact || appearance.timeDisplay === "start"
-        ? clockLabel(item.startMinute, appearance.timeFormat)
-        : `${clockLabel(item.startMinute, appearance.timeFormat)}–${clockLabel(item.endMinute, appearance.timeFormat)}`,
+        ? clockLabel(item.startMinute, appearance.timeFormat, appearance.locale)
+        : `${clockLabel(item.startMinute, appearance.timeFormat, appearance.locale)}–${clockLabel(item.endMinute, appearance.timeFormat, appearance.locale)}`,
     ]
   );
 
@@ -176,7 +178,7 @@ export const chip = (
       h.OnClick(Message.ClickedEvent({ key: item.key })),
       h.OnDoubleClick(Message.KeyboardAction({ id: "open-event" })),
       h.AriaLabel(
-        `${item.title}, ${item.allDay ? "all day" : `${clockLabel(item.startMinute, appearance.timeFormat)} to ${clockLabel(item.endMinute, appearance.timeFormat)}`}, ${item.copies.map((copy) => copy.calendar.title).join(", ")}, ${item.status}`
+        `${item.title}, ${item.allDay ? "all day" : `${clockLabel(item.startMinute, appearance.timeFormat, appearance.locale)} to ${clockLabel(item.endMinute, appearance.timeFormat, appearance.locale)}`}, ${item.copies.map((copy) => copy.calendar.title).join(", ")}, ${item.status}`
       ),
     ],
     [
@@ -260,12 +262,17 @@ export const systemZonePrompt = (
     )
   );
 
-const rangeHeading = (first: number, last: number): string =>
+const rangeHeading = (first: number, last: number, locale: string): string =>
   first === last
-    ? dayLabel(first, { day: "numeric", month: "long", year: "numeric" })
-    : `${dayLabel(first, { day: "numeric", month: "short" })} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" })}`;
+    ? dayLabel(
+        first,
+        { day: "numeric", month: "long", year: "numeric" },
+        locale
+      )
+    : `${dayLabel(first, { day: "numeric", month: "short" }, locale)} – ${dayLabel(last, { day: "numeric", month: "short", year: "numeric" }, locale)}`;
 
 export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
+  const locale = resolvedAppLocale(model);
   const navigation = monthNavigation(model);
   const days = visibleDays(navigation);
   const first = days[0] ?? model.calendar.navigation.anchor;
@@ -313,8 +320,12 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
         [],
         [
           navigation.mode === "month"
-            ? dayLabel(navigation.anchor, { month: "long", year: "numeric" })
-            : rangeHeading(first, last),
+            ? dayLabel(
+                navigation.anchor,
+                { month: "long", year: "numeric" },
+                locale
+              )
+            : rangeHeading(first, last, locale),
         ]
       ),
       h.div(
@@ -358,18 +369,19 @@ export const toolbar = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
 };
 
 const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
+  const locale = resolvedAppLocale(model);
   const { anchor } = monthNavigation(model);
   const parts = partsFromDay(anchor);
   const first = anchor - parts.day + 1;
   const start = weekStart(first, model.calendar.navigation.weekStartsOn);
 
-  const weekdays = Array.from(
-    { length: 7 },
-    (_, index) =>
-      ["S", "M", "T", "W", "T", "F", "S"][
-        (index + (model.calendar.navigation.weekStartsOn ?? 0)) % 7
-      ] ?? ""
-  );
+  const weekdays = Array.from({ length: 7 }, (_, index) => {
+    const weekday = (index + (model.calendar.navigation.weekStartsOn ?? 0)) % 7;
+
+    return locale === "en-US"
+      ? (["S", "M", "T", "W", "T", "F", "S"][weekday] ?? "")
+      : localizedWeekday(weekday, locale, "narrow");
+  });
 
   const today = dayInZone(model.calendar.now, model.calendar.zone);
   const displayed = visibleDays(model.calendar.navigation);
@@ -377,7 +389,7 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
   return h.section(
     [h.Class("mini-month"), h.AriaLabel("Date picker")],
     [
-      h.h2([], [dayLabel(anchor, { month: "long", year: "numeric" })]),
+      h.h2([], [dayLabel(anchor, { month: "long", year: "numeric" }, locale)]),
       h.div(
         [h.Class("mini-days")],
         [
@@ -391,9 +403,13 @@ const miniMonth = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                   `${partsFromDay(day).month === parts.month ? "" : "other-month "}${displayed.includes(day) ? "in-range " : ""}${day === today ? "is-today" : ""}`
                 ),
                 h.OnClick(Message.ClickedDate({ day })),
-                h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
+                h.AriaLabel(dayLabel(day, { dateStyle: "full" }, locale)),
               ],
-              [String(partsFromDay(day).day)]
+              [
+                locale === "en-US"
+                  ? String(partsFromDay(day).day)
+                  : dayLabel(day, { day: "numeric" }, locale),
+              ]
             );
           }),
         ]
@@ -724,7 +740,8 @@ export const detailPanel = (
     selected,
     model.calendar.zone,
     partsFromDay(dayInZone(model.calendar.now, model.calendar.zone)).year,
-    resolvedTimeFormat(model)
+    resolvedTimeFormat(model),
+    resolvedAppLocale(model)
   );
 
   return [

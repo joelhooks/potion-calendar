@@ -16,6 +16,7 @@ export const systemSettingsStream = () =>
               Intl.DateTimeFormat(undefined, {
                 hour: "numeric",
               }).resolvedOptions().hour12 === false,
+            locale: Intl.DateTimeFormat().resolvedOptions().locale,
           })
         );
       };

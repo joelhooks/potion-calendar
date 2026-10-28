@@ -8,6 +8,7 @@ import { Message } from "../client/message.js";
 import type { AppMessage } from "../client/message.js";
 import { PrepareSearch } from "../client/search/commands.js";
 import { searchScope } from "../client/search/source.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { minuteInZone } from "../layout/geometry.js";
 import { clockLabel, dayLabel } from "../layout/presentation.js";
 import {
@@ -35,7 +36,7 @@ const searchRow = (
 
   const time = allDay
     ? "All day"
-    : `${clockLabel(minuteInZone(result.startMillis, model.calendar.zone), resolvedTimeFormat(model))} – ${clockLabel(minuteInZone(result.endMillis, model.calendar.zone), resolvedTimeFormat(model))}`;
+    : `${clockLabel(minuteInZone(result.startMillis, model.calendar.zone), resolvedTimeFormat(model), resolvedAppLocale(model))} – ${clockLabel(minuteInZone(result.endMillis, model.calendar.zone), resolvedTimeFormat(model), resolvedAppLocale(model))}`;
 
   const selected = Option.contains(
     primarySelection(model.calendar.selected),
@@ -279,7 +280,7 @@ export const searchPanel = (
                     }),
                   ],
                   [
-                    `${group.today ? "Today · " : ""}${dayLabel(group.day, { day: "numeric", month: "long", weekday: "long", year: "numeric" })}`,
+                    `${group.today ? "Today · " : ""}${dayLabel(group.day, { day: "numeric", month: "long", weekday: "long", year: "numeric" }, resolvedAppLocale(model))}`,
                   ]
                 ),
                 ...(group.noUpcoming ? [h.p([], ["No upcoming results"])] : []),

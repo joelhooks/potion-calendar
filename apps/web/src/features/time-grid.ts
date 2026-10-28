@@ -16,6 +16,7 @@ import { TimeZoneAction, ZoneChooser } from "../client/time-zones/model.js";
 import { zoneDragHostKey, zoneDragScopeKey } from "../client/zone-drag/host.js";
 import { PrepareZoneDrag } from "../client/zone-drag/mount.js";
 import { allDayCounts } from "../layout/all-day.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { dayHeaderLabel } from "../layout/day-header.js";
 import {
   minuteInZone,
@@ -146,7 +147,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                     }),
                     h.DataAttribute("zone-id", zone.id),
                     h.Title(
-                      `${zoneLabel(zone)} · ${zone.id} · Hour labels for ${dayLabel(reference, { dateStyle: "full" })}`
+                      `${zoneLabel(zone)} · ${zone.id} · Hour labels for ${dayLabel(reference, { dateStyle: "full" }, resolvedAppLocale(model))}`
                     ),
                   ],
                   [
@@ -213,7 +214,11 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                 )
               ),
               ...days.map((day) => {
-                const label = dayHeaderLabel(day, column.day);
+                const label = dayHeaderLabel(
+                  day,
+                  column.day,
+                  resolvedAppLocale(model)
+                );
 
                 return h.div(
                   [
@@ -322,7 +327,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                               [
                                 h.OnClick(Message.ClickedAllDay()),
                                 h.AriaLabel(
-                                  `${counts[index] ?? 0} all-day events on ${dayLabel(day, { dateStyle: "full" })}`
+                                  `${counts[index] ?? 0} all-day events on ${dayLabel(day, { dateStyle: "full" }, resolvedAppLocale(model))}`
                                 ),
                               ],
                               [String(counts[index] ?? 0)]
@@ -362,6 +367,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                                   "z-index": event.selected ? "20" : "1",
                                 },
                                 {
+                                  locale: resolvedAppLocale(model),
                                   phone: isPhoneShell(model),
                                   theme: resolvedTheme(model),
                                   timeFormat: resolvedTimeFormat(model),
@@ -418,7 +424,8 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                           minute / 60,
                           model.calendar.zone,
                           zone.id,
-                          resolvedTimeFormat(model)
+                          resolvedTimeFormat(model),
+                          resolvedAppLocale(model)
                         ),
                       ]
                     )
@@ -460,7 +467,8 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                           h,
                           blocks,
                           grid,
-                          resolvedTimeFormat(model)
+                          resolvedTimeFormat(model),
+                          resolvedAppLocale(model)
                         ),
                         ...gesturePreview(model, h, day, scale, false, grid),
                         ...placements.flatMap((placement) => {
@@ -493,6 +501,7 @@ const timeGridBody = (model: AppModel, h: HtmlBuilder<AppMessage>): Html => {
                                 "z-index": String(placement.paint + 1),
                               },
                               {
+                                locale: resolvedAppLocale(model),
                                 phone: isPhoneShell(model),
                                 theme: resolvedTheme(model),
                                 timeFormat: resolvedTimeFormat(model),

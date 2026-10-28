@@ -11,7 +11,8 @@ export const timeBlockBackground = (
   h: HtmlBuilder<AppMessage>,
   blocks: readonly (typeof TimeBlock.Type)[],
   grid: TimeGridGeometry,
-  format: ResolvedTimeFormat
+  format: ResolvedTimeFormat,
+  locale = "en-US"
 ): readonly Html[] => [
   ...blocks.flatMap((block) =>
     block.ranges.map((range) => {
@@ -47,7 +48,7 @@ export const timeBlockBackground = (
       )
       .join(", ");
 
-    const label = `Hidden: ${names} · ${formatClock(segment.startMinute, format)}–${formatClock(segment.endMinute, format)}`;
+    const label = `Hidden: ${names} · ${formatClock(segment.startMinute, format, locale)}–${formatClock(segment.endMinute, format, locale)}`;
 
     return [
       h.keyed("div")(

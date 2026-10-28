@@ -11,6 +11,7 @@ export const editorZoneExplanation = <Message>(
     readonly draft: EventDraftValue;
     readonly primaryZone: string;
     readonly timeFormat: ResolvedTimeFormat;
+    readonly locale?: string | undefined;
   }
 ): readonly Html[] => {
   if (props.draft.allDay) {
@@ -20,7 +21,8 @@ export const editorZoneExplanation = <Message>(
   const preview = eventZonePreview(
     props.draft,
     props.primaryZone,
-    props.timeFormat
+    props.timeFormat,
+    props.locale
   );
 
   return [

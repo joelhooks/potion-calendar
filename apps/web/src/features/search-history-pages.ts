@@ -7,6 +7,10 @@ import type { AppMessage } from "../client/message.js";
 import { reverseSearchTargets } from "../client/search/paging.js";
 import { searchScope } from "../client/search/source.js";
 import {
+  resolvedAppLocale,
+  deskDefaultFormattingCalendar,
+} from "../layout/app-locale.js";
+import {
   searchCalendarFailureNotices,
   searchProblemLines,
 } from "../layout/search-results.js";
@@ -50,7 +54,12 @@ const searchHistoryState = (model: AppModel) => {
       DateTime.makeZonedUnsafe(response.window.historyStart, {
         timeZone: model.calendar.zone,
       }),
-      { month: "short", year: "numeric" }
+      {
+        calendar: deskDefaultFormattingCalendar,
+        locale: resolvedAppLocale(model),
+        month: "short",
+        year: "numeric",
+      }
     ),
     horizon:
       model.search.reversePhase === "Ready" && reachedHorizon(ownResponse),

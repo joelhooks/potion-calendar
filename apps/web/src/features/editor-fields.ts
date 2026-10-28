@@ -33,6 +33,7 @@ export interface EditorProps<Message> {
   readonly model: OpenEditorView;
   readonly reminderLimit: number;
   readonly timeFormat?: ResolvedTimeFormat;
+  readonly locale?: string;
   readonly theme?: "light" | "dark";
   readonly toast?: Html | undefined;
   readonly footerNotice?: Html | undefined;
@@ -95,7 +96,8 @@ const draftInput = <Message>(
       props.send(
         EditorAction.cases.TextEdited.make({
           field,
-          value: type === "time" ? canonicalClockInput(value) : value,
+          value:
+            type === "time" ? canonicalClockInput(value, props.locale) : value,
         })
       ),
     placeholder: textPlaceholders.get(field),
@@ -103,7 +105,11 @@ const draftInput = <Message>(
     type: type === "time" ? "text" : type,
     value:
       type === "time"
-        ? clockInputLabel(props.model.draft[field], props.timeFormat ?? "12")
+        ? clockInputLabel(
+            props.model.draft[field],
+            props.timeFormat ?? "12",
+            props.locale
+          )
         : props.model.draft[field],
   });
 
@@ -191,6 +197,7 @@ export const eventDateFields = <Message>(
               ? []
               : editorZoneExplanation(h, {
                   draft,
+                  locale: props.locale,
                   primaryZone: props.primaryZone,
                   timeFormat: props.timeFormat ?? "12",
                 })),

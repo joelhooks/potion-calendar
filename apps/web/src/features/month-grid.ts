@@ -11,6 +11,7 @@ import { PrepareMonthViewport } from "../client/month/viewport.js";
 import { phoneSwipeKey } from "../client/phone-grid/model.js";
 import { isPhoneShell } from "../client/phone-shell/model.js";
 import { resolvedTheme } from "../client/settings/model.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { monthWeekLayout } from "../layout/month-week.js";
 import type { MonthWindowFrame } from "../layout/month-window.js";
 import { monthWindowWeeks } from "../layout/month-window.js";
@@ -45,6 +46,7 @@ export const monthGrid = (
   const compact = isPhoneShell(model);
 
   const appearance = {
+    locale: resolvedAppLocale(model),
     resize: "horizontal-only" as const,
     theme: resolvedTheme(model),
     timeFormat: resolvedTimeFormat(model),
@@ -117,7 +119,10 @@ export const monthGrid = (
               ? [h.span([h.AriaHidden(true)])]
               : []),
             ...(weeks[0]?.days ?? []).map(({ day }) =>
-              h.div([], [dayLabel(day, { weekday: "short" })])
+              h.div(
+                [],
+                [dayLabel(day, { weekday: "short" }, resolvedAppLocale(model))]
+              )
             ),
           ]
         ),
@@ -183,7 +188,8 @@ export const monthGrid = (
                           events.filter(
                             (event) =>
                               event.startDay <= day && day < event.endDay
-                          ).length
+                          ).length,
+                          resolvedAppLocale(model)
                         );
                       }
 
@@ -200,9 +206,21 @@ export const monthGrid = (
                             [
                               h.Class("month-date"),
                               h.OnClick(Message.ClickedDate({ day })),
-                              h.AriaLabel(dayLabel(day, { dateStyle: "full" })),
+                              h.AriaLabel(
+                                dayLabel(
+                                  day,
+                                  { dateStyle: "full" },
+                                  resolvedAppLocale(model)
+                                )
+                              ),
                             ],
-                            [dayLabel(day, { day: "numeric" })]
+                            [
+                              dayLabel(
+                                day,
+                                { day: "numeric" },
+                                resolvedAppLocale(model)
+                              ),
+                            ]
                           ),
                           h.div(
                             [
@@ -241,7 +259,7 @@ export const monthGrid = (
                                       top: `${monthMetrics.dateHeight + (geometry.chipRows - 1) * monthMetrics.chipPitch}px`,
                                     }),
                                     h.AriaLabel(
-                                      `Show ${overflow} more events on ${dayLabel(day, { dateStyle: "full" })}`
+                                      `Show ${overflow} more events on ${dayLabel(day, { dateStyle: "full" }, resolvedAppLocale(model))}`
                                     ),
                                   ],
                                   [`+${overflow} more`]

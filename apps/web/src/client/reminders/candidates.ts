@@ -19,6 +19,7 @@ interface CandidateInput {
   readonly primaryAccount: string | undefined;
   readonly zone: string;
   readonly format: ResolvedTimeFormat;
+  readonly locale?: string;
   readonly now: number;
 }
 
@@ -98,7 +99,8 @@ export const reminderCandidates = (
       item,
       input.zone,
       partsFromDay(dayInZone(input.now, input.zone)).year,
-      input.format
+      input.format,
+      input.locale
     );
 
     const title = item.source.title?.trim() ?? "";

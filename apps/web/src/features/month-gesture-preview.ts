@@ -2,6 +2,7 @@ import { Option } from "effect";
 import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppModel, AppMessage } from "../client/app.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { monthGesturePreview } from "../layout/month-gesture-preview.js";
 import { monthMetrics } from "../layout/month.js";
 import { clockLabel, resolvedTimeFormat } from "../layout/time-format.js";
@@ -58,7 +59,8 @@ export const monthPreviewLayer = (
                   [
                     clockLabel(
                       clockMinute(preview.range.startTime),
-                      resolvedTimeFormat(model)
+                      resolvedTimeFormat(model),
+                      resolvedAppLocale(model)
                     ),
                   ]
                 ),

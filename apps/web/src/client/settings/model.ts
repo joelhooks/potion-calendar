@@ -1,6 +1,7 @@
 import { CalendarRef } from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
+import { AppLanguage } from "../../layout/app-locale.js";
 import {
   LocationMaps,
   normalizeLocationMaps,
@@ -44,6 +45,7 @@ export const SettingsChange = Schema.TaggedUnion({
   Declined: { shown: Schema.Boolean },
   DefaultCalendar: { value: Schema.Option(CalendarRef) },
   EventInvites: { enabled: Schema.Boolean },
+  Language: { value: Schema.Option(AppLanguage) },
   LocationMaps: { value: LocationMaps },
   Theme: { value: Theme },
   TimeFormat: { value: TimeFormat },
@@ -56,9 +58,11 @@ export const SettingsChange = Schema.TaggedUnion({
 });
 
 export const SettingsUi = Schema.Struct({
+  browserLocale: Schema.optionalKey(Schema.String),
   defaultCalendar: Schema.Option(CalendarRef),
   eventInvites: Schema.Boolean,
   hideContextPanel: Schema.Boolean,
+  language: Schema.optionalKey(AppLanguage),
   locationMaps: LocationMaps,
   showWeekNumbers: Schema.Boolean,
   system24Hour: Schema.Boolean,
@@ -96,6 +100,7 @@ export const SavedPreferences = Schema.Struct({
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.Boolean,
   hideWeekends: Schema.Boolean,
+  language: Schema.optionalKey(AppLanguage),
   locationMaps: Schema.optionalKey(LocationMaps),
   mergeDuplicates: Schema.Boolean,
   showWeekNumbers: Schema.Boolean,
@@ -120,6 +125,7 @@ const StoredCommon = {
   hideContextPanel: Schema.optionalKey(Schema.Boolean),
   hideDeclined: Schema.optionalKey(Schema.Boolean),
   hideWeekends: Schema.optionalKey(Schema.Boolean),
+  language: Schema.optionalKey(Schema.Unknown),
   locationMaps: Schema.optionalKey(LocationMaps),
   mergeDuplicates: Schema.optionalKey(Schema.Boolean),
   showWeekNumbers: Schema.optionalKey(Schema.Boolean),
@@ -191,9 +197,17 @@ export const normalizePreferences = (
       ? migrated
       : { ...migrated, zones: normalizeZonePreferences(stored.zones) };
 
+  const withLanguage = Option.match(
+    Schema.decodeUnknownOption(AppLanguage)(stored.language),
+    {
+      onNone: () => withZones,
+      onSome: (language) => ({ ...withZones, language }),
+    }
+  );
+
   return stored.defaultCalendar === undefined
-    ? withZones
-    : { ...withZones, defaultCalendar: stored.defaultCalendar };
+    ? withLanguage
+    : { ...withLanguage, defaultCalendar: stored.defaultCalendar };
 };
 
 export const resolvedTheme = (model: {

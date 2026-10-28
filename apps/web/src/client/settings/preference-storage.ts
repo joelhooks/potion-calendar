@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Struct } from "effect";
 
 import { emptyTimeBlocks } from "../../layout/time-blocks.js";
 import { deskDefaultConferencing } from "./conferencing/default.js";
@@ -61,13 +61,22 @@ export const writeGeneralPreferences = Effect.fn("writeGeneralPreferences")(
     person: string,
     preferences: typeof SavedPreferences.Type
   ) {
-    return yield* modifyPreferences(person, (current) => ({
-      ...preferences,
-      customVideoLinks: current.customVideoLinks ?? [],
-      defaultConferencing:
-        current.defaultConferencing ?? deskDefaultConferencing,
-      timeBlocks:
-        preferences.timeBlocks ?? current.timeBlocks ?? emptyTimeBlocks(),
-    }));
+    return yield* modifyPreferences(person, (current) => {
+      const next = Struct.omit(
+        {
+          ...preferences,
+          customVideoLinks: current.customVideoLinks ?? [],
+          defaultConferencing:
+            current.defaultConferencing ?? deskDefaultConferencing,
+          timeBlocks:
+            preferences.timeBlocks ?? current.timeBlocks ?? emptyTimeBlocks(),
+        },
+        ["language"]
+      );
+
+      return current.language === undefined
+        ? next
+        : { ...next, language: current.language };
+    });
   }
 );

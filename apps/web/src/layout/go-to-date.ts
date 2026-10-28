@@ -1,5 +1,12 @@
 import { DateTime } from "effect";
 
+import {
+  ambiguousCalendarWord,
+  asciiLocaleDigits,
+  calendarWord,
+  calendarWords,
+  deskDefaultFormattingCalendar,
+} from "./app-locale.js";
 import { dayFromIso, isoFromDay, partsFromDay } from "./navigation.js";
 
 const months = [
@@ -102,10 +109,147 @@ const forwardDate = (
   return undefined;
 };
 
+const localeDateParts = (locale: string, month: "long" | "numeric") =>
+  new Intl.DateTimeFormat(locale, {
+    calendar: deskDefaultFormattingCalendar,
+    day: "numeric",
+    month,
+    timeZone: "UTC",
+    year: "numeric",
+  }).formatToParts(
+    DateTime.toEpochMillis(DateTime.makeUnsafe("2024-11-23T00:00:00Z"))
+  );
+
+const localizedNumericDate = (
+  raw: string,
+  today: number,
+  locale: string
+): number | undefined => {
+  const values = raw.split(/[/.-]/u).map(Number);
+
+  const order = localeDateParts(locale, "numeric")
+    .filter((part) => ["year", "month", "day"].includes(part.type))
+    .filter((part) => values.length === 3 || part.type !== "year")
+    .map((part) => part.type);
+
+  const month = values[order.indexOf("month")];
+  const day = values[order.indexOf("day")];
+  const year = values[order.indexOf("year")];
+
+  if (month === undefined || day === undefined) {
+    return undefined;
+  }
+
+  return year === undefined
+    ? forwardDate(month, day, today)
+    : absolute(year, month, day);
+};
+
+const localizedGoToDate = (
+  input: string,
+  today: number,
+  locale: string
+): number | undefined => {
+  const raw = asciiLocaleDigits(input, locale).trim();
+  const query = calendarWord(raw, locale);
+
+  if (query === "") {
+    return undefined;
+  }
+
+  const named = new Map([
+    ["today", 0],
+    ["tomorrow", 1],
+    ["yesterday", -1],
+  ]).get(query);
+
+  if (named !== undefined) {
+    return bounded(today + named);
+  }
+
+  const relative = relativeDate(query, today);
+
+  if (relative !== undefined) {
+    return relative;
+  }
+
+  const iso = /^(?<year>\d{4})-(?<month>\d{1,2})-(?<day>\d{1,2})$/u.exec(
+    raw
+  )?.groups;
+
+  if (iso !== undefined) {
+    return absolute(Number(iso.year), Number(iso.month), Number(iso.day));
+  }
+
+  if (/^\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?$/u.test(raw)) {
+    return localizedNumericDate(raw, today, locale);
+  }
+
+  const words = calendarWords(locale);
+  const weekdayWord = query.replace(/^next /u, "");
+
+  const weekday = words.find(
+    (entry) => entry.kind === "weekday" && entry.word === weekdayWord
+  );
+
+  if (weekday !== undefined) {
+    return ambiguousCalendarWord(weekdayWord)
+      ? undefined
+      : bounded(
+          today + ((weekday.value - partsFromDay(today).weekDay + 6) % 7) + 1
+        );
+  }
+
+  const [month] = words
+    .filter((entry) => entry.kind === "month" && query.includes(entry.word))
+    .toSorted((left, right) => right.word.length - left.word.length);
+
+  if (month === undefined || ambiguousCalendarWord(month.word)) {
+    return undefined;
+  }
+
+  let remainder = query.replace(month.word, " ");
+
+  for (const part of localeDateParts(locale, "long")) {
+    if (part.type === "literal") {
+      const literal = calendarWord(part.value, locale);
+
+      if (literal !== "") {
+        remainder = remainder.replaceAll(literal, " ");
+      }
+    }
+  }
+
+  const numbers = remainder.trim().split(/\s+/u);
+
+  if (
+    numbers.length > 2 ||
+    numbers.some((value) => !/^\d{1,4}$/u.test(value))
+  ) {
+    return undefined;
+  }
+
+  const year = numbers.find((value) => value.length === 4);
+  const day = numbers.find((value) => value.length <= 2);
+
+  if (day === undefined || (numbers.length === 2 && year === undefined)) {
+    return undefined;
+  }
+
+  return year === undefined
+    ? forwardDate(month.value, Number(day), today)
+    : absolute(Number(year), month.value, Number(day));
+};
+
 export const parseGoToDate = (
   input: string,
-  today: number
+  today: number,
+  locale = "en-US"
 ): number | undefined => {
+  if (locale !== "en-US") {
+    return localizedGoToDate(input, today, locale);
+  }
+
   const query = input
     .trim()
     .toLowerCase()
@@ -179,10 +323,15 @@ export const parseGoToDate = (
     : absolute(Number(match.year), month, day);
 };
 
-export const dateChoiceLabel = (day: number, today: number): string => {
+export const dateChoiceLabel = (
+  day: number,
+  today: number,
+  locale = "en-US"
+): string => {
   const options: Intl.DateTimeFormatOptions & { locale: string } = {
+    calendar: deskDefaultFormattingCalendar,
     day: "numeric",
-    locale: "en-US",
+    locale,
     month: "long",
     timeZone: "UTC",
     weekday: "long",

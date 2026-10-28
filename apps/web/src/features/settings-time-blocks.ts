@@ -7,9 +7,16 @@ import {
   TimeBlockAction,
   blockRangeIssue,
 } from "../client/time-blocks/model.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { blockClock } from "../layout/time-blocks.js";
+import { formatClock } from "../layout/time-format.js";
 
 type Action = typeof TimeBlockAction.Type;
+
+const blockLabel = (minute: number, locale: string): string =>
+  locale === "en-US" || minute === 1440
+    ? blockClock(minute)
+    : formatClock(minute, "24", locale);
 
 const blockEditor = (
   model: AppModel,
@@ -257,7 +264,7 @@ export const settingsTimeBlocks = (
                       h.p(
                         [h.Class("muted")],
                         [
-                          `${block.hidden ? "Hidden" : "Colored"} · ${block.ranges.map((range) => `${blockClock(range.startMinute)}–${blockClock(range.endMinute)}`).join(", ")}`,
+                          `${block.hidden ? "Hidden" : "Colored"} · ${block.ranges.map((range) => `${blockLabel(range.startMinute, resolvedAppLocale(model))}–${blockLabel(range.endMinute, resolvedAppLocale(model))}`).join(", ")}`,
                         ]
                       ),
                     ]

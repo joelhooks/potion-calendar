@@ -7,6 +7,7 @@ import { Message } from "../client/app.js";
 import { eventKey } from "../client/calendar-state.js";
 import { contextMeeting } from "../client/meetings/candidates.js";
 import { savedMeetings } from "../client/meetings/source.js";
+import { resolvedAppLocale } from "../layout/app-locale.js";
 import { dayInZone, partsFromDay } from "../layout/navigation.js";
 import { eventWhen, visibleEvents } from "../layout/presentation.js";
 import { resolvedTimeFormat } from "../layout/time-format.js";
@@ -64,7 +65,8 @@ export const upcomingMeetingPanel = (
     candidate.item,
     model.calendar.zone,
     partsFromDay(dayInZone(model.calendar.now, model.calendar.zone)).year,
-    resolvedTimeFormat(model)
+    resolvedTimeFormat(model),
+    resolvedAppLocale(model)
   );
 
   return [

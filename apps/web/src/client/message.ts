@@ -149,6 +149,7 @@ export const Message = defineMessageUnion({
     failure: ReadFailure,
     request: Schema.Int,
   },
+  FailedLanguageRefresh: { person: Schema.String },
   FailedPreferenceSave: { person: Schema.String },
   FailedPreferences: { person: Schema.String },
   FailedSession: {},
@@ -251,7 +252,11 @@ export const Message = defineMessageUnion({
   ReceivedSearch: { notice: SearchNotice },
   ReceivedSearchPage: { notice: SearchPageNotice },
   ReceivedSession: { snapshot: SessionSnapshot },
-  ReceivedSystemSettings: { dark: Schema.Boolean, hour24: Schema.Boolean },
+  ReceivedSystemSettings: {
+    dark: Schema.Boolean,
+    hour24: Schema.Boolean,
+    locale: Schema.optionalKey(Schema.String),
+  },
   ReceivedUpcoming: {
     personId: Schema.String,
     request: Schema.Int,

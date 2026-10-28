@@ -11,6 +11,7 @@ import type { UrlRequest } from "foldkit/navigation";
 import type { Url } from "foldkit/url";
 
 import { packAllDay } from "../layout/all-day.js";
+import { normalizedBrowserLocale } from "../layout/app-locale.js";
 import { minuteInZone } from "../layout/geometry.js";
 import { monthWindowRange } from "../layout/month-window.js";
 import {
@@ -238,6 +239,7 @@ import {
   completeAccountDeletion,
   deletionAfterSession,
 } from "./settings/delete-account/update.js";
+import { SaveAppLanguage } from "./settings/language.js";
 import {
   SettingsUi,
   SettingsChange,
@@ -714,6 +716,25 @@ const updateCore = (
     ChangedProfile: ({ change, personId }) =>
       updateProfile(model, personId, change, dispatch),
     ChangedSettings: ({ change }) => {
+      if (SettingsChange.guards.Language(change)) {
+        if (
+          Option.isNone(model.person) ||
+          model.settings.language === Option.getOrUndefined(change.value)
+        ) {
+          return { model };
+        }
+
+        return {
+          commands: [
+            SaveAppLanguage({
+              language: change.value,
+              person: model.person.value,
+            }),
+          ],
+          model,
+        };
+      }
+
       const next = preserveMonthDisplay(model, changeSettings(model, change));
 
       const datesChanged =
@@ -1007,6 +1028,17 @@ const updateCore = (
               ),
             },
           })
+        : { model },
+    FailedLanguageRefresh: ({ person }) =>
+      Option.contains(model.person, person)
+        ? {
+            model: {
+              ...model,
+              error: Option.some(
+                "Language was saved, but this window could not refresh. Reload to apply it."
+              ),
+            },
+          }
         : { model },
     FailedPreferenceSave: ({ person }) =>
       Option.contains(model.person, person)
@@ -1585,6 +1617,20 @@ const updateCore = (
           ? baseDesktop
           : { ...baseDesktop, canShowAbout: model.desktop.canShowAbout };
 
+      const observedSettings = {
+        ...initialSettings(),
+        system24Hour: model.settings.system24Hour,
+        systemDark: model.settings.systemDark,
+      };
+
+      const settings =
+        model.settings.browserLocale === undefined
+          ? observedSettings
+          : {
+              ...observedSettings,
+              browserLocale: model.settings.browserLocale,
+            };
+
       const cleared = {
         ...initial,
         accountDeletion: deletionAfterSession(model, snapshot),
@@ -1607,11 +1653,7 @@ const updateCore = (
         route: model.route,
         search: initialSearch(model.search.revision + 1),
         session: RemoteSession.Success({ data: snapshot }),
-        settings: {
-          ...initialSettings(),
-          system24Hour: model.settings.system24Hour,
-          systemDark: model.settings.systemDark,
-        },
+        settings,
         settingsManagement:
           snapshot !== null && Option.contains(model.person, snapshot.user.id)
             ? model.settingsManagement
@@ -1642,12 +1684,23 @@ const updateCore = (
         model: preferences.model,
       };
     },
-    ReceivedSystemSettings: ({ dark, hour24 }) => ({
-      model: {
-        ...model,
-        settings: { ...model.settings, system24Hour: hour24, systemDark: dark },
-      },
-    }),
+    ReceivedSystemSettings: ({ dark, hour24, locale }) => {
+      const settings = {
+        ...model.settings,
+        system24Hour: hour24,
+        systemDark: dark,
+      };
+
+      return {
+        model: {
+          ...model,
+          settings:
+            locale === undefined
+              ? settings
+              : { ...settings, browserLocale: normalizedBrowserLocale(locale) },
+        },
+      };
+    },
     ReceivedUpcoming: (result) => ({ model: receiveUpcoming(model, result) }),
     RefusedGesture: ({ personId, hostKey, reason }) => ({
       model: acceptsGesture(model, personId, hostKey)
