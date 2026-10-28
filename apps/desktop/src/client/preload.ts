@@ -1,4 +1,5 @@
 import {
+  aboutChannel,
   desktopChannels,
   nativeNotificationChannels,
   notificationSettingsChannel,
@@ -165,6 +166,22 @@ const bridge = createDesktopBridge(
           if (Option.isNone(message)) {
             rejected();
             throw new Error("Invalid notification settings reply");
+          }
+
+          return message.value;
+        },
+        // @effect-diagnostics-next-line asyncFunction:off -- The Mac-only About method adapts Electron's isolated Promise ABI without accepting metadata or URLs.
+        showAbout: async (request: string) => {
+          const value: unknown = await ipcRenderer.invoke(
+            aboutChannel,
+            request
+          );
+
+          const message = Schema.decodeUnknownOption(Schema.String)(value);
+
+          if (Option.isNone(message)) {
+            rejected();
+            throw new Error("Invalid About reply");
           }
 
           return message.value;

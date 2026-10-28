@@ -5,6 +5,7 @@ import { writeFile } from "node:fs/promises";
 
 import {
   DesktopAction,
+  aboutChannel,
   desktopChannels,
   desktopWire,
   nativeNotificationChannels,
@@ -38,6 +39,7 @@ import { acceptsDesktopFrame } from "./bridge-policy.js";
 import { DesktopError } from "./config.js";
 import { IcsFileSaver } from "./ics-save.js";
 import { mainWindowActions } from "./main-window.js";
+import { requestNativeAbout } from "./native-about.js";
 import { NativeIntent, startNativeHost } from "./native-host.js";
 import type { NativeIntentValue } from "./native-host.js";
 import { nativeIcsSavePort } from "./native-ics-save.js";
@@ -423,6 +425,35 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
         )
       );
 
+    ipcMain.handle(
+      aboutChannel,
+      // @effect-diagnostics-next-line asyncFunction:off -- Electron's invoke boundary awaits a request in the existing window-owned Effect scope.
+      async (event, payload): Promise<string> =>
+        await run(
+          Schema.decodeUnknownEffect(Schema.Json)(payload).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DesktopError({ cause, message: "Invalid About request" })
+            ),
+            Effect.flatMap((value) =>
+              requestNativeAbout(value, event, window, origin, {
+                platform: Effect.sync(() => process.platform),
+                request: Effect.try({
+                  catch: (cause) =>
+                    new DesktopError({
+                      cause,
+                      message: "About could not be requested.",
+                    }),
+                  try: () => {
+                    app.showAboutPanel();
+                  },
+                }),
+              })
+            )
+          )
+        )
+    );
+
     const saveIcs = yield* IcsFileSaver;
 
     ipcMain.handle(
@@ -655,6 +686,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           desktopChannels.previewSound,
           desktopChannels.saveIcs,
           desktopChannels.startup,
+          aboutChannel,
         ]) {
           ipcMain.removeHandler(channel);
         }

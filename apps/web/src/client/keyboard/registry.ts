@@ -1,4 +1,8 @@
 import { statusEventType } from "@calendar/calendar/contracts";
+import {
+  deskDefaultAboutShortcut,
+  deskDefaultAboutUnsupported,
+} from "@calendar/core/desktop-bridge";
 import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
 
@@ -12,6 +16,7 @@ import { persistentZoneLimit } from "../../layout/time-zones.js";
 import type { AppModel } from "../app.js";
 import { BulkView } from "../bulk/model.js";
 import { eventKey } from "../calendar-state.js";
+import { canRequestDesktopAbout } from "../desktop/about.js";
 import { DesktopRequest } from "../desktop/model.js";
 import { commandTypeChoices } from "../editing/create-type-choices.js";
 import { EditorAction } from "../editing/editor-action.js";
@@ -1174,6 +1179,19 @@ export const keyboardRegistry: readonly KeyboardAction[] = [
         model.timeZones.preferences.secondary.length > 1
           ? active(model)
           : "hidden",
+    }
+  ),
+  row(
+    "about",
+    "About",
+    Option.toArray(deskDefaultAboutShortcut),
+    "App navigation",
+    "Settings & help",
+    () => Message.RequestedDesktopAbout(),
+    {
+      availability: (model) =>
+        canRequestDesktopAbout(model) ? "enabled" : deskDefaultAboutUnsupported,
+      scope: "app",
     }
   ),
   row(

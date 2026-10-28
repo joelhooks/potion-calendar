@@ -1,4 +1,5 @@
 import {
+  aboutWire,
   IcsSaveOutcome,
   MeetingJoinOutcome,
   desktopWire,
@@ -17,6 +18,7 @@ import type {
 import { Option, Schema } from "effect";
 
 export interface RendererBridgePort {
+  readonly showAbout?: (message: string) => Promise<string>;
   readonly notificationSettings?: (message: string) => Promise<string>;
   readonly nativeNotifications?: (message: string) => Promise<string>;
   readonly subscribeNativeNotifications?: (
@@ -174,6 +176,40 @@ export const createDesktopBridge = (
     };
   };
 
+  const exposeAbout = (base: DesktopBridge): DesktopBridge => {
+    const { showAbout } = port;
+
+    if (showAbout === undefined) {
+      return base;
+    }
+
+    return {
+      ...base,
+      // @effect-diagnostics-next-line asyncFunction:off -- The additive isolated method admits only the closed versioned About request and reply, not caller metadata.
+      showAbout: async (request) => {
+        const encoded = Schema.encodeOption(aboutWire.request, {
+          onExcessProperty: "error",
+        })(request);
+
+        if (Option.isNone(encoded)) {
+          port.rejected();
+          throw new Error("Invalid About request");
+        }
+
+        const decoded = Schema.decodeOption(aboutWire.reply, {
+          onExcessProperty: "error",
+        })(await showAbout(encoded.value));
+
+        if (Option.isNone(decoded)) {
+          port.rejected();
+          throw new Error("Invalid About reply");
+        }
+
+        return decoded.value;
+      },
+    };
+  };
+
   const bridge: DesktopBridge = {
     // @effect-diagnostics-next-line asyncFunction:off -- The isolated preload exposes decoded native IPC Promises to the hosted page.
     getSettings: async () =>
@@ -254,7 +290,7 @@ export const createDesktopBridge = (
     },
   };
 
-  const exposed = exposeNotificationSettings(exposeNative(bridge));
+  const exposed = exposeAbout(exposeNotificationSettings(exposeNative(bridge)));
 
   if (saveIcs === undefined) {
     return Object.freeze(exposed);

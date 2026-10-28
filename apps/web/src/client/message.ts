@@ -4,7 +4,11 @@ import {
   ListEventsOutput,
 } from "@calendar/calendar/contracts";
 import { SessionSnapshot } from "@calendar/core/contracts";
-import { AgendaKey, MeetingJoinOutcome } from "@calendar/core/desktop-bridge";
+import {
+  AboutReply,
+  AgendaKey,
+  MeetingJoinOutcome,
+} from "@calendar/core/desktop-bridge";
 import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
 import { UrlRequest } from "foldkit/navigation";
@@ -231,6 +235,7 @@ export const Message = defineMessageUnion({
   },
   ReceivedClipboard: { delivery: ClipboardDelivery },
   ReceivedDesktop: { notice: DesktopNotice },
+  ReceivedDesktopAbout: { reply: AboutReply },
   ReceivedEditing: { notice: EditingNotice, personId: Schema.String },
   ReceivedEventAttachments: { result: AttachmentReadResult },
   ReceivedEvents: {
@@ -301,6 +306,7 @@ export const Message = defineMessageUnion({
     personId: Schema.String,
   },
   RequestedDesktop: { request: DesktopRequest },
+  RequestedDesktopAbout: {},
   RequestedEmailParticipants: {},
   RequestedIcsExport: {},
   RequestedJoinMeeting: { key: Schema.Option(AgendaKey) },

@@ -35,6 +35,7 @@ export const DesktopNotice = Schema.TaggedUnion({
   Action: { action: DesktopAction },
   Finished: {
     canSaveIcs: Schema.optional(Schema.Boolean),
+    canShowAbout: Schema.optional(Schema.Boolean),
     outcome: DesktopOutcome,
     request: Schema.Int,
   },
@@ -45,6 +46,7 @@ export const DesktopNotice = Schema.TaggedUnion({
 export const DesktopUi = Schema.Struct({
   availability: Schema.Literals(["unknown", "unavailable", "available"]),
   canSaveIcs: Schema.optional(Schema.Boolean),
+  canShowAbout: Schema.optional(Schema.Boolean),
   error: Schema.Option(Schema.String),
   notificationLease: Schema.optional(Schema.String),
   notificationRevision: Schema.optional(Schema.Int),

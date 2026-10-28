@@ -1,4 +1,4 @@
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Option, Predicate, Schema } from "effect";
 import type { SchemaAST } from "effect";
 
 export const trayLocationByteLimit = 512;
@@ -768,6 +768,9 @@ export const DesktopStartupTiming = Schema.Struct({
 });
 
 export interface DesktopBridge {
+  readonly showAbout?: (
+    request: typeof AboutRequest.Type
+  ) => Promise<typeof AboutReply.Type>;
   readonly notificationSettings?: (
     request: typeof NotificationSettingsRequest.Type
   ) => Promise<typeof NotificationSettingsReply.Type>;
@@ -881,6 +884,34 @@ export const notificationSettingsWire = {
 
 export const notificationSettingsChannel =
   "potion:desktop:notification-settings:1";
+
+export const deskDefaultAboutPlatform = "darwin";
+
+export const deskDefaultAboutUnsupported = "hidden";
+
+export const deskDefaultAboutShortcut = Option.none<string>();
+
+export const deskDefaultAboutMetadata = "electron-default";
+
+export const deskDefaultAboutRetry = "none";
+
+export const AboutRequest = Schema.Struct({ version: Schema.Literal(1) });
+
+export const AboutReply = Schema.TaggedUnion({
+  Failed: { message: Schema.String, version: Schema.Literal(1) },
+  Refused: {
+    reason: Schema.Literals(["untrusted", "unsupported", "invalid-request"]),
+    version: Schema.Literal(1),
+  },
+  Requested: { version: Schema.Literal(1) },
+});
+
+export const aboutWire = {
+  reply: Schema.fromJsonString(AboutReply),
+  request: Schema.fromJsonString(AboutRequest),
+};
+
+export const aboutChannel = "potion:desktop:about:1";
 
 export const notificationSettingsReplyMatches = (
   request: typeof NotificationSettingsRequest.Type,

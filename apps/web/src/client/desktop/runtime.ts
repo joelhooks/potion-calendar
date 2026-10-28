@@ -88,13 +88,19 @@ export const runDesktopRequest = Effect.fn("Desktop.runBrowserRequest")(
     yield* watchActor("desktopSettings", actor);
     const outcome = yield* join(actor).pipe(Effect.orDie);
 
-    return DesktopNotice.cases.Finished.make({
+    const notice = DesktopNotice.cases.Finished.make({
       canSaveIcs: Option.exists(bridge, (native) =>
         Predicate.isFunction(native.saveIcs)
       ),
       outcome,
       request: request.request,
     });
+
+    return Option.exists(bridge, (native) =>
+      Predicate.isFunction(native.showAbout)
+    )
+      ? DesktopNotice.cases.Finished.make({ ...notice, canShowAbout: true })
+      : notice;
   },
   Effect.scoped
 );

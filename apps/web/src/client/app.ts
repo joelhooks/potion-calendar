@@ -76,6 +76,11 @@ import {
   changeConferencing,
   loadConferencingAccounts,
 } from "./conferencing/update.js";
+import {
+  RequestDesktopAbout,
+  canRequestDesktopAbout,
+  receiveDesktopAbout,
+} from "./desktop/about.js";
 import { ApplyDesktopRequest } from "./desktop/commands.js";
 import {
   DesktopNotice,
@@ -1400,6 +1405,9 @@ const updateCore = (
         })
       );
     },
+    ReceivedDesktopAbout: ({ reply }) => ({
+      model: receiveDesktopAbout(model, reply),
+    }),
     ReceivedEditing: ({ notice, personId }) => {
       const next = receiveEditing(model, personId, notice);
       const prepared = newPreparedRsvpNote(model, next.model);
@@ -1557,13 +1565,18 @@ const updateCore = (
         model.desktop.notificationSettings
       );
 
-      const desktop = {
+      const baseDesktop = {
         availability: model.desktop.availability,
         canSaveIcs: model.desktop.canSaveIcs,
         error: Option.none(),
         request: model.desktop.request,
         settings: model.desktop.settings,
       };
+
+      const desktop =
+        model.desktop.canShowAbout === undefined
+          ? baseDesktop
+          : { ...baseDesktop, canShowAbout: model.desktop.canShowAbout };
 
       const cleared = {
         ...initial,
@@ -1679,6 +1692,10 @@ const updateCore = (
         model: { ...model, desktop },
       };
     },
+    RequestedDesktopAbout: () =>
+      canRequestDesktopAbout(model)
+        ? { commands: [RequestDesktopAbout()], model }
+        : { model },
     RequestedEmailParticipants: () => emailParticipants(model),
     RequestedIcsExport: () => beginIcsExport(model),
     RequestedJoinMeeting: ({ key }) =>

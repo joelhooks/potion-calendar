@@ -1,11 +1,26 @@
 import type { DesktopSettingsValue } from "@calendar/core/desktop-bridge";
-import { Match, Option } from "effect";
+import { Match, Option, Struct } from "effect";
 import { AsyncData } from "foldkit";
 
-import { RemoteDesktop } from "./model.js";
+import { DesktopOutcome, RemoteDesktop } from "./model.js";
 import type { DesktopNotice, DesktopUi } from "./model.js";
 
 type DesktopState = typeof DesktopUi.Type;
+
+const aboutCapability = (
+  state: DesktopState,
+  capable: boolean
+): DesktopState => {
+  if (capable) {
+    return state.canShowAbout === true
+      ? state
+      : { ...state, canShowAbout: true };
+  }
+
+  return state.canShowAbout === undefined
+    ? state
+    : Struct.omit(state, ["canShowAbout"]);
+};
 
 const currentRevision = (state: DesktopState): number =>
   Option.match(AsyncData.getData(state.settings), {
@@ -85,7 +100,13 @@ export const receiveDesktopNotice = (
                   error: Option.none(),
                   settings: RemoteDesktop.Idle(),
                 }),
-              })
+              }),
+              (updated): DesktopState =>
+                aboutCapability(
+                  updated,
+                  !DesktopOutcome.guards.Unavailable(finished.outcome) &&
+                    finished.canShowAbout === true
+                )
             )
           : state,
       Rejected: ({ message }) => ({ ...state, error: Option.some(message) }),
