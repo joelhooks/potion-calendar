@@ -2,8 +2,10 @@ import type { SessionSnapshot } from "@calendar/core/contracts";
 import { Option, Predicate } from "effect";
 import { AsyncData } from "foldkit";
 
+import { resolvedAppLocale } from "../../layout/app-locale.js";
 import { visibleEvents } from "../../layout/presentation.js";
 import { primarySelection } from "../../layout/selection-set.js";
+import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { BulkView } from "../bulk/model.js";
 import { editorConferencingContext } from "../conferencing/editor-context.js";
@@ -106,6 +108,30 @@ export const clipboardNativeHost = (
     Option.contains(primarySelection(model.calendar.selected), event.key)
   );
 
+  const refusalPresentation = {
+    locale: resolvedAppLocale(model),
+    timeFormat: resolvedTimeFormat(model),
+  };
+
+  let target =
+    calendar === undefined
+      ? undefined
+      : ClipboardPasteTarget.make({
+          calendar,
+          conferencingContext: editorConferencingContext(model),
+          navigation: model.calendar.navigation,
+          primaryZone: homeZone(model),
+          selection: primarySelection(model.calendar.selected),
+        });
+
+  if (
+    target !== undefined &&
+    (refusalPresentation.locale !== "en-US" ||
+      refusalPresentation.timeFormat !== "12")
+  ) {
+    target = ClipboardPasteTarget.make({ ...target, refusalPresentation });
+  }
+
   return {
     anchor,
     copied: connection.copied(),
@@ -127,16 +153,7 @@ export const clipboardNativeHost = (
       ...session.accounts.map((account) => account.email),
     ],
     sessionId: connection.sessionId,
-    target:
-      calendar === undefined
-        ? undefined
-        : ClipboardPasteTarget.make({
-            calendar,
-            conferencingContext: editorConferencingContext(model),
-            navigation: model.calendar.navigation,
-            primaryZone: homeZone(model),
-            selection: primarySelection(model.calendar.selected),
-          }),
+    target,
   };
 };
 

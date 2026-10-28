@@ -73,6 +73,7 @@ export const prepareClipboardPaste = Effect.fn("prepareClipboardPaste")(
           anchor: pending.anchor,
           homeZone: pending.target.primaryZone,
           personId: pending.group.personId,
+          refusalPresentation: pending.target.refusalPresentation,
           snapshot: pending.group,
         });
 
@@ -145,7 +146,8 @@ export const prepareClipboardPaste = Effect.fn("prepareClipboardPaste")(
       const range = yield* placeClipboardItem(
         pending.item,
         pending.anchor,
-        pending.target.primaryZone
+        pending.target.primaryZone,
+        pending.target.refusalPresentation
       );
 
       const template = yield* prepareClipboardTemplate(

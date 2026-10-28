@@ -4,7 +4,10 @@ import { DateTime, Effect, Option } from "effect";
 import {
   ClipboardInputFailure,
   ClipboardRange,
+  deskDefaultClipboardRefusalPresentation,
 } from "../client/clipboard/model.js";
+import type { ClipboardRefusalPresentation } from "../client/clipboard/model.js";
+import { deskDefaultFormattingCalendar } from "./app-locale.js";
 import { editorDate } from "./editor-time.js";
 import { requireEditorZone } from "./editor-zone.js";
 import { formatClock } from "./time-format.js";
@@ -40,11 +43,28 @@ export const clipboardDayDelta = (from: string, to: string) =>
     Option.filter(Number.isInteger)
   );
 
+const localizedRefusalParts = Option.liftThrowable(
+  (
+    coordinates: number,
+    minutes: number,
+    presentation: typeof ClipboardRefusalPresentation.Type
+  ) => ({
+    clock: formatClock(minutes, presentation.timeFormat, presentation.locale),
+    date: new Intl.DateTimeFormat(presentation.locale, {
+      calendar: deskDefaultFormattingCalendar,
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(coordinates),
+  })
+);
+
 export const clipboardLocalTimeExplanation = (
   coordinates: number,
   zone: string,
   endpoint: "start" | "end",
-  title: string
+  title: string,
+  presentation: typeof ClipboardRefusalPresentation.Type = deskDefaultClipboardRefusalPresentation
 ) => {
   const local = DateTime.make(coordinates);
 
@@ -68,13 +88,21 @@ export const clipboardLocalTimeExplanation = (
   ).pipe(Option.contains(coordinates));
 
   const parts = DateTime.toPartsUtc(local.value);
-  const clock = formatClock(parts.hour * 60 + parts.minute);
 
-  const date = DateTime.format(local.value, {
-    day: "numeric",
-    locale: "en-US",
-    month: "short",
-  });
+  const { clock, date } = localizedRefusalParts(
+    coordinates,
+    parts.hour * 60 + parts.minute,
+    presentation
+  ).pipe(
+    Option.getOrElse(() => ({
+      clock: formatClock(parts.hour * 60 + parts.minute),
+      date: DateTime.format(local.value, {
+        day: "numeric",
+        locale: "en-US",
+        month: "short",
+      }),
+    }))
+  );
 
   const reason = repeated
     ? "happens twice when clocks fall back"
@@ -90,6 +118,9 @@ export const shiftClipboardTimedDates = Effect.fn("shiftClipboardTimedDates")(
     readonly days: number;
     readonly homeZone: string;
     readonly range: typeof ClipboardRange.cases.Timed.Type;
+    readonly refusalPresentation?:
+      | typeof ClipboardRefusalPresentation.Type
+      | undefined;
     readonly source: typeof EventRef.Type;
     readonly title: string;
   }) {
@@ -139,7 +170,13 @@ export const shiftClipboardTimedDates = Effect.fn("shiftClipboardTimedDates")(
       if (Option.isNone(instant)) {
         return yield* invalid(
           Option.getOrElse(
-            clipboardLocalTimeExplanation(target, zone, endpoint, input.title),
+            clipboardLocalTimeExplanation(
+              target,
+              zone,
+              endpoint,
+              input.title,
+              input.refusalPresentation
+            ),
             () =>
               `${input.title} cannot be represented safely on that date. Choose another date.`
           ),

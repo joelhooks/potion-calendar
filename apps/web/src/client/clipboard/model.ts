@@ -87,11 +87,23 @@ export const ClipboardPasteMetadata = Schema.Struct({
   sendUpdates: Schema.Literals(["all", "none"]),
 });
 
+export const ClipboardRefusalPresentation = Schema.Struct({
+  locale: Schema.NonEmptyString,
+  timeFormat: Schema.Literals(["12", "24"]),
+});
+
+export const deskDefaultClipboardRefusalPresentation: typeof ClipboardRefusalPresentation.Type =
+  {
+    locale: "en-US",
+    timeFormat: "12",
+  };
+
 export const ClipboardPasteTarget = Schema.Struct({
   calendar: Calendar,
   conferencingContext: Schema.optional(EditorConferencingContext),
   navigation: NavigationState,
   primaryZone: Schema.String,
+  refusalPresentation: Schema.optionalKey(ClipboardRefusalPresentation),
   selection: Schema.Option(Schema.String),
 });
 

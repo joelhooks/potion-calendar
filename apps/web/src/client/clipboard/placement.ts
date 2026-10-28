@@ -6,7 +6,7 @@ import {
 } from "../../layout/clipboard-time.js";
 import { editorDate, editorLocalTime } from "../../layout/editor-time.js";
 import { requireEditorZone } from "../../layout/editor-zone.js";
-import type { ClipboardItem } from "./model.js";
+import type { ClipboardItem, ClipboardRefusalPresentation } from "./model.js";
 import {
   ClipboardAnchor,
   ClipboardInputFailure,
@@ -69,7 +69,8 @@ const placeTimed = Effect.fn("placeTimedClipboardItem")(function* placeTimed(
   item: typeof ClipboardItem.Type,
   range: typeof ClipboardRange.cases.Timed.Type,
   anchor: typeof ClipboardAnchor.Type,
-  homeZone: string
+  homeZone: string,
+  refusalPresentation?: typeof ClipboardRefusalPresentation.Type
 ) {
   if (ClipboardAnchor.guards.AllDay(anchor) && anchor.origin !== "month") {
     return yield* new ClipboardInputFailure({
@@ -107,6 +108,7 @@ const placeTimed = Effect.fn("placeTimedClipboardItem")(function* placeTimed(
       days,
       homeZone: timeZone,
       range,
+      refusalPresentation,
       source: item.source,
       title: item.content.title,
     });
@@ -164,10 +166,11 @@ export const placeClipboardItem = Effect.fn("placeClipboardItem")(
   function* placeClipboardItem(
     item: typeof ClipboardItem.Type,
     anchor: typeof ClipboardAnchor.Type,
-    homeZone: string
+    homeZone: string,
+    refusalPresentation?: typeof ClipboardRefusalPresentation.Type
   ) {
     return yield* ClipboardRange.guards.AllDay(item.range)
       ? placeAllDay(item, item.range, anchor, homeZone)
-      : placeTimed(item, item.range, anchor, homeZone);
+      : placeTimed(item, item.range, anchor, homeZone, refusalPresentation);
   }
 );

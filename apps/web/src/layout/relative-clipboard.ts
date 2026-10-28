@@ -5,6 +5,7 @@ import {
   ClipboardInputFailure,
   ClipboardRange,
 } from "../client/clipboard/model.js";
+import type { ClipboardRefusalPresentation } from "../client/clipboard/model.js";
 import { placeClipboardItem } from "../client/clipboard/placement.js";
 import {
   clipboardLocalCoordinates as localCoordinates,
@@ -106,7 +107,8 @@ const earliestMember = (
 const describeShiftFailure = (
   member: typeof SelectionClipboardMember.Type,
   delta: number,
-  zone: string
+  zone: string,
+  refusalPresentation?: typeof ClipboardRefusalPresentation.Type
 ) => {
   if (!ClipboardRange.guards.Timed(member.item.range)) {
     return `${member.item.content.title} would land outside the supported date range. Choose another target.`;
@@ -122,13 +124,25 @@ const describeShiftFailure = (
   const instant = uniqueLocalInstant(start, zone);
 
   const explanation = Option.isNone(instant)
-    ? describeUnsafeLocalTime(start, zone, "start", member.item.content.title)
+    ? describeUnsafeLocalTime(
+        start,
+        zone,
+        "start",
+        member.item.content.title,
+        refusalPresentation
+      )
     : localCoordinates(
         instant.value + member.item.range.end - member.item.range.start,
         zone
       ).pipe(
         Option.flatMap((end) =>
-          describeUnsafeLocalTime(end, zone, "end", member.item.content.title)
+          describeUnsafeLocalTime(
+            end,
+            zone,
+            "end",
+            member.item.content.title,
+            refusalPresentation
+          )
         )
       );
 
@@ -192,7 +206,8 @@ const placeRelativeMember = Effect.fn("placeRelativeClipboardMember")(
     delta: number,
     zone: string,
     allDay: boolean,
-    monthDate: boolean
+    monthDate: boolean,
+    refusalPresentation?: typeof ClipboardRefusalPresentation.Type
   ) {
     let { item } = member;
     let anchor: Option.Option<typeof ClipboardAnchor.Type>;
@@ -202,6 +217,7 @@ const placeRelativeMember = Effect.fn("placeRelativeClipboardMember")(
         days: delta / 86_400_000,
         homeZone: zone,
         range: item.range,
+        refusalPresentation,
         source: item.source,
         title: item.content.title,
       });
@@ -225,14 +241,24 @@ const placeRelativeMember = Effect.fn("placeRelativeClipboardMember")(
       Effect.mapError(
         () =>
           new ClipboardInputFailure({
-            message: describeShiftFailure(member, delta, zone),
+            message: describeShiftFailure(
+              member,
+              delta,
+              zone,
+              refusalPresentation
+            ),
             reason: "ambiguousTime",
             source: item.source,
           })
       )
     );
 
-    return yield* placeClipboardItem(item, target, zone).pipe(
+    return yield* placeClipboardItem(
+      item,
+      target,
+      zone,
+      refusalPresentation
+    ).pipe(
       Effect.mapError(
         (failure) =>
           new ClipboardInputFailure({
@@ -250,6 +276,9 @@ export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
     readonly anchor: typeof ClipboardAnchor.Type;
     readonly homeZone: string;
     readonly personId: string;
+    readonly refusalPresentation?:
+      | typeof ClipboardRefusalPresentation.Type
+      | undefined;
     readonly snapshot: typeof SelectionClipboardSnapshot.Type;
   }): Effect.fn.Return<typeof RelativeClipboardPlan.Type> {
     const { snapshot } = input;
@@ -367,7 +396,8 @@ export const planRelativeClipboard = Effect.fn("planRelativeClipboard")(
         delta,
         zone.value,
         allDay,
-        monthDate
+        monthDate,
+        input.refusalPresentation
       ).pipe(Effect.result);
 
       if (Result.isFailure(placed)) {
