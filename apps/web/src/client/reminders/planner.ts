@@ -168,6 +168,10 @@ const readMemory = (
   return { accepted: Option.none(), coverage: Option.none(), invitations: {} };
 };
 
+const snoozeSurfaceActive = (scan: Scan): boolean =>
+  scan.webCards === true ||
+  (scan.native === true && scan.nativeEnabled === true);
+
 export const planReminders = (memory: Memory, scan: Scan): Memory => {
   const permitted =
     scan.native === true
@@ -184,7 +188,11 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
   const retainedIdentities = new Set([
     ...pendingIdentities,
     ...memory.active
-      .filter((entry) => entry.card?.snoozedUntil !== undefined)
+      .filter(
+        (entry) =>
+          entry.card?.snoozedUntil !== undefined ||
+          entry.nativeSnoozedUntil !== undefined
+      )
       .map((entry) => entry.candidate.identity),
   ]);
 
@@ -199,14 +207,13 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
       .map((candidate) => [candidate.identity, candidate])
   );
 
-  const dueSnoozes =
-    scan.webCards === true
-      ? snoozes.filter(
-          (entry) =>
-            entry.due <= scan.now &&
-            (scan.snoozeRangeReady !== false || current.has(entry.identity))
-        )
-      : [];
+  const dueSnoozes = snoozeSurfaceActive(scan)
+    ? snoozes.filter(
+        (entry) =>
+          entry.due <= scan.now &&
+          (scan.snoozeRangeReady !== false || current.has(entry.identity))
+      )
+    : [];
 
   const snoozeProposals: NotificationContentValue[] = dueSnoozes.flatMap(
     (entry) => {
@@ -217,11 +224,18 @@ export const planReminders = (memory: Memory, scan: Scan): Memory => {
         : [
             {
               candidate,
-              card: {
-                kind: "reminder",
-                snoozedUntil: entry.due,
-                state: "active",
-              },
+              ...(scan.native === true
+                ? {
+                    nativeKind: "reminder" as const,
+                    nativeSnoozedUntil: entry.due,
+                  }
+                : {
+                    card: {
+                      kind: "reminder" as const,
+                      snoozedUntil: entry.due,
+                      state: "active" as const,
+                    },
+                  }),
               id: JSON.stringify(["snooze", entry.identity, entry.due]),
               personId: scan.personId,
               title: `Reminder: ${candidate.title}`,

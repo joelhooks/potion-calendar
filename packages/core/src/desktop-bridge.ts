@@ -431,9 +431,11 @@ export const NativeNotificationEventRef = Schema.Struct({
 export const NativeNotificationAgenda = Schema.Struct({
   deliveries: Schema.Array(
     Schema.Struct({
+      beforeStart: Schema.optional(Schema.Boolean),
       id: Schema.String,
       key: AgendaKey,
       kind: Schema.Literals(["reminder", "invite"]),
+      snoozedUntil: Schema.optional(nativeNotificationInstant),
       start: nativeNotificationInstant,
     })
   ),
@@ -472,6 +474,19 @@ export const NativeNotificationRef = Schema.Struct({
   start: nativeNotificationInstant,
 });
 
+export const nativeReminderSnoozeMinutes = [1, 5, 15, 30, 60, 1440] as const;
+
+export const NativeReminderSnoozeChoice = Schema.Literals([
+  ...nativeReminderSnoozeMinutes,
+  "start",
+]);
+
+export const NativeReminderSnoozeOutcome = Schema.Literals([
+  "accepted",
+  "refused",
+  "failed",
+]);
+
 export const NativeNotificationRequest = Schema.TaggedUnion({
   Close: {
     refs: Schema.Array(NativeNotificationRef),
@@ -484,6 +499,11 @@ export const NativeNotificationRequest = Schema.TaggedUnion({
   },
   Replace: { ref: NativeNotificationRef, version: Schema.Literal(1) },
   Show: { ref: NativeNotificationRef, version: Schema.Literal(1) },
+  SnoozeResult: {
+    outcome: NativeReminderSnoozeOutcome,
+    ref: NativeNotificationRef,
+    version: Schema.Literal(1),
+  },
 });
 
 export const NativeNotificationReply = Schema.Struct({
@@ -516,8 +536,13 @@ export const NativeNotificationNotice = Schema.TaggedUnion({
   Clicked: { ref: NativeNotificationRef },
   Closed: { ref: NativeNotificationRef },
   Failed: { ref: NativeNotificationRef },
+  Ready: { ref: NativeNotificationRef },
   Reply: { ref: NativeNotificationRef, supported: Schema.Literal(false) },
   Shown: { ref: NativeNotificationRef },
+  SnoozeSelected: {
+    choice: NativeReminderSnoozeChoice,
+    ref: NativeNotificationRef,
+  },
 });
 
 export const nativeNotificationWire = {

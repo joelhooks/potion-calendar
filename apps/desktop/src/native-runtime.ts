@@ -253,6 +253,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
           run: (task) => {
             runFork(task.pipe(Effect.forkIn(scope)));
           },
+          snooze: process.platform === "darwin",
           supported:
             process.platform === "darwin" && Notification.isSupported(),
           trusted: Effect.sync(

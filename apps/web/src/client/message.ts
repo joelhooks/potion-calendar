@@ -8,6 +8,7 @@ import {
   AboutReply,
   AgendaKey,
   MeetingJoinOutcome,
+  NativeNotificationRef,
 } from "@calendar/core/desktop-bridge";
 import { Schema } from "effect";
 import { defineMessageUnion } from "foldkit/message";
@@ -291,6 +292,7 @@ export const Message = defineMessageUnion({
     choice: ReminderSnoozeChoice,
     id: Schema.String,
     identity: Schema.String,
+    nativeRef: Schema.optional(NativeNotificationRef),
     now: Schema.Finite,
     personId: Schema.String,
   },
@@ -318,6 +320,7 @@ export const Message = defineMessageUnion({
   RequestedReminderSnooze: {
     choice: ReminderSnoozeChoice,
     id: Schema.String,
+    nativeRef: Schema.optional(NativeNotificationRef),
     personId: Schema.String,
   },
   RequestedRoute: { replace: Schema.Boolean, route: Route },

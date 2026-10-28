@@ -72,7 +72,8 @@ export const nativeHarness = Effect.fn("nativeNotificationHarness")(
     beforeHandoff: Effect.Effect<void> = Effect.void,
     promptAdmission: NativeNotificationPort["prepare"] = () =>
       Effect.succeed([]),
-    beforeAdmissionFinish: Effect.Effect<void> = Effect.void
+    beforeAdmissionFinish: Effect.Effect<void> = Effect.void,
+    snooze: NativeNotificationPort["snooze"] = false
   ) {
     const tasks = yield* Queue.unbounded<Effect.Effect<void>>();
     const preferences = yield* Ref.make(defaultDesktopPreferences());
@@ -155,6 +156,7 @@ export const nativeHarness = Effect.fn("nativeNotificationHarness")(
           run: (task) => {
             Queue.offerUnsafe(tasks, task);
           },
+          snooze,
           supported,
           trusted: Ref.get(trusted),
         },

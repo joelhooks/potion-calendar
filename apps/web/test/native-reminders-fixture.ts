@@ -25,7 +25,10 @@ export const nativeInvite: CalendarEventValue = {
   start: { dateTime: "2026-10-26T09:00:00.000Z" },
 };
 
-export const nativeReminderModel = (event = nativeInvite) => {
+export const nativeReminderModel = (
+  event = nativeInvite,
+  kind: "reminder" | "invite" = "invite"
+) => {
   const base = upcomingFixture();
 
   const ready = update(
@@ -64,13 +67,13 @@ export const nativeReminderModel = (event = nativeInvite) => {
 
   const ref: typeof NativeNotificationRef.Type = {
     generation: 1,
-    id: "native-invite",
+    id: kind === "invite" ? "native-invite" : "native-reminder",
     key: {
       accountId: event.accountId,
       calendarId: event.calendarId,
       eventId: event.eventId,
     },
-    kind: "invite",
+    kind,
     lease: "native-lease",
     personId: upcomingPerson,
     revision: model.desktop.notificationRevision ?? 0,
@@ -89,7 +92,7 @@ export const nativeReminderModel = (event = nativeInvite) => {
             {
               candidate,
               id: ref.id,
-              nativeKind: "invite" as const,
+              nativeKind: kind,
               personId: upcomingPerson,
               title: "Invite: Saved meeting",
             },

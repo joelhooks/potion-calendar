@@ -1,3 +1,7 @@
+import type {
+  NativeNotificationRef,
+  NativeReminderSnoozeOutcome,
+} from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 
 import type { AppModel, AppMessage, update } from "../app.js";
@@ -8,17 +12,42 @@ import {
   ReminderSnoozeRestore,
   ReminderSnoozeStorage,
   reminderSnoozeCanStart,
+  withNativeSnoozeReference,
 } from "./model.js";
+import { nativeNotificationLease } from "./native-projection.js";
+import { PublishNativeSnoozeOutcome } from "./native-snooze-commands.js";
+import {
+  currentSnoozeTarget,
+  resolveSnoozedPresentation,
+  sameNativeSnoozeReceipt,
+} from "./native-snooze.js";
 import {
   PersistReminderSnooze,
   SampleReminderSnoozeClock,
 } from "./snooze-commands.js";
 import { RevealReminderSnooze } from "./snooze-surface.js";
-import { commitReminders, resolveReminderPresentation } from "./update.js";
+import { commitReminders } from "./update.js";
 
 type Result = ReturnType<typeof update>;
 
 type Apply = (model: AppModel, message: AppMessage) => Result;
+
+const withNativeSnoozeOutcome = (
+  result: Result,
+  ref: typeof NativeNotificationRef.Type | undefined,
+  outcome: typeof NativeReminderSnoozeOutcome.Type
+): Result =>
+  ref === undefined ||
+  !Option.contains(result.model.person, ref.personId) ||
+  nativeNotificationLease(result.model) !== ref.lease
+    ? result
+    : {
+        ...result,
+        commands: [
+          ...(result.commands ?? []),
+          PublishNativeSnoozeOutcome({ outcome, ref }),
+        ],
+      };
 
 export const reminderSnoozeDisclosureChanged = (
   model: AppModel,
@@ -38,30 +67,39 @@ const acceptReminderSnoozeAtObservedTime = (
   model: AppModel,
   message: ReturnType<typeof Message.RequestedReminderSnooze>
 ): Result => {
-  const notification = currentReminderCard(model, message.personId, message.id);
+  const notification = currentSnoozeTarget(
+    model,
+    message.personId,
+    message.id,
+    message.nativeRef
+  );
 
   if (
     notification === undefined ||
     !reminderSnoozeCanStart(model.reminders.context.snoozeStorage)
   ) {
-    return { model };
+    return withNativeSnoozeOutcome({ model }, message.nativeRef, "refused");
   }
 
   if (
     message.choice === "start" &&
     notification.candidate.start <= model.calendar.now
   ) {
-    return {
-      model: {
-        ...model,
-        reminders: {
-          ...model.reminders,
-          failure: Option.some(
-            "The event has already started. Choose a duration instead."
-          ),
+    return withNativeSnoozeOutcome(
+      {
+        model: {
+          ...model,
+          reminders: {
+            ...model.reminders,
+            failure: Option.some(
+              "The event has already started. Choose a duration instead."
+            ),
+          },
         },
       },
-    };
+      message.nativeRef,
+      "refused"
+    );
   }
 
   const entry = {
@@ -84,24 +122,35 @@ const acceptReminderSnoozeAtObservedTime = (
       failure: Option.none(),
     });
 
-    const resolved = resolveReminderPresentation(
+    const resolved = resolveSnoozedPresentation(
       accepted.model,
       message.personId,
-      message.id
+      message.id,
+      message.nativeRef
     );
 
-    return {
-      ...resolved,
-      commands: [...(accepted.commands ?? []), ...(resolved.commands ?? [])],
-    };
+    return withNativeSnoozeOutcome(
+      {
+        ...resolved,
+        commands: [...(accepted.commands ?? []), ...(resolved.commands ?? [])],
+      },
+      message.nativeRef,
+      "accepted"
+    );
   }
 
   const next = commitReminders(model, {
-    ...stepReminder(model.reminders, {
-      entry,
-      id: message.id,
-      type: "SNOOZE_REQUESTED",
-    }),
+    ...stepReminder(
+      model.reminders,
+      message.nativeRef === undefined
+        ? { entry, id: message.id, type: "SNOOZE_REQUESTED" }
+        : {
+            entry,
+            id: message.id,
+            nativeRef: message.nativeRef,
+            type: "NATIVE_SNOOZE_REQUESTED",
+          }
+    ),
     failure: Option.none(),
   });
 
@@ -122,24 +171,41 @@ export const requestReminderSnooze = (
   model: AppModel,
   message: ReturnType<typeof Message.RequestedReminderSnooze>
 ): Result => {
-  const notification = currentReminderCard(model, message.personId, message.id);
+  const notification = currentSnoozeTarget(
+    model,
+    message.personId,
+    message.id,
+    message.nativeRef
+  );
 
   if (
     notification === undefined ||
     model.action === "pending" ||
     !reminderSnoozeCanStart(model.reminders.context.snoozeStorage)
   ) {
-    return { model };
+    return withNativeSnoozeOutcome({ model }, message.nativeRef, "refused");
   }
 
-  const operation = {
-    choice: message.choice,
-    id: message.id,
-    identity: notification.candidate.identity,
-  };
+  const operation = withNativeSnoozeReference(
+    {
+      choice: message.choice,
+      id: message.id,
+      identity: notification.candidate.identity,
+    },
+    message.nativeRef
+  );
 
   const next = commitReminders(model, {
-    ...stepReminder(model.reminders, { ...operation, type: "SNOOZE_SAMPLING" }),
+    ...stepReminder(
+      model.reminders,
+      message.nativeRef === undefined
+        ? { ...operation, type: "SNOOZE_SAMPLING" }
+        : {
+            ...operation,
+            nativeRef: message.nativeRef,
+            type: "NATIVE_SNOOZE_SAMPLING",
+          }
+    ),
     failure: Option.none(),
   });
 
@@ -164,20 +230,25 @@ export const completeReminderSnoozeClock = (
     !ReminderSnoozeStorage.guards.Sampling(storage) ||
     storage.id !== message.id ||
     storage.identity !== message.identity ||
-    storage.choice !== message.choice
+    storage.choice !== message.choice ||
+    !sameNativeSnoozeReceipt(storage.nativeRef, message.nativeRef)
   ) {
     return { model };
   }
 
   if (model.action === "pending") {
-    return commitReminders(
-      model,
-      stepReminder(model.reminders, {
-        choice: message.choice,
-        id: message.id,
-        identity: message.identity,
-        type: "SNOOZE_SAMPLED",
-      })
+    return withNativeSnoozeOutcome(
+      commitReminders(
+        model,
+        stepReminder(model.reminders, {
+          choice: message.choice,
+          id: message.id,
+          identity: message.identity,
+          type: "SNOOZE_SAMPLED",
+        })
+      ),
+      message.nativeRef,
+      "refused"
     );
   }
 
@@ -195,11 +266,16 @@ export const completeReminderSnoozeClock = (
 
   const acceptedSnooze = acceptReminderSnoozeAtObservedTime(
     ready.model,
-    Message.RequestedReminderSnooze({
-      choice: message.choice,
-      id: message.id,
-      personId: message.personId,
-    })
+    Message.RequestedReminderSnooze(
+      withNativeSnoozeReference(
+        {
+          choice: message.choice,
+          id: message.id,
+          personId: message.personId,
+        },
+        message.nativeRef
+      )
+    )
   );
 
   return {
@@ -291,19 +367,24 @@ export const completeReminderSnoozeSave = (
   });
 
   if (message.failed) {
-    return next;
+    return withNativeSnoozeOutcome(next, storage.nativeRef, "failed");
   }
 
-  const resolved = resolveReminderPresentation(
+  const resolved = resolveSnoozedPresentation(
     next.model,
     message.personId,
-    message.id
+    message.id,
+    storage.nativeRef
   );
 
-  return {
-    ...resolved,
-    commands: [...(next.commands ?? []), ...(resolved.commands ?? [])],
-  };
+  return withNativeSnoozeOutcome(
+    {
+      ...resolved,
+      commands: [...(next.commands ?? []), ...(resolved.commands ?? [])],
+    },
+    storage.nativeRef,
+    "accepted"
+  );
 };
 
 export const completeReminderSnoozeCleanup = (

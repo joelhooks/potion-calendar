@@ -49,25 +49,52 @@ export const nativeNotificationAgenda = (
       : acceptedReminderCandidates(model);
 
   return {
-    deliveries: model.reminders.context.active.flatMap((notification) =>
-      notification.nativeKind === undefined ||
-      notification.personId !== personId
-        ? []
-        : [
-            {
-              id: notification.id,
-              key: {
-                accountId: notification.candidate.event.accountId,
-                calendarId: notification.candidate.event.calendarId,
-                eventId: notification.candidate.event.eventId,
-              },
-              kind: notification.nativeKind,
-              start: notification.candidate.start,
-            },
-          ]
-    ),
+    deliveries: model.reminders.context.active.flatMap((notification) => {
+      if (
+        notification.nativeKind === undefined ||
+        notification.personId !== personId
+      ) {
+        return [];
+      }
+
+      const delivery = {
+        id: notification.id,
+        key: {
+          accountId: notification.candidate.event.accountId,
+          calendarId: notification.candidate.event.calendarId,
+          eventId: notification.candidate.event.eventId,
+        },
+        kind: notification.nativeKind,
+        start: notification.candidate.start,
+      };
+
+      if (notification.nativeKind === "reminder") {
+        Object.assign(delivery, {
+          beforeStart: notification.candidate.start > model.calendar.now,
+        });
+      }
+
+      if (notification.nativeSnoozedUntil !== undefined) {
+        Object.assign(delivery, {
+          snoozedUntil: notification.nativeSnoozedUntil,
+        });
+      }
+
+      return [delivery];
+    }),
     events: candidates
-      .filter((candidate) => candidate.end > model.calendar.now)
+      .filter(
+        (candidate) =>
+          candidate.end > model.calendar.now ||
+          model.reminders.context.active.some(
+            (notification) =>
+              notification.nativeKind === "reminder" &&
+              notification.nativeSnoozedUntil !== undefined &&
+              notification.nativeSnoozedUntil <= model.calendar.now &&
+              notification.candidate.identity === candidate.identity &&
+              notification.candidate.start === candidate.start
+          )
+      )
       .map((candidate) => {
         const { event } = candidate;
 
@@ -128,7 +155,9 @@ export const nativeRetryDeliveries = (
         event.key.calendarId === candidate.event.calendarId &&
         event.key.eventId === candidate.event.eventId &&
         event.start === candidate.start &&
-        event.end > model.calendar.now
+        (event.end > model.calendar.now ||
+          (notification.nativeSnoozedUntil !== undefined &&
+            notification.nativeSnoozedUntil <= model.calendar.now))
     );
 
     if (

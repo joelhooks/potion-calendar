@@ -2,6 +2,8 @@ import { Calendar, CalendarEvent } from "@calendar/calendar/contracts";
 import {
   AgendaSnapshot,
   NativeNotificationNotice,
+  NativeNotificationRef,
+  NativeReminderSnoozeChoice as ReminderSnoozeChoice,
 } from "@calendar/core/desktop-bridge";
 import { Match, Option, Schema } from "effect";
 
@@ -46,15 +48,23 @@ export const ReminderSnooze = Schema.Struct({
   identity: Schema.String,
 });
 
-export const reminderSnoozeMinutes = [1, 5, 15, 30, 60, 1440] as const;
+export {
+  NativeReminderSnoozeChoice as ReminderSnoozeChoice,
+  nativeReminderSnoozeMinutes as reminderSnoozeMinutes,
+} from "@calendar/core/desktop-bridge";
+
+type NativeSnoozeReference<A> = A & {
+  readonly nativeRef?: typeof NativeNotificationRef.Type;
+};
+
+export const withNativeSnoozeReference = <A extends object>(
+  value: A,
+  ref: typeof NativeNotificationRef.Type | undefined
+): NativeSnoozeReference<A> =>
+  ref === undefined ? value : Object.assign(value, { nativeRef: ref });
 
 export const reminderSnoozeElementId = (personId: string, id: string): string =>
   `reminder-snooze:${JSON.stringify([personId, id])}`;
-
-export const ReminderSnoozeChoice = Schema.Literals([
-  ...reminderSnoozeMinutes,
-  "start",
-]);
 
 export const ReminderSnoozeRestore = Schema.TaggedUnion({
   Failed: {},
@@ -69,9 +79,14 @@ export const ReminderSnoozeStorage = Schema.TaggedUnion({
     choice: ReminderSnoozeChoice,
     id: Schema.String,
     identity: Schema.String,
+    nativeRef: Schema.optional(NativeNotificationRef),
     persistence: Schema.Literals(["durable", "session"]),
   },
-  Saving: { entry: ReminderSnooze, id: Schema.String },
+  Saving: {
+    entry: ReminderSnooze,
+    id: Schema.String,
+    nativeRef: Schema.optional(NativeNotificationRef),
+  },
   Unloaded: {},
 });
 
@@ -117,6 +132,7 @@ export const NotificationContent = Schema.Struct({
   id: Schema.String,
   native: Schema.optional(Schema.Struct({ snapshot: AgendaSnapshot })),
   nativeKind: Schema.optional(Schema.Literals(["reminder", "invite"])),
+  nativeRef: Schema.optional(NativeNotificationRef),
   nativeRetry: Schema.optional(
     Schema.Struct({
       lease: Schema.String,
@@ -124,6 +140,7 @@ export const NotificationContent = Schema.Struct({
       status: Schema.Literals(["waiting", "attempted"]),
     })
   ),
+  nativeSnoozedUntil: Schema.optional(Schema.Finite),
   personId: Schema.String,
   title: Schema.String,
 });

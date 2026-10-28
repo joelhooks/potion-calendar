@@ -22,7 +22,11 @@ export const liveSnoozeIdentities = (
   return new Set([
     ...(memory.snoozes ?? []).map((entry) => entry.identity),
     ...memory.active
-      .filter((entry) => entry.card?.snoozedUntil !== undefined)
+      .filter(
+        (entry) =>
+          entry.card?.snoozedUntil !== undefined ||
+          entry.nativeSnoozedUntil !== undefined
+      )
       .map((entry) => entry.candidate.identity),
     ...Option.match(reminderSnoozeOperationIdentity(storage), {
       onNone: () => [],

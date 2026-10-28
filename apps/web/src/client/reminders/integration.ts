@@ -1,10 +1,13 @@
-import { Option } from "effect";
+import { Option, Schema } from "effect";
 
 import type { AppModel, update } from "../app.js";
+import { desktopDependencies } from "../desktop/subscription.js";
+import { DeliverReminderNotification } from "./commands.js";
 import { initialReminderState, stepReminder } from "./machine.js";
-import { ReminderSnoozeStorage } from "./model.js";
+import { NotificationContent, ReminderSnoozeStorage } from "./model.js";
 import {
   nativeNotificationLease,
+  nativeNotificationAgenda,
   nativeRemindersEnabled,
 } from "./native-projection.js";
 import { releaseResolvedReminderEvents } from "./retained.js";
@@ -155,34 +158,87 @@ const updateReminders = (previous: AppModel, result: Result): Result => {
     : { ...result, commands, model };
 };
 
+const nativePublication = (model: AppModel): string => {
+  const agenda = nativeNotificationAgenda(model);
+
+  return JSON.stringify(
+    agenda === undefined
+      ? null
+      : {
+          deliveries: agenda.deliveries,
+          events: agenda.events,
+          lease: agenda.lease,
+          personId: agenda.personId,
+        }
+  );
+};
+
+const stampNativePublication = (
+  previous: AppModel,
+  model: AppModel
+): AppModel => {
+  if (
+    nativeNotificationLease(model) === undefined &&
+    previous.desktop.notificationRevision === undefined
+  ) {
+    return model;
+  }
+
+  const revision =
+    (previous.desktop.notificationRevision ?? 0) +
+    (nativePublication(previous) === nativePublication(model) ? 0 : 1);
+
+  return model.desktop.notificationRevision === revision
+    ? model
+    : {
+        ...model,
+        desktop: { ...model.desktop, notificationRevision: revision },
+      };
+};
+
+type ReminderCommand = NonNullable<Result["commands"]>[number];
+
+const bindNativePublication = (
+  model: AppModel,
+  command: ReminderCommand
+): ReminderCommand => {
+  if (command.name !== "DeliverReminderNotification") {
+    return command;
+  }
+
+  const args = Schema.decodeUnknownSync(
+    Schema.Struct({ notification: NotificationContent })
+  )(command.args);
+
+  return args.notification.native === undefined
+    ? command
+    : DeliverReminderNotification({
+        notification: {
+          ...args.notification,
+          native: { snapshot: desktopDependencies(model).snapshot },
+        },
+      });
+};
+
 export const withReminders = (previous: AppModel, result: Result): Result => {
   if (result.model === previous) {
     return result;
   }
 
-  const active =
-    nativeNotificationLease(result.model) !== undefined ||
-    previous.desktop.notificationRevision !== undefined;
+  const updated = updateReminders(previous, {
+    ...result,
+    model: stampNativePublication(previous, result.model),
+  });
 
-  const changed =
-    inputsChanged(previous, result.model) ||
-    previous.person !== result.model.person ||
-    previous.reminders.context.active !== result.model.reminders.context.active;
+  const model = stampNativePublication(previous, updated.model);
 
-  return updateReminders(
-    previous,
-    active && changed
-      ? {
-          ...result,
-          model: {
-            ...result.model,
-            desktop: {
-              ...result.model.desktop,
-              notificationRevision:
-                (previous.desktop.notificationRevision ?? 0) + 1,
-            },
-          },
-        }
-      : result
-  );
+  return updated.commands === undefined
+    ? { ...updated, model }
+    : {
+        ...updated,
+        commands: updated.commands.map((command) =>
+          bindNativePublication(model, command)
+        ),
+        model,
+      };
 };

@@ -6,8 +6,10 @@ import { Option } from "effect";
 
 import type { AppModel, update } from "../app.js";
 import { respondForSavedEvent } from "../desktop/respond.js";
+import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import { acceptedReminderCandidates } from "./accepted-candidates.js";
+import type { NotificationContentValue } from "./model.js";
 import { nativeNotificationLease } from "./native-projection.js";
 import { selectReminderNotification } from "./selection.js";
 import { commitReminders } from "./update.js";
@@ -17,9 +19,66 @@ type Result = ReturnType<typeof update>;
 const passiveNativeNotice = (
   notice: typeof NativeNotificationNotice.Type
 ): boolean =>
+  NativeNotificationNotice.guards.Ready(notice) ||
   NativeNotificationNotice.guards.Shown(notice) ||
   NativeNotificationNotice.guards.Closed(notice) ||
   NativeNotificationNotice.guards.Reply(notice);
+
+const observeNativePresentation = (
+  model: AppModel,
+  notice: typeof NativeNotificationNotice.Type,
+  active: NotificationContentValue
+): Result => {
+  const { ref } = notice;
+
+  if (
+    (NativeNotificationNotice.guards.Ready(notice) ||
+      NativeNotificationNotice.guards.Shown(notice)) &&
+    active.nativeKind === "reminder" &&
+    (active.nativeRef === undefined ||
+      active.nativeRef.generation <= ref.generation)
+  ) {
+    return {
+      model: {
+        ...model,
+        reminders: {
+          ...model.reminders,
+          context: {
+            ...model.reminders.context,
+            active: model.reminders.context.active.map((entry) =>
+              entry.id === ref.id ? { ...entry, nativeRef: ref } : entry
+            ),
+          },
+        },
+      },
+    };
+  }
+
+  if (
+    NativeNotificationNotice.guards.Closed(notice) &&
+    active.nativeRef?.generation === ref.generation
+  ) {
+    return commitReminders(model, {
+      ...model.reminders,
+      context: {
+        ...model.reminders.context,
+        active: model.reminders.context.active.flatMap((entry) => {
+          if (entry.id !== ref.id) {
+            return [entry];
+          }
+
+          return entry.nativeSnoozedUntil === undefined
+            ? [{ ...entry, nativeRef: undefined }]
+            : [];
+        }),
+        close: [],
+        deliveries: [],
+      },
+    });
+  }
+
+  return { model };
+};
 
 export const actOnNativeNotification = (
   model: AppModel,
@@ -36,6 +95,18 @@ export const actOnNativeNotification = (
     return { model };
   }
 
+  if (NativeNotificationNotice.guards.SnoozeSelected(notice)) {
+    return apply(
+      model,
+      Message.RequestedReminderSnooze({
+        choice: notice.choice,
+        id: ref.id,
+        nativeRef: ref,
+        personId: ref.personId,
+      })
+    );
+  }
+
   const active = model.reminders.context.active.find(
     (entry) =>
       entry.id === ref.id &&
@@ -48,7 +119,10 @@ export const actOnNativeNotification = (
     (item) =>
       item.start === ref.start &&
       sameDesktopEventKey(item.event, ref.key) &&
-      item.end > model.calendar.now
+      (item.end > model.calendar.now ||
+        (active?.nativeKind === "reminder" &&
+          active.nativeSnoozedUntil !== undefined &&
+          active.nativeSnoozedUntil <= model.calendar.now))
   );
 
   if (active === undefined || candidate === undefined) {
@@ -56,7 +130,7 @@ export const actOnNativeNotification = (
   }
 
   if (passiveNativeNotice(notice)) {
-    return { model };
+    return observeNativePresentation(model, notice, active);
   }
 
   let result: Result = { model };

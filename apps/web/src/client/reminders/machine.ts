@@ -1,3 +1,4 @@
+import { NativeNotificationRef } from "@calendar/core/desktop-bridge";
 import { setupEffect } from "@xstate/effect";
 import { Option, Schema } from "effect";
 import { transition } from "xstate";
@@ -14,6 +15,7 @@ import {
   ReminderScan,
   ReminderState,
   reminderSnoozeCanStart,
+  withNativeSnoozeReference,
 } from "./model.js";
 import { planReminders } from "./planner.js";
 
@@ -40,11 +42,77 @@ const permissionState = (permission: typeof NotificationPermission.Type) => {
   return permission === "default" ? ".permissionUnknown" : ".denied";
 };
 
+const snoozeRequest = Schema.Struct({
+  entry: ReminderSnooze,
+  id: Schema.String,
+});
+
+const snoozeSampling = Schema.Struct({
+  choice: ReminderSnoozeChoice,
+  id: Schema.String,
+  identity: Schema.String,
+});
+
+const beginSnoozeSave = (
+  context: typeof ReminderMemory.Type,
+  event: typeof snoozeRequest.Type & {
+    readonly nativeRef?: typeof NativeNotificationRef.Type;
+  }
+) =>
+  ReminderSnoozeStorage.guards.Ready(context.snoozeStorage)
+    ? {
+        context: {
+          snoozeStorage: ReminderSnoozeStorage.cases.Saving.make(
+            withNativeSnoozeReference(
+              { entry: event.entry, id: event.id },
+              event.nativeRef
+            )
+          ),
+        },
+      }
+    : {};
+
+const beginSnoozeSample = (
+  context: typeof ReminderMemory.Type,
+  event: typeof snoozeSampling.Type & {
+    readonly nativeRef?: typeof NativeNotificationRef.Type;
+  }
+) =>
+  reminderSnoozeCanStart(context.snoozeStorage)
+    ? {
+        context: {
+          snoozeStorage: ReminderSnoozeStorage.cases.Sampling.make(
+            withNativeSnoozeReference(
+              {
+                choice: event.choice,
+                id: event.id,
+                identity: event.identity,
+                persistence: ReminderSnoozeStorage.guards.Failed(
+                  context.snoozeStorage
+                )
+                  ? "session"
+                  : "durable",
+              },
+              event.nativeRef
+            )
+          ),
+        },
+      }
+    : {};
+
 export const reminderMachine = setupEffect({
   schemas: {
     context: ReminderMemory,
     events: {
       NATIVE_SCAN: NativeReminderScan,
+      NATIVE_SNOOZE_REQUESTED: Schema.Struct({
+        ...snoozeRequest.fields,
+        nativeRef: NativeNotificationRef,
+      }),
+      NATIVE_SNOOZE_SAMPLING: Schema.Struct({
+        ...snoozeSampling.fields,
+        nativeRef: NativeNotificationRef,
+      }),
       PERMISSION: Schema.Struct({
         now: Schema.Finite,
         permission: NotificationPermission,
@@ -52,10 +120,7 @@ export const reminderMachine = setupEffect({
       REQUEST: Schema.Struct({}),
       SCAN: ReminderScan,
       SNOOZE_LOADING: Schema.Struct({}),
-      SNOOZE_REQUESTED: Schema.Struct({
-        entry: ReminderSnooze,
-        id: Schema.String,
-      }),
+      SNOOZE_REQUESTED: snoozeRequest,
       SNOOZE_RESTORED: Schema.Struct({
         now: Schema.Finite,
         outcome: ReminderSnoozeRestore,
@@ -65,11 +130,7 @@ export const reminderMachine = setupEffect({
         id: Schema.String,
         identity: Schema.String,
       }),
-      SNOOZE_SAMPLING: Schema.Struct({
-        choice: ReminderSnoozeChoice,
-        id: Schema.String,
-        identity: Schema.String,
-      }),
+      SNOOZE_SAMPLING: snoozeSampling,
       SNOOZE_SAVED: Schema.Struct({
         entry: ReminderSnooze,
         failed: Schema.Boolean,
@@ -90,6 +151,10 @@ export const reminderMachine = setupEffect({
     NATIVE_SCAN: ({ context, event }) => ({
       context: planReminders(context, event),
     }),
+    NATIVE_SNOOZE_REQUESTED: ({ context, event }) =>
+      beginSnoozeSave(context, event),
+    NATIVE_SNOOZE_SAMPLING: ({ context, event }) =>
+      beginSnoozeSample(context, event),
     PERMISSION: ({ context, event }) => {
       const granted = event.permission === "granted";
       const entering = granted && context.permission !== "granted";
@@ -136,17 +201,7 @@ export const reminderMachine = setupEffect({
             },
           }
         : {},
-    SNOOZE_REQUESTED: ({ context, event }) =>
-      ReminderSnoozeStorage.guards.Ready(context.snoozeStorage)
-        ? {
-            context: {
-              snoozeStorage: ReminderSnoozeStorage.cases.Saving.make({
-                entry: event.entry,
-                id: event.id,
-              }),
-            },
-          }
-        : {},
+    SNOOZE_REQUESTED: ({ context, event }) => beginSnoozeSave(context, event),
     SNOOZE_RESTORED: ({ context, event }) =>
       ReminderSnoozeStorage.guards.Loading(context.snoozeStorage)
         ? {
@@ -176,23 +231,7 @@ export const reminderMachine = setupEffect({
             },
           }
         : {},
-    SNOOZE_SAMPLING: ({ context, event }) =>
-      reminderSnoozeCanStart(context.snoozeStorage)
-        ? {
-            context: {
-              snoozeStorage: ReminderSnoozeStorage.cases.Sampling.make({
-                choice: event.choice,
-                id: event.id,
-                identity: event.identity,
-                persistence: ReminderSnoozeStorage.guards.Failed(
-                  context.snoozeStorage
-                )
-                  ? "session"
-                  : "durable",
-              }),
-            },
-          }
-        : {},
+    SNOOZE_SAMPLING: ({ context, event }) => beginSnoozeSample(context, event),
     SNOOZE_SAVED: ({ context, event }) =>
       ReminderSnoozeStorage.guards.Saving(context.snoozeStorage) &&
       context.snoozeStorage.id === event.id &&

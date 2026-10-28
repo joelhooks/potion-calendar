@@ -1,4 +1,5 @@
 import { watchActor } from "@calendar/capability/actor-watch";
+import { NativeNotificationRef } from "@calendar/core/desktop-bridge";
 import { createEffectActor, createEffectLogic, join } from "@xstate/effect";
 import { Clock, Effect, Schema } from "effect";
 import { Command } from "foldkit";
@@ -93,6 +94,7 @@ export const SampleReminderSnoozeClock = Command.define(
       choice: ReminderSnoozeChoice,
       id: Schema.String,
       identity: Schema.String,
+      nativeRef: Schema.optional(NativeNotificationRef),
       personId: Schema.String,
     },
     execute: (args) =>

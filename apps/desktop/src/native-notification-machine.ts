@@ -8,7 +8,9 @@ export const nativeNotificationMachine = setupEffect({
       ACT: Schema.Struct({}),
       CLOSE: Schema.Struct({}),
       FAIL: Schema.Struct({}),
+      RESUME: Schema.Struct({}),
       SHOW: Schema.Struct({}),
+      SNOOZE: Schema.Struct({}),
     },
   },
 }).createMachine({
@@ -19,10 +21,19 @@ export const nativeNotificationMachine = setupEffect({
   },
   states: {
     acting: {},
-    active: { on: { ACT: { target: "acting" } } },
+    active: {
+      on: { ACT: { target: "acting" }, SNOOZE: { target: "snoozing" } },
+    },
     failed: { type: "final" },
     retired: { type: "final" },
-    showing: { on: { ACT: { target: "acting" }, SHOW: { target: "active" } } },
+    showing: {
+      on: {
+        ACT: { target: "acting" },
+        SHOW: { target: "active" },
+        SNOOZE: { target: "snoozing" },
+      },
+    },
+    snoozing: { on: { RESUME: { target: "active" } } },
   },
 });
 
@@ -30,12 +41,13 @@ export type NativeNotificationPhase =
   | "showing"
   | "active"
   | "acting"
+  | "snoozing"
   | "retired"
   | "failed";
 
 export const notificationPhase = (
   value: NativeNotificationPhase,
-  type: "ACT" | "CLOSE" | "FAIL" | "SHOW"
+  type: "ACT" | "CLOSE" | "FAIL" | "SHOW" | "SNOOZE" | "RESUME"
 ): NativeNotificationPhase => {
   const [next] = transition(
     nativeNotificationMachine,
@@ -44,6 +56,13 @@ export const notificationPhase = (
   );
 
   return Schema.decodeSync(
-    Schema.Literals(["showing", "active", "acting", "retired", "failed"])
+    Schema.Literals([
+      "showing",
+      "active",
+      "acting",
+      "snoozing",
+      "retired",
+      "failed",
+    ])
   )(next.value);
 };

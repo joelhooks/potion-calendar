@@ -2,6 +2,8 @@ import { watchActor } from "@calendar/capability/actor-watch";
 import {
   ConferenceUrl,
   NativeNotificationNotice,
+  NativeReminderSnoozeChoice,
+  nativeReminderSnoozeMinutes,
   navigation,
   sameDesktopEventKey as sameKey,
 } from "@calendar/core/desktop-bridge";
@@ -14,6 +16,7 @@ import type {
   NativeNotificationRef,
   NativeNotificationReply,
   NativeNotificationRequest,
+  NativeReminderSnoozeOutcome,
 } from "@calendar/core/desktop-bridge";
 import { composeParticipantEmail } from "@calendar/core/participant-email";
 import { createEffectActor, createEffectLogic, join } from "@xstate/effect";
@@ -41,7 +44,9 @@ type Event = typeof NativeNotificationEventRef.Type;
 
 type Reference = typeof NativeNotificationRef.Type;
 
-type Action = typeof NativeNotificationAction.Type;
+type Action =
+  | typeof NativeNotificationAction.Type
+  | typeof NativeReminderSnoozeChoice.Type;
 
 type Reply = typeof NativeNotificationReply.Type;
 
@@ -70,6 +75,7 @@ export interface NativeNotificationHandle {
 export interface NativeNotificationPort {
   readonly origin: string;
   readonly supported: boolean;
+  readonly snooze?: boolean;
   readonly trusted: Effect.Effect<boolean>;
   readonly preferences: Effect.Effect<DesktopPreferencesValue>;
   readonly beforeAction: Effect.Effect<void>;
@@ -133,6 +139,41 @@ const sameSlot = (left: Reference, right: Reference) =>
   sameKey(left.key, right.key) &&
   left.start === right.start;
 
+const nativeSnoozeIsDue = (
+  agenda: typeof NativeNotificationAgenda.Type | undefined,
+  event: Event,
+  now: number,
+  id?: string
+): boolean =>
+  agenda?.deliveries.some(
+    (delivery) =>
+      (id === undefined || delivery.id === id) &&
+      delivery.kind === "reminder" &&
+      delivery.snoozedUntil !== undefined &&
+      delivery.snoozedUntil <= now &&
+      delivery.start === event.start &&
+      sameKey(delivery.key, event.key)
+  ) === true;
+
+const nativeEventIsLive = (
+  agenda: typeof NativeNotificationAgenda.Type | undefined,
+  event: Event,
+  now: number,
+  id?: string
+): boolean => event.end > now || nativeSnoozeIsDue(agenda, event, now, id);
+
+const silentNativePresentation = (
+  current: State,
+  requested: Reference,
+  replacement: boolean,
+  old: readonly Entry[],
+  event: Event,
+  now: number
+): boolean =>
+  replacement ||
+  (!nativeSnoozeIsDue(current.agenda, event, now, requested.id) &&
+    (old.length > 0 || current.replacements.has(requested.id)));
+
 const nativeOccurrenceSurvives = (
   requested: typeof NativeNotificationAgenda.Type | undefined,
   current: typeof NativeNotificationAgenda.Type | undefined,
@@ -153,7 +194,7 @@ const nativeOccurrenceSurvives = (
         (event) =>
           sameKey(event.key, delivery.key) &&
           event.start === delivery.start &&
-          event.end > now
+          nativeEventIsLive(current, event, now, delivery.id)
       ) === true
   ) === true;
 
@@ -198,8 +239,8 @@ const notificationRequestCurrent = (
   );
 };
 
-const selectedNotificationAction = (
-  entry: LiveEntry,
+export const selectedNotificationAction = (
+  entry: Pick<LiveEntry, "actions">,
   signal: NativeNotificationSignal
 ): Action | undefined => {
   if (signal.kind === "click") {
@@ -207,6 +248,7 @@ const selectedNotificationAction = (
   }
 
   if (
+    signal.kind !== "action" ||
     signal.index === undefined ||
     !Number.isInteger(signal.index) ||
     signal.index < 0
@@ -217,9 +259,29 @@ const selectedNotificationAction = (
   return entry.actions[signal.index]?.action;
 };
 
+const nativeSnoozeActionAllowed = (
+  entry: LiveEntry,
+  action: Action,
+  now: number
+): boolean =>
+  !Schema.is(NativeReminderSnoozeChoice)(action) ||
+  (entry.ref.kind === "reminder" &&
+    (action !== "start" || entry.event.start > now));
+
+const nativeSnoozeEnabled = (
+  port: NativeNotificationPort,
+  kind: Reference["kind"]
+): boolean => port.snooze === true && kind === "reminder";
+
+const pendingSnoozeClose = (
+  entry: LiveEntry,
+  signal: NativeNotificationSignal
+): boolean => signal.kind === "close" && entry.phase === "snoozing";
+
 export const nativeNotificationActions = (
   event: Event,
-  kind: Reference["kind"]
+  kind: Reference["kind"],
+  now?: number
 ): NativeNotificationOptions["actions"] => [
   ...(kind === "invite" && event.rsvp
     ? [
@@ -236,6 +298,17 @@ export const nativeNotificationActions = (
     ? [{ action: "email" as const, text: "Email participants" }]
     : []),
   { action: "show", text: "Show event" },
+  ...(kind === "reminder" && now !== undefined
+    ? [
+        ...nativeReminderSnoozeMinutes.map((choice) => ({
+          action: choice,
+          text: `Snooze ${choice === 1440 ? "1,440" : choice} ${choice === 1 ? "minute" : "minutes"}`,
+        })),
+        ...(event.start > now
+          ? [{ action: "start" as const, text: "Until start" }]
+          : []),
+      ]
+    : []),
 ];
 
 const notificationWork = Effect.fn("Desktop.nativeNotificationWork")(
@@ -443,7 +516,8 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
           current.agenda.personId === entry.ref.personId &&
           current.agenda.revision === entry.ref.revision &&
           event !== undefined &&
-          event.end > now
+          notificationRequestCurrent(current, entry.ref) &&
+          nativeEventIsLive(current.agenda, event, now, id)
           ? entry
           : undefined;
       }
@@ -452,7 +526,7 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
     const perform = Effect.fn("Desktop.performNotificationAction")(
       function* perform(
         entry: LiveEntry,
-        action: Action,
+        action: typeof NativeNotificationAction.Type,
         authorized: Effect.Effect<boolean>
       ) {
         const { event } = entry;
@@ -491,6 +565,50 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
       }
     );
 
+    const emitSnooze = Effect.fn("Desktop.emitNativeSnooze")(
+      function* emitSnooze(
+        entry: LiveEntry,
+        choice: typeof NativeReminderSnoozeChoice.Type
+      ) {
+        if (
+          !nativeSnoozeActionAllowed(
+            entry,
+            choice,
+            yield* Clock.currentTimeMillis
+          )
+        ) {
+          yield* Ref.update(state, (current) => {
+            const found = current.entries.get(entry.ref.id);
+
+            if (
+              !liveEntry(found) ||
+              found.ref.generation !== entry.ref.generation ||
+              found.phase !== "snoozing"
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              entries: new Map(current.entries).set(entry.ref.id, {
+                ...found,
+                phase: notificationPhase(found.phase, "RESUME"),
+              }),
+            };
+          });
+
+          return;
+        }
+
+        yield* port.emit(
+          NativeNotificationNotice.cases.SnoozeSelected.make({
+            choice,
+            ref: entry.ref,
+          })
+        );
+      }
+    );
+
     const receiveWork = Effect.fn("Desktop.nativeNotificationEvent")(
       function* receive(
         id: string,
@@ -511,6 +629,10 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
             })
           );
 
+          return;
+        }
+
+        if (pendingSnoozeClose(original, signal)) {
           return;
         }
 
@@ -559,6 +681,18 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
           return;
         }
 
+        const snooze = Schema.is(NativeReminderSnoozeChoice)(action);
+
+        if (
+          !nativeSnoozeActionAllowed(
+            original,
+            action,
+            yield* Clock.currentTimeMillis
+          )
+        ) {
+          return;
+        }
+
         const claimed = yield* Ref.modify(state, (current) => {
           const entry = current.entries.get(id);
 
@@ -575,7 +709,10 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
               ...current,
               entries: new Map(current.entries).set(id, {
                 ...entry,
-                phase: notificationPhase(entry.phase, "ACT"),
+                phase: notificationPhase(
+                  entry.phase,
+                  snooze ? "SNOOZE" : "ACT"
+                ),
               }),
             },
           ];
@@ -589,6 +726,12 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
         const entry = yield* fresh(id, generation);
 
         if (entry === undefined) {
+          return;
+        }
+
+        if (Schema.is(NativeReminderSnoozeChoice)(action)) {
+          yield* emitSnooze(entry, action);
+
           return;
         }
 
@@ -649,7 +792,12 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
         !(yield* port.trusted) ||
         !preferences.menuBar ||
         event === undefined ||
-        event.end <= (yield* Clock.currentTimeMillis)
+        !nativeEventIsLive(
+          agenda,
+          event,
+          yield* Clock.currentTimeMillis,
+          requested.id
+        )
       ) {
         return reply("refused");
       }
@@ -697,7 +845,12 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
       ]);
 
       const ref = { ...requested, generation };
-      const actions = nativeNotificationActions(event, ref.kind);
+
+      const actions = nativeNotificationActions(
+        event,
+        ref.kind,
+        port.snooze === true ? yield* Clock.currentTimeMillis : undefined
+      );
 
       const created = yield* port
         .create(
@@ -706,10 +859,14 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
             body: event.body,
             hasReply: false,
             id: JSON.stringify([ref.lease, ref.personId, ref.id, generation]),
-            silent:
-              replacement ||
-              old.length > 0 ||
-              current.replacements.has(requested.id),
+            silent: silentNativePresentation(
+              current,
+              requested,
+              replacement,
+              old,
+              event,
+              yield* Clock.currentTimeMillis
+            ),
             title:
               ref.kind === "invite" ? `Invite: ${event.title}` : event.title,
           },
@@ -739,12 +896,42 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
           [...value.replacements].filter((id) => id !== ref.id)
         ),
       }));
+
+      if (nativeSnoozeEnabled(port, ref.kind)) {
+        yield* port.emit(NativeNotificationNotice.cases.Ready.make({ ref }));
+      }
+
       yield* handle.show.pipe(
         Effect.catch(() => receive(ref.id, generation, { kind: "failed" }))
       );
 
       return reply("ready", ref);
     });
+
+    const finishSnooze = Effect.fn("Desktop.finishNativeSnooze")(
+      function* finishSnooze(
+        requested: Reference,
+        outcome: typeof NativeReminderSnoozeOutcome.Type
+      ): Effect.fn.Return<Reply> {
+        const entry = yield* fresh(requested.id, requested.generation);
+
+        if (
+          entry === undefined ||
+          entry.phase !== "snoozing" ||
+          !sameSlot(entry.ref, requested)
+        ) {
+          return reply("refused");
+        }
+
+        yield* retire(entry.ref.id, entry.ref.generation, false);
+
+        if (outcome === "accepted") {
+          return reply("ready", entry.ref);
+        }
+
+        return yield* show(entry.ref, true, entry.ref.generation);
+      }
+    );
 
     const install = Effect.fn("Desktop.installNotificationAgenda")(
       function* install(snapshot: AgendaSnapshotValue) {
@@ -806,7 +993,12 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
                 sameKey(delivery.key, entry.ref.key)
             ) ||
             event === undefined ||
-            event.end <= (yield* Clock.currentTimeMillis) ||
+            !nativeEventIsLive(
+              agenda,
+              event,
+              yield* Clock.currentTimeMillis,
+              entry.ref.id
+            ) ||
             !(yield* port.preferences).menuBar
           ) {
             const replacement =
@@ -820,7 +1012,19 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
               );
 
             yield* retire(entry.ref.id, entry.ref.generation, replacement);
-          } else if (JSON.stringify(event) === JSON.stringify(entry.event)) {
+          } else if (
+            JSON.stringify(event) === JSON.stringify(entry.event) &&
+            JSON.stringify(entry.actions) ===
+              JSON.stringify(
+                nativeNotificationActions(
+                  event,
+                  entry.ref.kind,
+                  port.snooze === true
+                    ? yield* Clock.currentTimeMillis
+                    : undefined
+                )
+              )
+          ) {
             yield* Ref.update(state, (value) => {
               const found = value.entries.get(entry.ref.id);
 
@@ -1092,6 +1296,8 @@ const buildNativeNotifications = Effect.fn("Desktop.makeNativeNotifications")(
               }),
             Replace: (message) => show(message.ref, true),
             Show: (message) => show(message.ref, false),
+            SnoozeResult: (message) =>
+              finishSnooze(message.ref, message.outcome),
           })
         );
       }

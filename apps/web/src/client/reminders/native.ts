@@ -35,10 +35,40 @@ const sameReference = (left: Reference, right: Reference) =>
   left.revision === right.revision &&
   sameKey(left.key, right.key);
 
+type NativeObservationPhase = "active" | "snoozing" | "retired";
+
+const observedNativePhase = (
+  notice: typeof NativeNotificationNotice.Type,
+  previous: NativeObservationPhase = "active"
+): NativeObservationPhase => {
+  if (NativeNotificationNotice.guards.SnoozeSelected(notice)) {
+    return "snoozing";
+  }
+
+  if (
+    NativeNotificationNotice.guards.Closed(notice) ||
+    NativeNotificationNotice.guards.Failed(notice)
+  ) {
+    return "retired";
+  }
+
+  return NativeNotificationNotice.guards.Ready(notice) ||
+    NativeNotificationNotice.guards.Shown(notice)
+    ? "active"
+    : previous;
+};
+
 export const routedNotifications = (
   browser: NotificationPortService = browserNotifications()
 ): NotificationPortService => {
-  const refs = new Map<string, Reference>();
+  const refs = new Map<
+    string,
+    {
+      readonly ref: Reference;
+      readonly phase: "active" | "snoozing" | "retired";
+    }
+  >();
+
   const connected = new Map<string, symbol>();
 
   const closeNative = Effect.fn("NativeNotifications.close")(
@@ -207,9 +237,15 @@ export const routedNotifications = (
 
     if (
       previous === undefined ||
-      previous.generation <= result.ref.generation
+      previous.ref.generation <= result.ref.generation
     ) {
-      refs.set(key(content.personId, content.id), result.ref);
+      refs.set(key(content.personId, content.id), {
+        phase:
+          previous?.ref.generation === result.ref.generation
+            ? previous.phase
+            : "active",
+        ref: result.ref,
+      });
     }
 
     return yield* Effect.void;
@@ -219,15 +255,26 @@ export const routedNotifications = (
     close: (personId, ids) =>
       Effect.gen(function* closeRoutedNotifications() {
         const native = ids.flatMap((id) => {
-          const ref = refs.get(key(personId, id));
+          const record = refs.get(key(personId, id));
 
-          return ref === undefined ? [] : [ref];
+          return record === undefined ? [] : [record.ref];
         });
 
         const bridge = currentBridge();
 
         if (bridge !== undefined) {
           yield* closeNative(bridge, native);
+
+          for (const ref of native) {
+            const record = refs.get(key(personId, ref.id));
+
+            if (record?.ref.generation === ref.generation) {
+              refs.set(key(personId, ref.id), {
+                phase: "retired",
+                ref: record.ref,
+              });
+            }
+          }
         }
 
         const legacy = ids.filter((id) => !refs.has(key(personId, id)));
@@ -269,12 +316,31 @@ export const routedNotifications = (
 
                       if (
                         old !== undefined &&
-                        old.generation > ref.generation
+                        old.ref.generation > ref.generation
                       ) {
                         return;
                       }
 
-                      refs.set(key(personId, ref.id), ref);
+                      if (
+                        NativeNotificationNotice.guards.SnoozeSelected(
+                          decoded.value
+                        ) &&
+                        (old === undefined ||
+                          old.phase !== "active" ||
+                          old.ref.generation !== ref.generation ||
+                          ref.revision < old.ref.revision ||
+                          !sameReference(
+                            { ...ref, revision: old.ref.revision },
+                            old.ref
+                          ))
+                      ) {
+                        return;
+                      }
+
+                      refs.set(key(personId, ref.id), {
+                        phase: observedNativePhase(decoded.value, old?.phase),
+                        ref,
+                      });
                       Queue.offerUnsafe(
                         queue,
                         NotificationEvent.cases.Native.make({
@@ -294,13 +360,13 @@ export const routedNotifications = (
                       connected.delete(personId);
                       yield* closeNative(
                         bridge,
-                        [...refs.values()].filter(
-                          (ref) => ref.personId === personId
+                        [...refs.values()].flatMap((record) =>
+                          record.ref.personId === personId ? [record.ref] : []
                         )
                       );
 
-                      for (const [id, ref] of refs) {
-                        if (ref.personId === personId) {
+                      for (const [id, record] of refs) {
+                        if (record.ref.personId === personId) {
                           refs.delete(id);
                         }
                       }
