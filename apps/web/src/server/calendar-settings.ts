@@ -3,14 +3,19 @@ import {
   Provider,
   CalendarAppearanceRefused,
   CalendarChanges,
+  CustomVideoCatalog,
+  CustomVideoLink,
   CalendarSettings,
   CalendarStore,
   GoogleCalendarClient,
 } from "@calendar/calendar";
-import { accountConferencingDefaultRepository } from "@calendar/database/account-conferencing-default";
+import {
+  accountConferencingDefaultRepository,
+  customVideoLinksRepository,
+} from "@calendar/database/account-conferencing-default";
 import { accountDisconnectRepository } from "@calendar/database/account-disconnect";
 import type { D1Database } from "@cloudflare/workers-types";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { disconnectOwnedAccount } from "./account-disconnect.js";
 import type { DisconnectEffects } from "./account-disconnect.js";
@@ -21,6 +26,20 @@ const preferenceFailure = () =>
     operation: "account.conferencingDefault",
     status: 0,
   });
+
+const linkFailure = () =>
+  new Provider({
+    message:
+      "The saved custom link is unavailable or the operation could not be confirmed. Reload before retrying; no fallback conferencing was selected.",
+    operation: "customVideoLink",
+    status: 409,
+  });
+
+const catalog = <A, E>(effect: Effect.Effect<A, E>) =>
+  effect.pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(CustomVideoCatalog)),
+    Effect.mapError(linkFailure)
+  );
 
 export const calendarSettingsFor = Effect.fn("calendarSettingsFor")(
   function* calendarSettingsFor(
@@ -38,6 +57,8 @@ export const calendarSettingsFor = Effect.fn("calendarSettingsFor")(
       personId
     );
 
+    const links = customVideoLinksRepository(database, personId);
+
     return CalendarSettings.of({
       disconnect: (input) =>
         disconnectOwnedAccount(repository, effects, input.accountId),
@@ -54,6 +75,18 @@ export const calendarSettingsFor = Effect.fn("calendarSettingsFor")(
 
         return preference;
       }),
+      importCustomVideoLinks: (input) =>
+        catalog(links.importEntries(input.entries)),
+      readCustomVideoLinks: () => catalog(links.list()),
+      removeCustomVideoLink: (input) => catalog(links.remove(input.id)),
+      resolveCustomVideoLink: (id) =>
+        links
+          .get(id)
+          .pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(CustomVideoLink)),
+            Effect.mapError(linkFailure)
+          ),
+      saveCustomVideoLink: (input) => catalog(links.save(input)),
       setAppearance: Effect.fn("CalendarSettings.setAppearance")(
         function* setAppearance(input) {
           const { accountId, calendarId, ...patch } = input;

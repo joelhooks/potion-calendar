@@ -162,6 +162,11 @@ export const calendarForPerson = <A, E>(
           CalendarSettings.of({
             disconnect: () => Effect.fail(unavailable()),
             getConferencingDefault: () => Effect.fail(unavailable()),
+            importCustomVideoLinks: () => Effect.fail(unavailable()),
+            readCustomVideoLinks: () => Effect.fail(unavailable()),
+            removeCustomVideoLink: () => Effect.fail(unavailable()),
+            resolveCustomVideoLink: () => Effect.fail(unavailable()),
+            saveCustomVideoLink: () => Effect.fail(unavailable()),
             setAppearance: () => Effect.fail(unavailable()),
             setConferencingDefault: () => Effect.fail(unavailable()),
           })
@@ -177,6 +182,8 @@ export const calendarForPerson = <A, E>(
               accountSettings
                 .getConferencingDefault({ accountId })
                 .pipe(Effect.map((preference) => preference.value)),
+            resolveCustomLink: (id) =>
+              accountSettings.resolveCustomVideoLink(id),
           })
         )
       )

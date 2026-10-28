@@ -294,6 +294,7 @@ export const makeNativeDevelopmentRuntime = Effect.fn(
     "0007_push_unsupported.sql",
     "0008_verification_owner_fence.sql",
     "0009_primary_calendar_account.sql",
+    "0010_custom_video_links.sql",
   ]) {
     const sql = yield* Effect.tryPromise({
       catch: (cause) =>

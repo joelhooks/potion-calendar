@@ -14,8 +14,24 @@ import type { EditorProps } from "./editor-fields.js";
 const conferencingSource = (editor: ConferencingEditor) =>
   editor.kind === "edit" ? Option.getOrUndefined(editor.original) : undefined;
 
+const customProposalLabel = (
+  editor: ConferencingEditor,
+  id: string
+): string => {
+  const proposal = editor.draft.conferencing?.proposal;
+  const entry = proposal?.id === id ? proposal : undefined;
+
+  return entry === undefined
+    ? "The saved custom link is unavailable. Saving will refuse rather than add another provider."
+    : `${entry.name} · ${entry.link} will be appended to the description when you save. The current saved link will be checked again.`;
+};
+
 export const editorConferencingLabel = (editor: ConferencingEditor): string => {
   const request = editor.draft.conferencing?.request;
+
+  if (request?.kind === "customLink") {
+    return customProposalLabel(editor, request.id);
+  }
 
   if (request?.kind === "googleMeet") {
     return "Google Meet will be created when you save.";
@@ -148,7 +164,9 @@ export const conferencingField = <Message>(
             ],
             [conferencingActionLabel(editor)]
           ),
-          ...(existing || request?.kind === "googleMeet"
+          ...(existing ||
+          request?.kind === "googleMeet" ||
+          request?.kind === "customLink"
             ? [
                 h.button(
                   [

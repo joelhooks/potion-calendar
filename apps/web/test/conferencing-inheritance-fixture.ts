@@ -3,6 +3,7 @@ import { NodeServices } from "@effect/platform-node";
 import { expect } from "@effect/vitest";
 import {
   Crypto,
+  Deferred,
   Effect,
   Layer,
   Option,
@@ -33,9 +34,10 @@ import {
 } from "../src/client/editing/runtime.js";
 import { SaveDefaultConferencing } from "../src/client/settings/conferencing/commands.js";
 import { UserDefaultConferencing } from "../src/client/settings/conferencing/default.js";
+import { ConferencingSettingsChange } from "../src/client/settings/conferencing/model.js";
 import { view } from "../src/features/app.js";
 import { CalendarRoute, SettingsRoute } from "../src/layout/route.js";
-import { editingRpcFixture } from "./editing-rpc-fixture.js";
+import { editingRpcFixture, writeBody } from "./editing-rpc-fixture.js";
 import { fixtureSelection } from "./fixture.js";
 
 export const inheritanceWrite = Schema.Struct({
@@ -79,9 +81,20 @@ export const inheritanceModel = Effect.fn("test.inheritanceModel")(
       })
     );
 
-    const loaded = update(
+    const importing = update(
       base,
       yield* ReadPreferences({ person }).effect
+    ).model;
+
+    const loaded = update(
+      importing,
+      Message.ChangedConferencingSettings({
+        change: ConferencingSettingsChange.cases.Loaded.make({
+          catalog: { conflicts: [], entries: [] },
+          requestId: importing.conferencingSettings.requestId,
+        }),
+        personId: person,
+      })
     ).model;
 
     const model: AppModel = {
@@ -141,7 +154,12 @@ export const inheritanceSession = Effect.fn("test.inheritanceSession")(
       )
     );
 
-    const api = yield* editingRpcFixture([]);
+    const customLinks = model.conferencingSettings.entries;
+
+    const api = yield* editingRpcFixture(
+      [],
+      customLinks.length === 0 ? undefined : customLinks
+    );
 
     const services = Layer.merge(
       CalendarEditingClient.layer("available"),
@@ -286,9 +304,24 @@ export const inheritanceSession = Effect.fn("test.inheritanceSession")(
         EditorView.guards.Email(current.editing.view) &&
         current.editing.view.draft.conferencing?.request?.kind === "googleMeet";
 
+      const request = EditorView.guards.Email(current.editing.view)
+        ? current.editing.view.draft.conferencing?.request
+        : undefined;
+
+      const customLink =
+        request?.kind === "customLink"
+          ? customLinks.find((entry) => entry.id === request.id)
+          : undefined;
+
       const savedEvent = response(
         200,
-        timedEvent("01010101010141018101010101010101", "Inheritance proof")
+        timedEvent(
+          "01010101010141018101010101010101",
+          "Inheritance proof",
+          customLink === undefined
+            ? undefined
+            : { description: customLink.link }
+        )
       );
 
       yield* Ref.set(
@@ -332,7 +365,7 @@ export const inheritanceSession = Effect.fn("test.inheritanceSession")(
       );
       yield* dispatch(EditorAction.cases.SendUpdates.make({ send: true }));
 
-      const completed = yield* take(
+      const completion = take(
         (notice) =>
           EditingNotice.guards.Editor(notice) &&
           (Option.isSome(notice.mutation) ||
@@ -342,13 +375,41 @@ export const inheritanceSession = Effect.fn("test.inheritanceSession")(
               Option.isSome(notice.view.error)))
       );
 
+      const { customWrite } = api;
+
+      const completed = yield* customWrite === undefined
+        ? completion
+        : Effect.raceFirst(
+            completion,
+            Deferred.await(customWrite).pipe(
+              Effect.tap((observedRequest) =>
+                Effect.sync(() => {
+                  expect(
+                    writeBody(observedRequest.body),
+                    "a custom-link save must never request provider conference data"
+                  ).not.toHaveProperty("conferenceData");
+                })
+              ),
+              Effect.andThen(Effect.never)
+            )
+          );
+
       expect(EditingNotice.guards.Editor(completed)).toBe(true);
 
       if (EditingNotice.guards.Editor(completed)) {
-        expect(Option.isSome(completed.mutation)).toBe(true);
+        expect(
+          Option.isSome(completed.mutation),
+          JSON.stringify(completed)
+        ).toBe(true);
       }
 
-      return { requests: yield* Ref.get(api.fake.requests), rpc: api.requests };
+      return {
+        mutation: EditingNotice.guards.Editor(completed)
+          ? completed.mutation
+          : Option.none(),
+        requests: yield* Ref.get(api.fake.requests),
+        rpc: api.requests,
+      };
     });
 
     yield* runtime.dispatch(personId, command);

@@ -1,3 +1,4 @@
+import { CustomVideoCatalog } from "@calendar/calendar/contracts";
 import { setupEffect } from "@xstate/effect";
 import { Option, Schema } from "effect";
 import { initialTransition, transition, types } from "xstate";
@@ -7,6 +8,7 @@ import {
   ConferencingSettings,
   ConferencingSettingsChange,
   CustomVideoLinks,
+  CustomVideoWrite,
   initialConferencingSettings,
   validateVideoDraft,
 } from "./model.js";
@@ -35,9 +37,60 @@ const beginEdit = (state: State, id?: string): State => {
 
 const list = (state: State, entries = state.entries): State => ({
   ...initialConferencingSettings(state.requestId),
+  conflicts: state.conflicts,
   defaultConferencing: state.defaultConferencing,
   entries,
+  legacyEntries: state.legacyEntries,
 });
+
+const reconcile = (
+  state: State,
+  catalog: typeof CustomVideoCatalog.Type
+): State => {
+  const pending = Option.getOrUndefined(state.pendingWrite);
+
+  const settled = {
+    ...list(state, catalog.entries),
+    conflicts: catalog.conflicts,
+  };
+
+  if (pending !== undefined && CustomVideoWrite.guards.Save(pending)) {
+    const matching = catalog.entries.some(
+      (entry) =>
+        Option.contains(pending.id, entry.id) &&
+        entry.name === pending.name &&
+        entry.link === pending.link
+    );
+
+    return matching
+      ? settled
+      : {
+          ...state,
+          conflicts: catalog.conflicts,
+          entries: catalog.entries,
+          error: Option.some(
+            "The saved catalog does not contain this change. Review the draft before retrying."
+          ),
+          mode: "editing",
+          pendingWrite: Option.none(),
+        };
+  }
+
+  if (
+    pending !== undefined &&
+    CustomVideoWrite.guards.Remove(pending) &&
+    catalog.entries.some((entry) => entry.id === pending.id)
+  ) {
+    return {
+      ...settled,
+      error: Option.some(
+        "The link is still saved. Review it before removing it again."
+      ),
+    };
+  }
+
+  return settled;
+};
 
 export const conferencingSettingsMachine = setupEffect({
   schemas: {
@@ -57,6 +110,15 @@ export const conferencingSettingsMachine = setupEffect({
       Edit: Schema.Struct({ id: Schema.NonEmptyString }),
       Failed: Schema.Struct({ message: Schema.String, requestId: Schema.Int }),
       Link: Schema.Struct({ value: Schema.String }),
+      Load: Schema.Struct({}),
+      LoadFailed: Schema.Struct({
+        message: Schema.String,
+        requestId: Schema.Int,
+      }),
+      Loaded: Schema.Struct({
+        catalog: CustomVideoCatalog,
+        requestId: Schema.Int,
+      }),
       Name: Schema.Struct({ value: Schema.String }),
       Remove: Schema.Struct({ id: Schema.NonEmptyString }),
       Save: Schema.Struct({}),
@@ -64,12 +126,51 @@ export const conferencingSettingsMachine = setupEffect({
         entries: CustomVideoLinks,
         requestId: Schema.Int,
       }),
+      Unconfirmed: Schema.Struct({
+        message: Schema.String,
+        requestId: Schema.Int,
+        write: CustomVideoWrite,
+      }),
     },
     input: ConferencingSettings,
   },
 }).createMachine({
   context: ({ input }) => input,
   initial: "restore",
+  on: {
+    Load: ({ context }) =>
+      context.mode === "listing" || context.mode === "unconfirmed"
+        ? {
+            context: {
+              ...context,
+              error: Option.none(),
+              mode: "loading",
+              requestId: context.requestId + 1,
+            },
+            target: ".loading",
+          }
+        : undefined,
+    Unconfirmed: ({ context, event }) =>
+      context.requestId === event.requestId &&
+      (context.mode === "saving" || context.mode === "removing")
+        ? {
+            context: {
+              ...context,
+              draft: CustomVideoWrite.guards.Save(event.write)
+                ? {
+                    ...context.draft,
+                    create: event.write.create ?? Option.isNone(event.write.id),
+                    id: event.write.id,
+                  }
+                : context.draft,
+              error: Option.some(event.message),
+              mode: "unconfirmed",
+              pendingWrite: Option.some(event.write),
+            },
+            target: ".unconfirmed",
+          }
+        : undefined,
+  },
   states: {
     editing: {
       on: {
@@ -143,6 +244,29 @@ export const conferencingSettingsMachine = setupEffect({
             : undefined,
       },
     },
+    loading: {
+      on: {
+        LoadFailed: ({ context, event }) =>
+          context.requestId === event.requestId
+            ? {
+                context: {
+                  ...context,
+                  error: Option.some(event.message),
+                  mode: "unconfirmed",
+                },
+                target: "unconfirmed",
+              }
+            : undefined,
+
+        Loaded: ({ context, event }) => {
+          const next = reconcile(context, event.catalog);
+
+          return context.requestId === event.requestId
+            ? { context: next, target: next.mode }
+            : undefined;
+        },
+      },
+    },
     removing: {
       on: {
         Failed: ({ context, event }) =>
@@ -203,6 +327,7 @@ export const conferencingSettingsMachine = setupEffect({
             : undefined,
       },
     },
+    unconfirmed: {},
   },
 });
 
@@ -250,6 +375,21 @@ export const changeConferencingSettings = (
         type: "Link",
         value,
       })[0].context,
+    Load: () =>
+      transition(conferencingSettingsMachine, snapshot, { type: "Load" })[0]
+        .context,
+    LoadFailed: ({ message, requestId }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        message,
+        requestId,
+        type: "LoadFailed",
+      })[0].context,
+    Loaded: ({ catalog, requestId }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        catalog,
+        requestId,
+        type: "Loaded",
+      })[0].context,
     Name: ({ value }) =>
       transition(conferencingSettingsMachine, snapshot, {
         type: "Name",
@@ -268,6 +408,13 @@ export const changeConferencingSettings = (
         entries,
         requestId,
         type: "Saved",
+      })[0].context,
+    Unconfirmed: ({ message, requestId, write }) =>
+      transition(conferencingSettingsMachine, snapshot, {
+        message,
+        requestId,
+        type: "Unconfirmed",
+        write,
       })[0].context,
   });
 };

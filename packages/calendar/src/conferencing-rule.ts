@@ -2,6 +2,7 @@ import type {
   ConferencingDefault,
   ConferencingRequestValue,
 } from "./conferencing-model.js";
+import { customVideoReference } from "./custom-video-link.js";
 import type { Attendee } from "./model.js";
 
 export interface ConferencingDefaultFacts {
@@ -19,6 +20,26 @@ export interface ConferencingDefaultTransition {
   readonly request: ConferencingRequestValue | undefined;
 }
 
+const automaticRequest = (
+  facts: ConferencingDefaultFacts,
+  eligible: boolean
+): ConferencingRequestValue | undefined => {
+  if (
+    !facts.isNew ||
+    !eligible ||
+    facts.participantSeen ||
+    facts.hasConferencing
+  ) {
+    return undefined;
+  }
+
+  if (facts.setting === "googleMeet") {
+    return { kind: "googleMeet" };
+  }
+
+  return customVideoReference(facts.setting) ? facts.setting : undefined;
+};
+
 export const automaticConferencingRequest = (
   facts: ConferencingDefaultFacts
 ): ConferencingDefaultTransition => {
@@ -33,14 +54,6 @@ export const automaticConferencingRequest = (
 
   return {
     participantSeen: facts.participantSeen || eligible,
-    request:
-      facts.request ??
-      (facts.isNew &&
-      eligible &&
-      !facts.participantSeen &&
-      !facts.hasConferencing &&
-      facts.setting === "googleMeet"
-        ? { kind: "googleMeet" }
-        : undefined),
+    request: facts.request ?? automaticRequest(facts, eligible),
   };
 };

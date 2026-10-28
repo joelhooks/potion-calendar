@@ -4,9 +4,66 @@ import type { Html, HtmlBuilder } from "foldkit/html";
 
 import type { AppMessage, AppModel } from "../client/app.js";
 import { Message } from "../client/app.js";
-import { ConferencingSettingsChange } from "../client/settings/conferencing/model.js";
+import type { ConferencingSettings } from "../client/settings/conferencing/model.js";
+import {
+  ConferencingSettingsChange,
+  CustomVideoWrite,
+} from "../client/settings/conferencing/model.js";
 import { AccountSettingsRoute, printRoute } from "../layout/route.js";
 import { conferencingDefaultSettings } from "./conferencing-default-settings.js";
+
+const customLinkPending = (state: typeof ConferencingSettings.Type) =>
+  ["saving", "removing", "loading", "unconfirmed"].includes(state.mode);
+
+const unconfirmedSave = (state: typeof ConferencingSettings.Type) =>
+  state.mode === "unconfirmed" &&
+  Option.isSome(state.pendingWrite) &&
+  CustomVideoWrite.guards.Save(state.pendingWrite.value);
+
+const saveLabel = (state: typeof ConferencingSettings.Type) => {
+  if (state.mode === "unconfirmed") {
+    return "Unconfirmed";
+  }
+
+  return customLinkPending(state) ? "Saving…" : "Save";
+};
+
+const catalogFeedback = (
+  state: typeof ConferencingSettings.Type,
+  h: HtmlBuilder<AppMessage>,
+  send: (change: typeof ConferencingSettingsChange.Type) => AppMessage
+): readonly Html[] => {
+  const feedback: Html[] = [];
+
+  if (state.mode === "loading") {
+    feedback.push(h.p([h.Role("status")], ["Confirming saved custom links…"]));
+  }
+
+  if (state.mode === "unconfirmed") {
+    feedback.push(
+      h.button(
+        [
+          h.Type("button"),
+          h.OnClick(send(ConferencingSettingsChange.cases.Load.make({}))),
+        ],
+        ["Reload custom links"]
+      )
+    );
+  }
+
+  if (state.conflicts.length > 0) {
+    feedback.push(
+      h.p(
+        [h.Role("status")],
+        [
+          "Some browser links already had different saved details or were removed. The saved catalog was kept. Browser originals are unchanged.",
+        ]
+      )
+    );
+  }
+
+  return feedback;
+};
 
 export const settingsConferencing = (
   model: AppModel,
@@ -24,8 +81,12 @@ export const settingsConferencing = (
     Option.getOrUndefined(AsyncData.getData(model.session))?.accounts ?? []
   ).filter((account) => !account.disconnected);
 
-  const pending = state.mode === "saving" || state.mode === "removing";
-  const editable = state.mode === "editing" || state.mode === "saving";
+  const pending = customLinkPending(state);
+  const unresolvedSave = unconfirmedSave(state);
+
+  const editable =
+    state.mode === "editing" || state.mode === "saving" || unresolvedSave;
+
   const disabled = state.mode !== "listing" || Option.isNone(model.person);
 
   const operationError = Option.match(state.error, {
@@ -68,9 +129,11 @@ export const settingsConferencing = (
         h.h2([], ["Custom video links"]),
         h.p(
           [h.Class("settings-intro")],
-          ["Saved on this browser. Custom links do not sync across devices."]
+          [
+            "Saved to your calendar account. Browser originals stay unchanged as an import source.",
+          ]
         ),
-        ...(state.entries.length === 0 && !editable
+        ...(state.entries.length === 0 && !editable && state.mode === "listing"
           ? [h.p([h.Class("settings-intro")], ["No custom video links yet."])]
           : []),
         ...(state.entries.length > 0
@@ -198,7 +261,7 @@ export const settingsConferencing = (
                     [
                       h.button(
                         [h.Type("submit"), h.Disabled(pending)],
-                        [pending ? "Saving…" : "Save"]
+                        [saveLabel(state)]
                       ),
                       h.button(
                         [
@@ -240,6 +303,7 @@ export const settingsConferencing = (
         ...(state.mode === "removing"
           ? [h.p([h.Role("status")], ["Removing custom video link…"])]
           : []),
+        ...catalogFeedback(state, h, send),
       ]
     ),
     h.section(

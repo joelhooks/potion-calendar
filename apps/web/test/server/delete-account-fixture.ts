@@ -26,7 +26,9 @@ const Rows = Schema.Array(Row);
 export const DeletionRows = Schema.Struct({
   account: Rows,
   calendar_account_conferencing: Rows,
+  calendar_account_custom_conferencing: Rows,
   calendar_account_disconnect: Rows,
+  calendar_custom_video_links: Rows,
   calendar_range: Rows,
   calendar_snapshot: Rows,
   google_push_channel: Rows,
@@ -39,7 +41,9 @@ export const DeletionRows = Schema.Struct({
 export const deletionTables = [
   "account",
   "calendar_account_conferencing",
+  "calendar_account_custom_conferencing",
   "calendar_account_disconnect",
+  "calendar_custom_video_links",
   "calendar_range",
   "calendar_snapshot",
   "google_push_channel",
@@ -233,6 +237,18 @@ export const accountDeletionFixture = Effect.gen(
       yield* execute(
         "INSERT INTO calendar_account_conferencing VALUES (?, ?, 'googleMeet')",
         [person.personId, account.id]
+      );
+      yield* execute(
+        "INSERT INTO calendar_account_conferencing VALUES (?, ?, 'none')",
+        [person.personId, retired]
+      );
+      yield* execute(
+        "INSERT INTO calendar_custom_video_links (person_id, id, name, link, state) VALUES (?, ?, 'Owned room', 'https://room.example/', 'active')",
+        [person.personId, `${label}-room`]
+      );
+      yield* execute(
+        "INSERT INTO calendar_account_custom_conferencing (person_id, account_id, link_id) VALUES (?, ?, ?)",
+        [person.personId, retired, `${label}-room`]
       );
       yield* execute(
         "INSERT INTO calendar_account_disconnect VALUES (?, ?, 'reserved', 1)",

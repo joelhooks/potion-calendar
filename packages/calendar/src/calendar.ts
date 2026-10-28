@@ -18,6 +18,10 @@ import type {
 } from "./contracts.js";
 import { CreateEventInput } from "./contracts.js";
 import {
+  appendCustomVideoLink,
+  customVideoReference,
+} from "./custom-video-link.js";
+import {
   Provider,
   Revoked,
   CrossAccountMove,
@@ -73,6 +77,19 @@ const editableFields = (event: CalendarEventValue) =>
       refuse("event", "Event contains invalid editable fields")
     )
   );
+
+const validateCustomConferencingUpdate = (
+  request: WriteOptions["conferencingRequest"]
+) =>
+  request?.kind === "customLink"
+    ? Effect.fail(
+        new Provider({
+          message: "Custom link defaults do not rewrite existing events.",
+          operation: "customVideoLink.update",
+          status: 409,
+        })
+      )
+    : Effect.void;
 
 export class CalendarService extends Context.Service<
   CalendarService,
@@ -266,6 +283,39 @@ export class CalendarService extends Context.Service<
           event: fields,
         }).pipe(Effect.provideService(GoogleCalendarClient, google));
 
+        if (options.conferencingRequest?.kind === "customLink") {
+          if (
+            fields.eventType !== undefined &&
+            fields.eventType !== "default"
+          ) {
+            return yield* new Provider({
+              message:
+                "Custom link defaults apply to ordinary new events only.",
+              operation: "customVideoLink.create",
+              status: 409,
+            });
+          }
+
+          const preparedFields = yield* prepareFields(ref, fields);
+
+          const link = yield* conferencingDefaults.resolveCustomLink(
+            options.conferencingRequest.id
+          );
+
+          return yield* google.create(
+            ref,
+            id,
+            {
+              ...preparedFields,
+              description: appendCustomVideoLink(
+                preparedFields.description,
+                link.link
+              ),
+            },
+            { ...options, conferencingRequest: undefined }
+          );
+        }
+
         const preparedOptions = yield* prepareConferencing(
           ref,
           fields,
@@ -381,7 +431,7 @@ export class CalendarService extends Context.Service<
                 valid.accountId
               );
 
-              if (setting !== "googleMeet") {
+              if (setting !== "googleMeet" && !customVideoReference(setting)) {
                 return yield* create(valid, valid.id, valid.event, valid);
               }
 
@@ -837,6 +887,7 @@ export class CalendarService extends Context.Service<
           ),
         updateEvent: Effect.fn("CalendarService.updateEvent")(
           function* updateEvent(input) {
+            yield* validateCustomConferencingUpdate(input.conferencingRequest);
             yield* validateEventTypeUpdate(input.changes);
 
             if (

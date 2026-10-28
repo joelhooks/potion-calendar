@@ -21,6 +21,10 @@ export const savedConferencingNotice = ({
 }: Saved): Option.Option<typeof ConferencingSaveNotice.Type> => {
   const request = plan.session.draft.conferencing?.request;
 
+  if (request?.kind === "customLink") {
+    return Option.none();
+  }
+
   if (
     request === undefined &&
     (plan.session.kind === "edit" || event.conferencingStatus === undefined)

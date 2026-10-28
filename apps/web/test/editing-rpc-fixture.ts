@@ -1,6 +1,9 @@
 import {
   CalendarService,
+  ConferencingDefaults,
   GoogleCalendarClient,
+  GoogleHttp,
+  Provider,
   createEvent,
   deleteEvent,
   getEvent,
@@ -9,10 +12,14 @@ import {
   rsvp,
   updateEvent,
 } from "@calendar/calendar";
-import type { GoogleResponse } from "@calendar/calendar";
+import type {
+  CustomVideoLink,
+  GoogleRequestValue,
+  GoogleResponse,
+} from "@calendar/calendar";
 import { memoryCalendarStore } from "@calendar/calendar/memory";
 import { toRpc } from "@calendar/capability/rpc";
-import { Effect, Layer, Schema } from "effect";
+import { Deferred, Effect, Layer, Schema } from "effect";
 import { HttpRouter } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
@@ -23,8 +30,37 @@ export const writeBody = Schema.decodeUnknownSync(
 );
 
 export const editingRpcFixture = Effect.fn("editingRpcFixture")(
-  function* editingRpcFixture(responses: readonly GoogleResponse[]) {
+  function* editingRpcFixture(
+    responses: readonly GoogleResponse[],
+    customLinks?: readonly (typeof CustomVideoLink.Type)[]
+  ) {
     const fake = yield* fakeGoogle(responses);
+    const customWrite = yield* Deferred.make<GoogleRequestValue>();
+
+    const observedHttp = Layer.effect(
+      GoogleHttp,
+      Effect.gen(function* observedCustomHttp() {
+        const http = yield* GoogleHttp;
+
+        return {
+          execute: (request: GoogleRequestValue, bearer: string) =>
+            http
+              .execute(request, bearer)
+              .pipe(
+                Effect.tap(() =>
+                  request.method === "POST"
+                    ? Deferred.succeed(customWrite, request)
+                    : Effect.void
+                )
+              ),
+        };
+      })
+    ).pipe(Layer.provide(fake.layer));
+
+    const dependencies =
+      customLinks === undefined
+        ? Layer.merge(fake.layer, memoryCalendarStore)
+        : Layer.mergeAll(fake.layer, memoryCalendarStore, observedHttp);
 
     const rpc = toRpc([
       createEvent,
@@ -36,9 +72,33 @@ export const editingRpcFixture = Effect.fn("editingRpcFixture")(
       updateEvent,
     ]);
 
-    const calendar = CalendarService.layer.pipe(
+    const sourceCalendar =
+      customLinks === undefined
+        ? CalendarService.layer
+        : CalendarService.layer.pipe(
+            Layer.provide(
+              Layer.succeed(ConferencingDefaults, {
+                forAccount: () => Effect.succeed("unset"),
+                resolveCustomLink: (id) => {
+                  const link = customLinks.find((entry) => entry.id === id);
+
+                  return link === undefined
+                    ? Effect.fail(
+                        new Provider({
+                          message: "The saved link no longer exists",
+                          operation: "customVideoLink.resolve",
+                          status: 409,
+                        })
+                      )
+                    : Effect.succeed(link);
+                },
+              })
+            )
+          );
+
+    const calendar = sourceCalendar.pipe(
       Layer.provide(GoogleCalendarClient.layer),
-      Layer.provide(Layer.merge(fake.layer, memoryCalendarStore))
+      Layer.provide(dependencies)
     );
 
     const backend = yield* Effect.acquireRelease(
@@ -75,6 +135,8 @@ export const editingRpcFixture = Effect.fn("editingRpcFixture")(
       return await backend.handler(request);
     };
 
-    return { fake, fetcher, requests };
+    return customLinks === undefined
+      ? { fake, fetcher, requests }
+      : { customWrite, fake, fetcher, requests };
   }
 );

@@ -1,5 +1,21 @@
 export { CalendarService } from "./calendar.js";
 
+export {
+  readCustomVideoLinks,
+  importCustomVideoLinks,
+  saveCustomVideoLink,
+  removeCustomVideoLink,
+} from "./custom-video-links.js";
+
+export { CustomVideoCatalog } from "./custom-video-link-contracts.js";
+
+export {
+  CustomVideoLink,
+  CustomVideoLinks,
+  CustomVideoReference,
+  customVideoReference,
+} from "./custom-video-link.js";
+
 export { ConferencingDefaults } from "./conferencing-defaults.js";
 
 export {

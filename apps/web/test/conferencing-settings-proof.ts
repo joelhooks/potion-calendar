@@ -66,7 +66,8 @@ if(evidence.scenario==='pending'){
  assert(document.querySelector('[role="status"]')?.textContent==='Saving custom video link…','Pending state missing');
  assert(form.querySelector('.settings-conferencing-actions [role="status"]'),'Pending status is outside the form actions');
 }
-assert(document.querySelector('.settings-content')?.textContent.includes('do not sync across devices'),'Inherited per-browser limit missing');
+assert(document.querySelector('.settings-content')?.textContent.includes('Browser originals stay unchanged as an import source.'),'Catalog import-source boundary missing');
+assert(document.querySelector('.settings-content')?.textContent.includes('this preference does not sync across devices'),'User-default browser-local boundary missing');
 assert(document.querySelector('.settings-content a[href="/settings/calendar/work"]'),'Account-default recipient missing');
 assert(![...document.querySelectorAll('.settings-content button')].some(button=>button.textContent.includes('Zoom')),'Unsupported OAuth action offered');
 for(const anchor of document.querySelectorAll('.settings-content a'))assert(['http:','https:'].includes(new URL(anchor.getAttribute('href'),'https://fixture.invalid').protocol),'Unsafe conferencing anchor');

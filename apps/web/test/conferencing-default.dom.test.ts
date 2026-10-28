@@ -1,4 +1,3 @@
-import { ConferencingDefault } from "@calendar/calendar/contracts";
 import { expect, it } from "@effect/vitest";
 import { Effect, Match, Option, Schema } from "effect";
 import { renderToString } from "foldkit/experimental/server";
@@ -8,6 +7,8 @@ import { initialModel } from "../src/client/app.js";
 import type { AppModel, AppMessage } from "../src/client/app.js";
 import { RemoteConferencingDefault } from "../src/client/conferencing/model.js";
 import { conferencingAccountSettings } from "../src/features/conferencing-account-settings.js";
+
+const ConferencingDefault = Schema.Literals(["unset", "none", "googleMeet"]);
 
 const labels: Record<typeof ConferencingDefault.Type, string> = {
   googleMeet: "Google Meet",

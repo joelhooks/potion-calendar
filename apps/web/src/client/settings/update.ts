@@ -38,7 +38,7 @@ export const preferenceSnapshot = (
   model: AppModel
 ): typeof SavedPreferences.Type => {
   const base: typeof SavedPreferences.Type = {
-    customVideoLinks: model.conferencingSettings.entries,
+    customVideoLinks: model.conferencingSettings.legacyEntries,
     defaultConferencing: model.conferencingSettings.defaultConferencing,
     eventInvites: model.settings.eventInvites,
     hiddenWeekdays: hiddenTimeWeekdays(model.calendar.navigation),
@@ -129,7 +129,7 @@ export const applyPreferences = (
       ...initialConferencingSettings(model.conferencingSettings.requestId + 1),
       defaultConferencing:
         preferences.defaultConferencing ?? deskDefaultConferencing,
-      entries: preferences.customVideoLinks ?? [],
+      legacyEntries: preferences.customVideoLinks ?? [],
     },
     settings: {
       ...model.settings,

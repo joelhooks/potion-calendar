@@ -1,6 +1,16 @@
+import {
+  CustomVideoLink,
+  CustomVideoLinks,
+} from "@calendar/calendar/conferencing";
+import { CustomVideoCatalog } from "@calendar/calendar/contracts";
 import { Option, Schema } from "effect";
 
 import { UserDefaultConferencing, deskDefaultConferencing } from "./default.js";
+
+export {
+  CustomVideoLink,
+  CustomVideoLinks,
+} from "@calendar/calendar/conferencing";
 
 const WebUrl = Schema.URLFromString.check(
   Schema.makeFilter(
@@ -8,24 +18,18 @@ const WebUrl = Schema.URLFromString.check(
   )
 );
 
-export const CustomVideoLink = Schema.Struct({
-  id: Schema.NonEmptyString,
-  link: Schema.String.check(
-    Schema.makeFilter((value) =>
-      Option.isSome(Schema.decodeOption(WebUrl)(value))
-    )
-  ),
-  name: Schema.NonEmptyString,
+export const CustomVideoWrite = Schema.TaggedUnion({
+  Remove: { id: Schema.NonEmptyString },
+  Save: {
+    create: Schema.optionalKey(Schema.Boolean),
+    id: Schema.Option(Schema.NonEmptyString),
+    link: CustomVideoLink.fields.link,
+    name: CustomVideoLink.fields.name,
+  },
 });
 
-export const CustomVideoLinks = Schema.Array(CustomVideoLink).check(
-  Schema.makeFilter(
-    (entries) =>
-      new Set(entries.map((entry) => entry.id)).size === entries.length
-  )
-);
-
 export const CustomVideoDraft = Schema.Struct({
+  create: Schema.optionalKey(Schema.Boolean),
   id: Schema.Option(Schema.NonEmptyString),
   link: Schema.String,
   name: Schema.String,
@@ -37,34 +41,42 @@ export const CustomVideoErrors = Schema.Struct({
 });
 
 export const ConferencingSettings = Schema.Struct({
+  conflicts: Schema.Array(Schema.String),
   defaultConferencing: UserDefaultConferencing,
   defaultError: Schema.Option(Schema.String),
   draft: CustomVideoDraft,
   entries: CustomVideoLinks,
   error: Schema.Option(Schema.String),
   errors: CustomVideoErrors,
+  legacyEntries: CustomVideoLinks,
   mode: Schema.Literals([
     "listing",
     "editing",
     "saving",
     "removing",
     "savingDefault",
+    "loading",
+    "unconfirmed",
   ]),
   pendingDefault: Schema.Option(UserDefaultConferencing),
+  pendingWrite: Schema.Option(CustomVideoWrite),
   requestId: Schema.Int,
 });
 
 export const initialConferencingSettings = (
   requestId = 0
 ): typeof ConferencingSettings.Type => ({
+  conflicts: [],
   defaultConferencing: deskDefaultConferencing,
   defaultError: Option.none(),
   draft: { id: Option.none(), link: "", name: "" },
   entries: [],
   error: Option.none(),
   errors: { link: Option.none(), name: Option.none() },
+  legacyEntries: [],
   mode: "listing",
   pendingDefault: Option.none(),
+  pendingWrite: Option.none(),
   requestId,
 });
 
@@ -120,17 +132,16 @@ export const ConferencingSettingsChange = Schema.TaggedUnion({
   Edit: { id: Schema.NonEmptyString },
   Failed: { message: Schema.String, requestId: Schema.Int },
   Link: { value: Schema.String },
+  Load: {},
+  LoadFailed: { message: Schema.String, requestId: Schema.Int },
+  Loaded: { catalog: CustomVideoCatalog, requestId: Schema.Int },
   Name: { value: Schema.String },
   Remove: { id: Schema.NonEmptyString },
   Save: {},
   Saved: { entries: CustomVideoLinks, requestId: Schema.Int },
-});
-
-export const CustomVideoWrite = Schema.TaggedUnion({
-  Remove: { id: Schema.NonEmptyString },
-  Save: {
-    id: Schema.Option(Schema.NonEmptyString),
-    link: CustomVideoLink.fields.link,
-    name: CustomVideoLink.fields.name,
+  Unconfirmed: {
+    message: Schema.String,
+    requestId: Schema.Int,
+    write: CustomVideoWrite,
   },
 });

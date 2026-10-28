@@ -11,6 +11,10 @@ import {
   deleteEvent,
   disconnectAccount,
   getAccountConferencingDefault,
+  readCustomVideoLinks,
+  importCustomVideoLinks,
+  saveCustomVideoLink,
+  removeCustomVideoLink,
   setAccountConferencingDefault,
   setCalendarAppearance,
   getEvent,
@@ -147,6 +151,46 @@ export const createBackend = (
         input.proof,
         options?.deleteAccount,
         committedCookies
+      )
+    ),
+    implement(readCustomVideoLinks.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        readCustomVideoLinks.handler(input)
+      )
+    ),
+    implement(importCustomVideoLinks.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        importCustomVideoLinks.handler(input)
+      )
+    ),
+    implement(saveCustomVideoLink.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        saveCustomVideoLink.handler(input)
+      )
+    ),
+    implement(removeCustomVideoLink.contract, (input) =>
+      calendarForRequest(
+        auth,
+        config,
+        headers,
+        options,
+        [],
+        removeCustomVideoLink.handler(input)
       )
     ),
     implement(getAccountConferencingDefault.contract, (input) =>

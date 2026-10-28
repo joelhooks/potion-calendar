@@ -4,6 +4,7 @@ import { ConferencingDefaults } from "../src/conferencing-defaults.js";
 import type { ConferencingDefault } from "../src/conferencing-model.js";
 import { GoogleTokens } from "../src/google-tokens.js";
 import type { GoogleAccountValue } from "../src/google-tokens.js";
+import { Provider } from "../src/provider.js";
 import { GoogleHttp } from "../src/transport.js";
 import type { GoogleRequestValue, GoogleResponse } from "../src/transport.js";
 
@@ -18,6 +19,14 @@ export const fakeGoogleCrypto = Layer.succeed(
 
 export const fakeConferencingDefaults = Layer.succeed(ConferencingDefaults, {
   forAccount: () => Effect.succeed("unset"),
+  resolveCustomLink: () =>
+    Effect.fail(
+      new Provider({
+        message: "No custom link was supplied to this test",
+        operation: "customVideoLink.fake",
+        status: 409,
+      })
+    ),
 });
 
 export const response = (
@@ -103,6 +112,14 @@ export const fakeGoogle = Effect.fn("fakeGoogle")(function* fakeGoogle(
       fakeGoogleCrypto,
       Layer.succeed(ConferencingDefaults, {
         forAccount: () => Effect.succeed(conferencingDefault),
+        resolveCustomLink: () =>
+          Effect.fail(
+            new Provider({
+              message: "No custom link was supplied to this test",
+              operation: "customVideoLink.fake",
+              status: 409,
+            })
+          ),
       })
     ),
     pending,

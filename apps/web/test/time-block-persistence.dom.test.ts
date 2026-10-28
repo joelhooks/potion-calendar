@@ -1,5 +1,6 @@
 import { expect, it } from "@effect/vitest";
-import { Effect, Option, Predicate, Schema } from "effect";
+import { Effect, Option, Predicate, Ref, Schema } from "effect";
+import { FetchHttpClient } from "effect/http";
 
 import { Message, update } from "../src/client/app.js";
 import { ReadPreferences, SavePreferences } from "../src/client/commands.js";
@@ -14,6 +15,7 @@ import {
 } from "../src/client/settings/model.js";
 import { preferenceSnapshot } from "../src/client/settings/update.js";
 import { TimeBlockPreferences } from "../src/layout/time-blocks.js";
+import { catalogCommandFixture } from "./account-custom-conferencing-fixture.js";
 import { timeBlockModel, timeBlockPreferences } from "./time-block-fixture.js";
 
 it.effect(
@@ -132,13 +134,14 @@ it.effect(
 );
 
 it.effect.prop(
-  "stale catalog and block commands retain both owners in both write orders through the one synchronous preference boundary",
+  "stale catalog and block commands retain both owners in both write orders through D1 RPC and synchronous preference boundaries",
   {
     token: Schema.Int.check(Schema.isBetween({ maximum: 100_000, minimum: 0 })),
   },
   ({ token }) =>
     Effect.gen(function* preserveBlocksAndCatalog() {
       for (const catalogFirst of [false, true]) {
+        const api = yield* catalogCommandFixture();
         const person = `time-block-catalog-${token}-${catalogFirst}`;
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => {
@@ -146,7 +149,17 @@ it.effect.prop(
           })
         );
         const stale = normalizePreferences({ version: 2, visibility: {} });
-        yield* SavePreferences({ ...stale, person }).effect;
+
+        const legacy = {
+          id: "legacy-room",
+          link: "https://legacy.example/",
+          name: "Legacy import source",
+        };
+
+        localStorage.setItem(
+          `calendar.visibility.${person}`,
+          JSON.stringify({ ...stale, customVideoLinks: [legacy] })
+        );
 
         const blocks = TimeBlockPreferences.make({
           blocks: [
@@ -183,7 +196,9 @@ it.effect.prop(
           yield* general.effect;
         }
 
-        const saved = yield* catalog.effect;
+        const saved = yield* catalog.effect.pipe(
+          Effect.provideService(FetchHttpClient.Fetch, api.fetcher)
+        );
 
         if (!ConferencingSettingsChange.guards.Saved(saved.change)) {
           return yield* Effect.die("Expected catalog add acknowledgement");
@@ -206,7 +221,8 @@ it.effect.prop(
         }
 
         expect(loaded.preferences.timeBlocks).toEqual(blocks);
-        expect(loaded.preferences.customVideoLinks).toEqual([first]);
+        expect(loaded.preferences.customVideoLinks).toEqual([legacy]);
+        expect(yield* Ref.get(api.entries)).toEqual([first]);
         expect(loaded.preferences.theme).toBe("dark");
 
         const staleEdit = SaveCustomVideoLinks({
@@ -222,7 +238,9 @@ it.effect.prop(
         const changed = { ...blocks, enabled: !blocks.enabled };
         yield* SavePreferences({ ...stale, person, timeBlocks: changed })
           .effect;
-        yield* staleEdit.effect;
+        yield* staleEdit.effect.pipe(
+          Effect.provideService(FetchHttpClient.Fetch, api.fetcher)
+        );
         const edited = yield* ReadPreferences({ person }).effect;
 
         if (!Predicate.isTagged(edited, "ReceivedPreferences")) {
@@ -230,7 +248,8 @@ it.effect.prop(
         }
 
         expect(edited.preferences.timeBlocks).toEqual(changed);
-        expect(edited.preferences.customVideoLinks).toEqual([
+        expect(edited.preferences.customVideoLinks).toEqual([legacy]);
+        expect(yield* Ref.get(api.entries)).toEqual([
           {
             id: first.id,
             link: "https://edited.example.test/",
@@ -245,7 +264,9 @@ it.effect.prop(
         });
 
         yield* SavePreferences({ ...stale, person, timeBlocks: blocks }).effect;
-        yield* staleRemove.effect;
+        yield* staleRemove.effect.pipe(
+          Effect.provideService(FetchHttpClient.Fetch, api.fetcher)
+        );
         const removed = yield* ReadPreferences({ person }).effect;
 
         if (!Predicate.isTagged(removed, "ReceivedPreferences")) {
@@ -253,7 +274,8 @@ it.effect.prop(
         }
 
         expect(removed.preferences.timeBlocks).toEqual(blocks);
-        expect(removed.preferences.customVideoLinks).toEqual([]);
+        expect(removed.preferences.customVideoLinks).toEqual([legacy]);
+        expect(yield* Ref.get(api.entries)).toEqual([]);
       }
 
       return yield* Effect.void;

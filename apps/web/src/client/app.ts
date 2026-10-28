@@ -225,6 +225,7 @@ import {
 import { calendarSettingsTarget } from "./settings/calendar-route.js";
 import {
   ConferencingSettings,
+  ConferencingSettingsChange,
   initialConferencingSettings,
 } from "./settings/conferencing/model.js";
 import { updateConferencingSettings } from "./settings/conferencing/update.js";
@@ -1533,10 +1534,16 @@ const updateCore = (
         return { model };
       }
 
-      const applied = applyPreferences(model, preferences);
+      const catalog = updateConferencingSettings(
+        applyPreferences(model, preferences),
+        person,
+        ConferencingSettingsChange.cases.Load.make({})
+      );
+
+      const applied = catalog.model;
 
       const result: Result = {
-        commands: readCalendarsFor(applied),
+        commands: [...readCalendarsFor(applied), ...(catalog.commands ?? [])],
         model: {
           ...applied,
           calendar: {

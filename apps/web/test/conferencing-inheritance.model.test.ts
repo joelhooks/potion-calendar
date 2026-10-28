@@ -1,4 +1,3 @@
-import { ConferencingDefault } from "@calendar/calendar/contracts";
 import { watchActor } from "@calendar/capability/actor-watch";
 import { expect, it } from "@effect/vitest";
 import { createEffectActor } from "@xstate/effect";
@@ -26,6 +25,8 @@ import {
   editorOriginal,
 } from "./editor-fixture.js";
 import { fixtureSelection } from "./fixture.js";
+
+const ConferencingDefault = Schema.Literals(["unset", "none", "googleMeet"]);
 
 const expectedDefaults: Record<
   typeof ConferencingDefault.Type,

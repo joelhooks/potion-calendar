@@ -182,7 +182,7 @@ it.effect(
           Scene.selector('.settings-content a[href="/settings/calendar/work"]')
         ).toExist(),
         Scene.expect(Scene.selector(".settings-content")).toContainText(
-          "do not sync across devices"
+          "Browser originals stay unchanged as an import source."
         ),
         Scene.expect(Scene.role("button", { name: /Zoom/u })).toBeAbsent()
       );

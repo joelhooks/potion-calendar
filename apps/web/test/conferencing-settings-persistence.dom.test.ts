@@ -1,9 +1,9 @@
 import { expect, it } from "@effect/vitest";
-import { Effect, Option, Schema } from "effect";
-import { vi } from "vitest";
+import { Effect, Option, Ref, Schema } from "effect";
+import { FetchHttpClient } from "effect/http";
 
 import { Message, update } from "../src/client/app.js";
-import { ReadPreferences, SavePreferences } from "../src/client/commands.js";
+import { SavePreferences } from "../src/client/commands.js";
 import { SaveCustomVideoLinks } from "../src/client/settings/conferencing/commands.js";
 import {
   ConferencingSettingsChange as Change,
@@ -11,101 +11,144 @@ import {
 } from "../src/client/settings/conferencing/model.js";
 import { normalizePreferences } from "../src/client/settings/model.js";
 import { preferenceSnapshot } from "../src/client/settings/update.js";
+import {
+  catalogCommandFixture,
+  finishCatalogLoad,
+  reloadCatalogModel,
+} from "./account-custom-conferencing-fixture.js";
 import { fixtureModel } from "./fixture.js";
 
-const decodeSaved = Schema.decodeUnknownSync(Change.cases.Saved);
+const save = (
+  args: Parameters<typeof SaveCustomVideoLinks>[0],
+  fetcher: typeof fetch
+) =>
+  SaveCustomVideoLinks(args).effect.pipe(
+    Effect.provideService(FetchHttpClient.Fetch, fetcher),
+    Effect.flatMap((message) =>
+      Schema.decodeUnknownEffect(Change.cases.Saved)(message.change)
+    )
+  );
 
 it.effect.prop(
-  "catalog writes preserve current general settings and stale ordinary snapshots preserve the current catalog",
+  "catalog RPC writes preserve legacy local entries and stale general snapshots never copy the D1 catalog into them",
   {
     token: Schema.Int.check(Schema.isBetween({ maximum: 100_000, minimum: 0 })),
   },
   ({ token }) =>
-    Effect.gen(function* preserveBothOwners() {
-      localStorage.clear();
+    Effect.gen(function* preserveOwners() {
+      const api = yield* catalogCommandFixture();
       const person = `owner-${token}`;
+      const key = `calendar.visibility.${person}`;
 
-      const oldSnapshot = normalizePreferences({
+      const legacy = {
+        id: "legacy",
+        link: "https://legacy.example/",
+        name: "Legacy room",
+      };
+
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          customVideoLinks: [legacy],
+          theme: "light",
+          version: 2,
+          visibility: {},
+        })
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          localStorage.removeItem(key);
+        })
+      );
+      const original = localStorage.getItem(key);
+
+      const stale = normalizePreferences({
         theme: "light",
         version: 2,
         visibility: {},
       });
 
-      yield* SavePreferences({ ...oldSnapshot, person }).effect;
+      const added = yield* save(
+        {
+          personId: person,
+          requestId: 1,
+          write: CustomVideoWrite.cases.Save.make({
+            id: Option.none(),
+            link: `https://room${token}.example/`,
+            name: `Room ${token}`,
+          }),
+        },
+        api.fetcher
+      );
 
-      const added = yield* SaveCustomVideoLinks({
-        personId: person,
-        requestId: 1,
-        write: CustomVideoWrite.cases.Save.make({
-          id: Option.none(),
-          link: `https://room${token}.example/`,
-          name: `Room ${token}`,
-        }),
-      }).effect;
+      const first = yield* Effect.fromNullishOr(added.entries[0]).pipe(
+        Effect.orDie
+      );
 
-      const [first] = decodeSaved(added.change).entries;
-      expect(first).toBeDefined();
-
-      if (first === undefined) {
-        throw new Error("Successful add did not contain the saved entry");
-      }
-
+      expect(
+        localStorage.getItem(key),
+        "catalog writes must not rewrite the legacy local import source"
+      ).toBe(original);
       yield* SavePreferences({
-        ...oldSnapshot,
+        ...stale,
         customVideoLinks: [],
         person,
         theme: "dark",
       }).effect;
-
-      const retained = update(
-        { ...fixtureModel(), person: Option.some(person) },
-        yield* ReadPreferences({ person }).effect
-      ).model;
-
-      expect(retained.conferencingSettings.entries).toEqual([first]);
-
-      const edited = yield* SaveCustomVideoLinks({
-        personId: person,
-        requestId: 2,
-        write: CustomVideoWrite.cases.Save.make({
-          id: Option.some(first.id),
-          link: "http://edited.example/",
-          name: "Edited room",
-        }),
-      }).effect;
-
-      expect(decodeSaved(edited.change).entries).toEqual([
-        { id: first.id, link: "http://edited.example/", name: "Edited room" },
-      ]);
-      const base = { ...fixtureModel(), person: Option.some(person) };
-
-      const loaded = update(
-        base,
-        yield* ReadPreferences({ person }).effect
-      ).model;
-
+      const model = { ...fixtureModel(), person: Option.some(person) };
+      const loaded = yield* reloadCatalogModel(model, api.fetcher);
+      expect(loaded.conferencingSettings.entries).toEqual([first, legacy]);
+      expect(loaded.conferencingSettings.legacyEntries).toEqual([legacy]);
       expect(preferenceSnapshot(loaded).theme).toBe("dark");
-      expect(loaded.conferencingSettings.entries).toEqual([
+
+      const edited = yield* save(
+        {
+          personId: person,
+          requestId: 2,
+          write: CustomVideoWrite.cases.Save.make({
+            id: Option.some(first.id),
+            link: "http://edited.example/",
+            name: "Edited room",
+          }),
+        },
+        api.fetcher
+      );
+
+      expect(edited.entries).toEqual([
         { id: first.id, link: "http://edited.example/", name: "Edited room" },
+        legacy,
       ]);
-      const stranger = `other-${token}`;
+      const reloaded = yield* reloadCatalogModel(model, api.fetcher);
+      expect(reloaded.conferencingSettings.entries).toEqual(edited.entries);
+      expect(preferenceSnapshot(reloaded).customVideoLinks).toEqual([legacy]);
+      const strangerApi = yield* catalogCommandFixture();
 
-      const isolated = update(
-        { ...fixtureModel(), person: Option.some(stranger) },
-        yield* ReadPreferences({ person: stranger }).effect
-      ).model;
+      const stranger = yield* reloadCatalogModel(
+        { ...fixtureModel(), person: Option.some(`other-${token}`) },
+        strangerApi.fetcher
+      );
 
-      expect(isolated.conferencingSettings.entries).toEqual([]);
-      localStorage.clear();
+      expect(stranger.conferencingSettings.entries).toEqual([]);
     })
 );
 
 it.effect(
-  "real add, duplicate, edit and remove writes reload in insertion order without touching account defaults",
+  "real add, duplicate, edit and remove commands reload without writing the legacy source",
   () =>
     Effect.gen(function* catalogCrud() {
-      localStorage.clear();
+      const api = yield* catalogCommandFixture();
       const personId = "custom-video-owner";
+      const key = `calendar.visibility.${personId}`;
+      localStorage.setItem(
+        key,
+        JSON.stringify({ customVideoLinks: [], version: 2, visibility: {} })
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          localStorage.removeItem(key);
+        })
+      );
+      const original = localStorage.getItem(key);
 
       const input = {
         id: Option.none<string>(),
@@ -113,21 +156,23 @@ it.effect(
         name: "Same name",
       };
 
-      const first = decodeSaved(
-        (yield* SaveCustomVideoLinks({
+      const first = (yield* save(
+        {
           personId,
           requestId: 1,
           write: CustomVideoWrite.cases.Save.make(input),
-        }).effect).change
-      ).entries;
+        },
+        api.fetcher
+      )).entries;
 
-      const duplicate = decodeSaved(
-        (yield* SaveCustomVideoLinks({
+      const duplicate = (yield* save(
+        {
           personId,
           requestId: 2,
           write: CustomVideoWrite.cases.Save.make(input),
-        }).effect).change
-      ).entries;
+        },
+        api.fetcher
+      )).entries;
 
       expect(duplicate.map((entry) => entry.name)).toEqual([
         "Same name",
@@ -135,14 +180,11 @@ it.effect(
       ]);
       expect(new Set(duplicate.map((entry) => entry.id)).size).toBe(2);
       expect(duplicate[0]).toEqual(first[0]);
-      const [head, tail] = duplicate;
+      const head = yield* Effect.fromNullishOr(duplicate[0]).pipe(Effect.orDie);
+      const tail = yield* Effect.fromNullishOr(duplicate[1]).pipe(Effect.orDie);
 
-      if (head === undefined || tail === undefined) {
-        throw new Error("Duplicate adds did not create two entries");
-      }
-
-      const edited = decodeSaved(
-        (yield* SaveCustomVideoLinks({
+      const edited = yield* save(
+        {
           personId,
           requestId: 3,
           write: CustomVideoWrite.cases.Save.make({
@@ -150,44 +192,49 @@ it.effect(
             link: "https://changed.example/",
             name: "Changed",
           }),
-        }).effect).change
-      ).entries;
+        },
+        api.fetcher
+      );
 
-      expect(edited.map((entry) => entry.name)).toEqual([
+      expect(edited.entries.map((entry) => entry.name)).toEqual([
         "Changed",
         "Same name",
       ]);
 
-      const removed = decodeSaved(
-        (yield* SaveCustomVideoLinks({
+      const removed = yield* save(
+        {
           personId,
           requestId: 4,
           write: CustomVideoWrite.cases.Remove.make({ id: head.id }),
-        }).effect).change
-      ).entries;
+        },
+        api.fetcher
+      );
 
-      expect(removed).toEqual([tail]);
+      expect(removed.entries).toEqual([tail]);
 
-      const reloaded = update(
+      const reloaded = yield* reloadCatalogModel(
         { ...fixtureModel(), person: Option.some(personId) },
-        yield* ReadPreferences({ person: personId }).effect
-      ).model;
+        api.fetcher
+      );
 
       expect(reloaded.conferencingSettings.entries).toEqual([tail]);
       expect(reloaded.conferencing.accounts).toEqual({});
-      localStorage.clear();
+      expect(
+        localStorage.getItem(key),
+        "catalog CRUD must leave the legacy local source byte-identical"
+      ).toBe(original);
     })
 );
 
 it.effect(
-  "a real failed write returns to editing with its draft and does not erase the saved row",
+  "an unconfirmed command preserves its draft and person fence until explicit reconciliation restores editing",
   () =>
-    Effect.gen(function* failedCatalogSave() {
-      localStorage.clear();
+    Effect.gen(function* failedSave() {
+      const api = yield* catalogCommandFixture();
       const personId = "failed-video-owner";
 
-      const saved = decodeSaved(
-        (yield* SaveCustomVideoLinks({
+      const saved = (yield* save(
+        {
           personId,
           requestId: 1,
           write: CustomVideoWrite.cases.Save.make({
@@ -195,25 +242,22 @@ it.effect(
             link: "https://saved.example/",
             name: "Saved",
           }),
-        }).effect).change
-      ).entries;
+        },
+        api.fetcher
+      )).entries;
 
-      const [entry] = saved;
+      const entry = yield* Effect.fromNullishOr(saved[0]).pipe(Effect.orDie);
 
-      if (entry === undefined) {
-        throw new Error("Initial save did not produce an entry");
-      }
-
-      const base = update(
+      const model = yield* reloadCatalogModel(
         { ...fixtureModel(), person: Option.some(personId) },
-        yield* ReadPreferences({ person: personId }).effect
-      ).model;
+        api.fetcher
+      );
 
       const send = (change: typeof Change.Type) =>
         Message.ChangedConferencingSettings({ change, personId });
 
       const opened = update(
-        base,
+        model,
         send(Change.cases.Edit.make({ id: entry.id }))
       ).model;
 
@@ -223,51 +267,40 @@ it.effect(
       ).model;
 
       const pending = update(typed, send(Change.cases.Save.make({}))).model;
+      yield* Ref.set(api.failBefore, true);
 
-      const write = vi
-        .spyOn(Storage.prototype, "setItem")
-        .mockImplementation(() => {
-          throw new Error("storage unavailable");
-        });
+      const failed = yield* SaveCustomVideoLinks({
+        personId,
+        requestId: pending.conferencingSettings.requestId,
+        write: CustomVideoWrite.cases.Save.make({
+          id: Option.some(entry.id),
+          link: entry.link,
+          name: "Unsaved draft",
+        }),
+      }).effect.pipe(Effect.provideService(FetchHttpClient.Fetch, api.fetcher));
 
-      yield* Effect.gen(function* verifyFailure() {
-        const failed = yield* SaveCustomVideoLinks({
-          personId,
-          requestId: pending.conferencingSettings.requestId,
-          write: CustomVideoWrite.cases.Save.make({
-            id: Option.some(entry.id),
-            link: entry.link,
-            name: "Unsaved draft",
-          }),
-        }).effect;
+      expect(failed.change._tag).toBe("Unconfirmed");
+      const returned = update(pending, failed).model;
+      expect(returned.conferencingSettings.mode).toBe("unconfirmed");
+      expect(returned.conferencingSettings.draft.name).toBe("Unsaved draft");
+      expect(returned.conferencingSettings.entries).toEqual(saved);
+      expect(Option.isSome(returned.conferencingSettings.error)).toBe(true);
 
-        expect(failed.change._tag).toBe("Failed");
-        const returned = update(pending, failed).model;
-        expect(returned.conferencingSettings.mode).toBe("editing");
-        expect(returned.conferencingSettings.draft.name).toBe("Unsaved draft");
-        expect(returned.conferencingSettings.entries).toEqual(saved);
-        expect(Option.isSome(returned.conferencingSettings.error)).toBe(true);
+      const other = {
+        ...fixtureModel(),
+        person: Option.some("different-person"),
+      };
 
-        const other = {
-          ...fixtureModel(),
-          person: Option.some("different-person"),
-        };
+      expect(update(other, failed).model).toEqual(other);
+      yield* Ref.set(api.failBefore, false);
 
-        expect(update(other, failed).model).toEqual(other);
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            write.mockRestore();
-          })
-        )
+      const reconciled = yield* finishCatalogLoad(
+        update(returned, send(Change.cases.Load.make({}))),
+        api.fetcher
       );
 
-      const unchanged = update(
-        base,
-        yield* ReadPreferences({ person: personId }).effect
-      ).model;
-
-      expect(unchanged.conferencingSettings.entries).toEqual(saved);
-      localStorage.clear();
+      expect(reconciled.conferencingSettings.mode).toBe("editing");
+      expect(reconciled.conferencingSettings.draft.name).toBe("Unsaved draft");
+      expect(reconciled.conferencingSettings.entries).toEqual(saved);
     })
 );

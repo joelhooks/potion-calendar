@@ -1,6 +1,6 @@
 import { ConferencingDefault } from "@calendar/calendar/contracts";
 import { expect, it } from "@effect/vitest";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Predicate, Schema } from "effect";
 import { AsyncData } from "foldkit";
 
 import { initialModel, Message, update } from "../src/client/app.js";
@@ -63,7 +63,14 @@ it.effect.prop(
         ({ model } = changeConferencing(model, response));
       }
 
-      expect(preference(model)).toBe(values.at(-1));
+      const expected = values.at(-1);
+
+      if (Predicate.isObject(expected)) {
+        expect(preference(model)).toEqual(expected);
+      } else {
+        expect(preference(model)).toBe(expected);
+      }
+
       expect(model.conferencing.nextRequestId).toBe(values.length);
       expect(model.conferencing.accounts["account-b"]).toBeUndefined();
     })

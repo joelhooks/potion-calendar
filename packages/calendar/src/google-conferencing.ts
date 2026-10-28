@@ -110,6 +110,14 @@ export const requestedConferenceData = Effect.fn("requestedConferenceData")(
       return request;
     }
 
+    if (request.kind === "customLink") {
+      return yield* new Provider({
+        message: "Resolve the saved custom link before provider serialization.",
+        operation: "customVideoLink.unresolved",
+        status: 409,
+      });
+    }
+
     if (request.kind === "none") {
       return null;
     }

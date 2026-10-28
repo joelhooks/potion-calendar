@@ -40,13 +40,23 @@ export const settingsMigration = readFileSync(
   "utf-8"
 );
 
-export const conferencingMigration = readFileSync(
+export const customVideoLinksMigration = readFileSync(
+  new URL(
+    "../../../../packages/database/migrations/calendar/0010_custom_video_links.sql",
+    import.meta.url
+  ),
+  "utf-8"
+);
+
+export const legacyConferencingMigration = readFileSync(
   new URL(
     "../../../../packages/database/migrations/calendar/0006_conferencing_default.sql",
     import.meta.url
   ),
   "utf-8"
 );
+
+export const conferencingMigration = `${legacyConferencingMigration}\n${customVideoLinksMigration}`;
 
 export const unsupportedPushMigration = readFileSync(
   new URL(

@@ -7,6 +7,12 @@ import {
   setAccountConferencingDefaultContract,
 } from "./conferencing-contracts.js";
 import { ConferencingRequest } from "./conferencing-model.js";
+import {
+  readCustomVideoLinksContract,
+  importCustomVideoLinksContract,
+  saveCustomVideoLinkContract,
+  removeCustomVideoLinkContract,
+} from "./custom-video-link-contracts.js";
 import { CalendarFailure } from "./errors.js";
 import {
   Calendar,
@@ -30,6 +36,25 @@ import {
   setCalendarAppearanceContract,
 } from "./settings-contracts.js";
 import { SyncResult } from "./sync-result.js";
+
+export {
+  CustomVideoCatalog,
+  CustomVideoFailure,
+  ImportCustomVideoLinksInput,
+  SaveCustomVideoLinkInput,
+  RemoveCustomVideoLinkInput,
+  readCustomVideoLinksContract,
+  importCustomVideoLinksContract,
+  saveCustomVideoLinkContract,
+  removeCustomVideoLinkContract,
+} from "./custom-video-link-contracts.js";
+
+export {
+  CustomVideoLink,
+  CustomVideoLinks,
+  CustomVideoReference,
+  customVideoReference,
+} from "./custom-video-link.js";
 
 export {
   OccurrenceDirection,
@@ -270,6 +295,10 @@ export const readNeighborOccurrenceContract = defineContract(
 );
 
 export const calendarContracts = [
+  readCustomVideoLinksContract,
+  importCustomVideoLinksContract,
+  saveCustomVideoLinkContract,
+  removeCustomVideoLinkContract,
   getAccountConferencingDefaultContract,
   setAccountConferencingDefaultContract,
   disconnectAccountContract,

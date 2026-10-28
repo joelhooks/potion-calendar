@@ -49,7 +49,7 @@ layer(deletionNativeLayer(), { excludeTestServices: true })(
   "native account deletion",
   (it) => {
     it.effect(
-      "the real authenticated RPC removes all ten A families, stops only A channels, clears A's owner and cookie, and preserves B",
+      "the real authenticated RPC removes all twelve A families, stops only A channels, clears A's owner and cookie, and preserves B",
       () =>
         Effect.gen(function* deleteFirstPerson() {
           const fixture = yield* accountDeletionFixture;
@@ -162,13 +162,31 @@ layer(deletionNativeLayer(), { excludeTestServices: true })(
                   /max-age=0/iu.test(cookie)
               )
           ).toBe(true);
-          expect(yield* deletionRows(runtime.database)).toEqual(
+          const after = yield* deletionRows(runtime.database);
+          expect(after).toEqual(
             expectedAfterFirstDeletion(
               before,
               first.personId,
               fixture.firstVerificationIds
             )
           );
+
+          for (const table of [
+            "calendar_custom_video_links",
+            "calendar_account_custom_conferencing",
+          ] as const) {
+            expect(
+              after[table].filter((row) => row.person_id === first.personId),
+              `${table} must delete person A without changing production deletion`
+            ).toEqual([]);
+            expect(
+              after[table].filter((row) => row.person_id === second.personId),
+              `${table} must preserve person B`
+            ).toEqual(
+              before[table].filter((row) => row.person_id === second.personId)
+            );
+          }
+
           expect(
             runtime.channelStops.map((stop) => stop.id).toSorted()
           ).toEqual(

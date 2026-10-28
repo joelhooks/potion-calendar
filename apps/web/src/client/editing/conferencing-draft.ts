@@ -3,6 +3,9 @@ import {
   conferenceLink,
   ConferencingDefault,
   ConferencingRequest,
+  CustomVideoLink,
+  CustomVideoLinks,
+  customVideoReference,
 } from "@calendar/calendar/conferencing";
 import type {
   CalendarEventValue,
@@ -25,11 +28,13 @@ export const EditorConferencingContext = Schema.Struct({
       setting: Schema.optional(ConferencingDefault),
     })
   ),
+  customVideoLinks: Schema.optionalKey(CustomVideoLinks),
   defaultConferencing: Schema.optionalKey(UserDefaultConferencing),
 });
 
 export const ConferencingDraft = Schema.Struct({
   participantSeen: Schema.Boolean,
+  proposal: Schema.optionalKey(CustomVideoLink),
   request: Schema.optional(ConferencingRequest),
 });
 
@@ -125,6 +130,18 @@ export const applyEditorConferencingDefault = (
     return editor.draft;
   }
 
+  const resolved = resolvedConferencingDefault(
+    account.setting,
+    editor.conferencingContext?.defaultConferencing ?? deskDefaultConferencing
+  );
+
+  const available = customVideoReference(resolved)
+    ? editor.conferencingContext?.customVideoLinks?.some(
+        (entry) => entry.id === resolved.id
+      ) === true
+    : resolved !== "googleMeet" ||
+      editorMeetUnavailable(editor, true) === undefined;
+
   const next = automaticConferencingRequest({
     attendees: editor.draft.attendees,
     hasConferencing: hasEditorConferencing(editor),
@@ -132,15 +149,20 @@ export const applyEditorConferencingDefault = (
     participantSeen: state?.participantSeen ?? false,
     request: state?.request,
     selfEmail: account?.email,
-    setting:
-      editorMeetUnavailable(editor, true) === undefined
-        ? resolvedConferencingDefault(
-            account.setting,
-            editor.conferencingContext?.defaultConferencing ??
-              deskDefaultConferencing
-          )
-        : undefined,
+    setting: available ? resolved : undefined,
   });
+
+  if (next.request?.kind === "customLink") {
+    const requestedId = next.request.id;
+
+    const proposal = editor.conferencingContext?.customVideoLinks?.find(
+      (entry) => entry.id === requestedId
+    );
+
+    if (proposal !== undefined) {
+      return { ...editor.draft, conferencing: { ...next, proposal } };
+    }
+  }
 
   return { ...editor.draft, conferencing: next };
 };

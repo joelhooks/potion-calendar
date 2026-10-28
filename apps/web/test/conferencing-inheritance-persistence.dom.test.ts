@@ -1,9 +1,10 @@
 import { expect, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { vi } from "vitest";
 
 import { Message, update } from "../src/client/app.js";
-import { ReadPreferences, SavePreferences } from "../src/client/commands.js";
+import { SavePreferences } from "../src/client/commands.js";
 import { SaveCustomVideoLinks } from "../src/client/settings/conferencing/commands.js";
 import { UserDefaultConferencing } from "../src/client/settings/conferencing/default.js";
 import {
@@ -12,6 +13,10 @@ import {
 } from "../src/client/settings/conferencing/model.js";
 import { readPreferences } from "../src/client/settings/preference-storage.js";
 import { preferenceSnapshot } from "../src/client/settings/update.js";
+import {
+  catalogCommandFixture,
+  reloadCatalogModel,
+} from "./account-custom-conferencing-fixture.js";
 import {
   inheritanceModel,
   persistInheritanceChoice,
@@ -63,6 +68,8 @@ it.effect.prop(
   },
   ({ user }) =>
     Effect.gen(function* preferenceOwners() {
+      const api = yield* catalogCommandFixture();
+
       const before = yield* inheritanceModel(
         user === null ? "googleMeet" : null
       );
@@ -99,10 +106,7 @@ it.effect.prop(
       yield* SavePreferences({ ...stale, person: personId, theme: "dark" })
         .effect;
 
-      let current = update(
-        saved,
-        yield* ReadPreferences({ person: personId }).effect
-      ).model;
+      let current = yield* reloadCatalogModel(saved, api.fetcher);
 
       for (const change of [
         Change.cases.Add.make({}),
@@ -140,17 +144,16 @@ it.effect.prop(
 
       const listed = update(
         catalog.model,
-        yield* SaveCustomVideoLinks(args).effect
+        yield* SaveCustomVideoLinks(args).effect.pipe(
+          Effect.provideService(FetchHttpClient.Fetch, api.fetcher)
+        )
       ).model;
 
       expect(listed.conferencingSettings.defaultConferencing).toBe(user);
       expect(listed.conferencingSettings.mode).toBe("listing");
       expect(listed.conferencingSettings.entries).toHaveLength(1);
 
-      const reloaded = update(
-        listed,
-        yield* ReadPreferences({ person: personId }).effect
-      ).model;
+      const reloaded = yield* reloadCatalogModel(listed, api.fetcher);
 
       expect(reloaded.conferencingSettings.defaultConferencing).toBe(user);
       expect(reloaded.conferencingSettings.entries).toEqual(

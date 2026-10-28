@@ -12,6 +12,14 @@ import type {
   GetAccountConferencingDefaultInput,
   SetAccountConferencingDefaultInput,
 } from "./conferencing-contracts.js";
+import type {
+  CustomVideoCatalog,
+  ImportCustomVideoLinksInput,
+  SaveCustomVideoLinkInput,
+  RemoveCustomVideoLinkInput,
+  CustomVideoFailure,
+} from "./custom-video-link-contracts.js";
+import type { CustomVideoLink } from "./custom-video-link.js";
 import type { CalendarValue } from "./model.js";
 import {
   disconnectAccountContract,
@@ -28,6 +36,34 @@ import type {
 export class CalendarSettings extends Context.Service<
   CalendarSettings,
   {
+    readonly readCustomVideoLinks: () => Effect.Effect<
+      typeof CustomVideoCatalog.Type,
+      typeof CustomVideoFailure.Type
+    >;
+    readonly importCustomVideoLinks: (
+      input: typeof ImportCustomVideoLinksInput.Type
+    ) => Effect.Effect<
+      typeof CustomVideoCatalog.Type,
+      typeof CustomVideoFailure.Type
+    >;
+    readonly saveCustomVideoLink: (
+      input: typeof SaveCustomVideoLinkInput.Type
+    ) => Effect.Effect<
+      typeof CustomVideoCatalog.Type,
+      typeof CustomVideoFailure.Type
+    >;
+    readonly removeCustomVideoLink: (
+      input: typeof RemoveCustomVideoLinkInput.Type
+    ) => Effect.Effect<
+      typeof CustomVideoCatalog.Type,
+      typeof CustomVideoFailure.Type
+    >;
+    readonly resolveCustomVideoLink: (
+      id: string
+    ) => Effect.Effect<
+      typeof CustomVideoLink.Type,
+      typeof CustomVideoFailure.Type
+    >;
     readonly getConferencingDefault: (
       input: typeof GetAccountConferencingDefaultInput.Type
     ) => Effect.Effect<

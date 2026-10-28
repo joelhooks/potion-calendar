@@ -1,5 +1,13 @@
 export { conferenceLink } from "./conferencing-link.js";
 
+export {
+  CustomVideoLink,
+  CustomVideoLinks,
+  CustomVideoReference,
+  customVideoReference,
+  appendCustomVideoLink,
+} from "./custom-video-link.js";
+
 export { OwnedConference, ConferenceEntryPoint } from "./owned-conference.js";
 
 export type { OwnedConferenceValue } from "./owned-conference.js";

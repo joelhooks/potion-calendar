@@ -140,6 +140,7 @@ export const conferencingSettingsFixture = (
   if (scenario === "https-prepend") {
     expect(writes[0]?.args.write).toEqual(
       CustomVideoWrite.cases.Save.make({
+        create: true,
         id: Option.none(),
         link: added.link,
         name: added.name,
@@ -166,7 +167,7 @@ export const conferencingSettingsFixture = (
       mode: state.mode,
       scenario,
       storageResults:
-        "Explicit deterministic storage-result stand-ins; real storage commands are qualified separately",
+        "Explicit deterministic RPC-result stand-ins; authenticated native D1 and command transport are qualified separately",
       writes,
     },
     model,

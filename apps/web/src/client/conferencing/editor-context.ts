@@ -38,5 +38,13 @@ export const editorConferencingContext = (
     defaultConferencing: model.conferencingSettings.defaultConferencing,
   };
 
+  if (
+    model.conferencingSettings.entries.length > 0 &&
+    model.conferencingSettings.mode !== "loading" &&
+    model.conferencingSettings.mode !== "unconfirmed"
+  ) {
+    return { ...context, customVideoLinks: model.conferencingSettings.entries };
+  }
+
   return context;
 };

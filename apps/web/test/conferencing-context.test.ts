@@ -1,10 +1,65 @@
 import { ConferencingDefault } from "@calendar/calendar/conferencing";
 import { expect, it } from "@effect/vitest";
-import { Effect, Match, Option, Schema } from "effect";
+import { Effect, Match, Option, Predicate, Schema } from "effect";
 
 import { initialModel, RemoteSession } from "../src/client/app.js";
 import { editorConferencingContext } from "../src/client/conferencing/editor-context.js";
 import { RemoteConferencingDefault } from "../src/client/conferencing/model.js";
+
+const expectDefaultSetting = (
+  actual: typeof ConferencingDefault.Type | undefined,
+  expected: typeof ConferencingDefault.Type | undefined
+) => {
+  if (Predicate.isObject(expected)) {
+    expect(actual).toEqual(expected);
+  } else {
+    expect(actual).toBe(expected);
+  }
+};
+
+it.effect(
+  "a fresh customLink default survives the decoded authenticated account context",
+  () =>
+    Effect.sync(() => {
+      const value = { id: "context-custom-room", kind: "customLink" } as const;
+
+      const context = editorConferencingContext({
+        ...initialModel(0, "UTC"),
+        conferencing: {
+          accounts: {
+            "account-a": {
+              operation: "read",
+              remote: RemoteConferencingDefault.Success({
+                data: { accountId: "account-a", value },
+              }),
+              requestId: 1,
+            },
+          },
+          nextRequestId: 1,
+        },
+        person: Option.some("person-a"),
+        session: RemoteSession.Success({
+          data: {
+            accounts: [
+              {
+                disconnected: false,
+                email: "owner@example.test",
+                id: "account-a",
+              },
+            ],
+            user: {
+              email: "owner@example.test",
+              id: "person-a",
+              name: "Owner",
+            },
+          },
+        }),
+      });
+
+      expect(context.accounts).toHaveLength(1);
+      expectDefaultSetting(context.accounts[0]?.setting, value);
+    })
+);
 
 it.effect.prop(
   "editor defaults use only the current person's authenticated accounts and fresh matching server preferences",
@@ -96,6 +151,9 @@ it.effect.prop(
         email: "owner@example.test",
       });
       const usable = !disconnected && !wrongAccount && phase === "success";
-      expect(context.accounts[0]?.setting).toBe(usable ? value : undefined);
+      expectDefaultSetting(
+        context.accounts[0]?.setting,
+        usable ? value : undefined
+      );
     })
 );
