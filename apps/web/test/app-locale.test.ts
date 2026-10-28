@@ -49,7 +49,8 @@ it.effect.prop(
       expect(
         resolvedAppLocale(model),
         "saved app language wins over a conflicting browser locale"
-      ).toBe(language);
+      ).toBe(language === "es-LA" ? "es-419" : language);
+      expect(model.settings.language).toBe(language);
       expect(model.settings.timeFormat).toBe("system");
       expect(model.settings.system24Hour).toBe(true);
       expect(model.calendar.navigation.weekStartsOn).toBe(0);

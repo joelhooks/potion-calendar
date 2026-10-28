@@ -17,7 +17,7 @@ import { TimeZoneAction } from "../client/time-zones/model.js";
 import {
   AppLanguage,
   deskDefaultBrowserLanguageLabel,
-  deskDefaultUiCopyLocale,
+  deskDefaultCompactLanguageLabels,
   languageChoice,
   resolvedAppLocale,
 } from "../layout/app-locale.js";
@@ -34,7 +34,8 @@ const choice = <A extends string | number>(
   label: string,
   value: A,
   options: readonly (readonly [A, string])[],
-  decode: (value: string) => Option.Option<typeof SettingsChange.Type>
+  decode: (value: string) => Option.Option<typeof SettingsChange.Type>,
+  hint?: string
 ): Html =>
   h.label(
     [h.Class("settings-row"), h.For(id)],
@@ -44,6 +45,7 @@ const choice = <A extends string | number>(
         [
           h.Id(id),
           h.Value(String(value)),
+          ...(hint === undefined ? [] : [h.Title(hint)]),
           h.OnChange((raw) =>
             Option.match(decode(raw), {
               onNone: () => Message.SavedPreferences(),
@@ -276,14 +278,17 @@ export const settingsGeneral = (
             ...AppLanguage.literals.map(
               (locale): readonly [typeof AppLanguage.Type, string] => [
                 locale,
-                `${locale} · ${new Intl.DisplayNames(deskDefaultUiCopyLocale, { type: "language" }).of(locale) ?? locale}`,
+                deskDefaultCompactLanguageLabels[locale],
               ]
             ),
           ],
           (raw) =>
             Option.map(languageChoice(raw), (value) =>
               SettingsChange.cases.Language.make({ value })
-            )
+            ),
+          model.settings.language === undefined
+            ? "Browser default"
+            : `Stored code: ${model.settings.language}`
         ),
         choice(
           h,

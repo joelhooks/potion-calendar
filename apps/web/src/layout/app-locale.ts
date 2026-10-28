@@ -31,6 +31,36 @@ export const deskDefaultMissingBrowserLocale = "en-US";
 
 export const deskDefaultBrowserLanguageLabel = "Use browser language";
 
+export const deskDefaultLatinAmericanFormattingLocale = "es-419";
+
+export const deskDefaultCompactLanguageLabels: Readonly<
+  Record<typeof AppLanguage.Type, string>
+> = {
+  "da-DK": "Danish",
+  "de-DE": "German",
+  "en-GB": "English (UK)",
+  "en-US": "English (US)",
+  "es-ES": "Spanish (Spain)",
+  "es-LA": "Latin American Spanish",
+  "fi-FI": "Finnish",
+  "fr-FR": "French",
+  "id-ID": "Indonesian",
+  "it-IT": "Italian",
+  "ja-JP": "Japanese",
+  "ko-KR": "Korean",
+  "nl-NL": "Dutch",
+  "no-NO": "Norwegian",
+  "pt-BR": "Portuguese (Brazil)",
+  "sv-SE": "Swedish",
+  "th-TH": "Thai",
+  "vi-VN": "Vietnamese",
+  "zh-CN": "Chinese (Simplified)",
+  "zh-TW": "Chinese (Traditional)",
+};
+
+export const effectiveFormattingLocale = (locale: string): string =>
+  locale === "es-LA" ? deskDefaultLatinAmericanFormattingLocale : locale;
+
 export interface AppLocaleSettings {
   readonly language?: typeof AppLanguage.Type;
   readonly browserLocale?: string;
@@ -43,7 +73,7 @@ export const normalizedBrowserLocale = (locale?: string): string => {
 
   const resolved = Result.try(
     () =>
-      Intl.DateTimeFormat(locale, {
+      Intl.DateTimeFormat(effectiveFormattingLocale(locale), {
         calendar: deskDefaultFormattingCalendar,
       }).resolvedOptions().locale
   );
@@ -56,8 +86,10 @@ export const normalizedBrowserLocale = (locale?: string): string => {
 export const resolvedAppLocale = (model: {
   readonly settings: AppLocaleSettings;
 }): string =>
-  model.settings.language ??
-  normalizedBrowserLocale(model.settings.browserLocale);
+  effectiveFormattingLocale(
+    model.settings.language ??
+      normalizedBrowserLocale(model.settings.browserLocale)
+  );
 
 export const languageChoice = (value: string) =>
   value === "browser"
@@ -129,7 +161,7 @@ export const calendarWords = (locale: string): readonly CalendarWord[] =>
 export const ambiguousCalendarWord = (word: string): boolean =>
   new Set(
     AppLanguage.literals.flatMap((locale) =>
-      calendarWords(locale)
+      calendarWords(effectiveFormattingLocale(locale))
         .filter((entry) => entry.word === word)
         .map((entry) => `${entry.kind}:${entry.value}`)
     )
