@@ -26,17 +26,44 @@ export const desktopGeneralRows = <Message>(
             ...Option.match(AsyncData.getData(state.settings), {
               onNone: () => [],
               onSome: (data) => [
+                ...(data.macStartup === undefined
+                  ? []
+                  : [
+                      desktopChoice(
+                        h,
+                        "desktop-start-menu-bar",
+                        "Start menu bar calendar",
+                        data.macStartup.menuBar ? "on" : "off",
+                        [
+                          ["on", "On"],
+                          ["off", "Off"],
+                        ],
+                        desktopBusy(state) ||
+                          !data.preferences.menuBar ||
+                          data.macStartup.calendar,
+                        (choice) => actions.startup(choice === "on", "menuBar"),
+                        actions.rejected
+                      ),
+                    ]),
                 desktopChoice(
                   h,
                   "desktop-open-calendar",
-                  "Open calendar",
-                  data.openAtLogin ? "on" : "off",
+                  data.macStartup === undefined
+                    ? "Open calendar"
+                    : "Open calendar window",
+                  (data.macStartup?.calendar ?? data.openAtLogin)
+                    ? "on"
+                    : "off",
                   [
                     ["on", "On"],
                     ["off", "Off"],
                   ],
                   desktopBusy(state),
-                  (choice) => actions.startup(choice === "on"),
+                  (choice) =>
+                    actions.startup(
+                      choice === "on",
+                      data.macStartup === undefined ? undefined : "calendar"
+                    ),
                   actions.rejected
                 ),
               ],

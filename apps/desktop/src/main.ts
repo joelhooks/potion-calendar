@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Effect, Schema } from "effect";
+import { Deferred, Effect, Schema } from "effect";
 import {
   app,
   BrowserWindow,
@@ -22,6 +22,7 @@ import { desktopPermission } from "./bridge-policy.js";
 import { runBrowserAccount } from "./browser-account-machine.js";
 import { DesktopError, desktopOrigin } from "./config.js";
 import { waitForSignIn } from "./loopback.js";
+import { macLaunchDecision, startMacStartup } from "./mac-startup.js";
 import { focusMainWindow } from "./main-window.js";
 import { applicationMenu } from "./menus.js";
 import { installNotificationSettings } from "./native-notification-settings.js";
@@ -131,8 +132,40 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
       )
   );
 
+  const runtimeReady = yield* Deferred.make<DesktopRuntime["Service"]>();
+
+  const startup = yield* startMacStartup({
+    read: Effect.gen(function* readMacLaunch() {
+      if (process.platform !== "darwin") {
+        return { hidden: false, issue: null };
+      }
+
+      const openedAtLogin = yield* Effect.try({
+        catch: (cause) =>
+          new DesktopError({
+            cause,
+            message: "Login launch origin could not be read",
+          }),
+        try: () => app.getLoginItemSettings().wasOpenedAtLogin,
+      });
+
+      const native = yield* Deferred.await(runtimeReady);
+      const settings = yield* native.startupSettings;
+
+      return macLaunchDecision(openedAtLogin, settings);
+    }),
+    report: (message) =>
+      Deferred.await(runtimeReady).pipe(
+        Effect.flatMap((native) => native.reportStartupIssue(message)),
+        Effect.andThen(Effect.logWarning(message))
+      ),
+    show: Effect.sync(() => {
+      focusMainWindow(window);
+    }),
+  });
+
   const focus = () => {
-    focusMainWindow(window);
+    runFork(startup.open);
   };
 
   const signInRequests = new EventTarget();
@@ -248,7 +281,9 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
 
   app.on("second-instance", focus);
   app.on("activate", focus);
-  window.once("ready-to-show", focus);
+  window.once("ready-to-show", () => {
+    runFork(startup.ready);
+  });
 
   const launchFlow = (work: Effect.Effect<void>) => {
     const controller = new AbortController();
@@ -443,6 +478,7 @@ const startDesktop = Effect.fn("Desktop.start")(function* startDesktop() {
   );
   yield* Effect.gen(function* nativeApplication() {
     const native = yield* DesktopRuntime;
+    yield* Deferred.succeed(runtimeReady, native);
     Menu.setApplicationMenu(
       Menu.buildFromTemplate(applicationMenu(startSignIn, native.intent))
     );

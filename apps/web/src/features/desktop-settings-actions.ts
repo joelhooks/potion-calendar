@@ -31,12 +31,13 @@ export const desktopSettingsView = (
       Message.ReceivedDesktop({
         notice: DesktopNotice.cases.Rejected.make({ message }),
       }),
-    startup: (enabled) =>
+    startup: (enabled, target) =>
       Message.RequestedDesktop({
-        request: DesktopRequest.cases.Startup.make({
-          enabled,
-          request: state.request + 1,
-        }),
+        request: DesktopRequest.cases.Startup.make(
+          target === undefined
+            ? { enabled, request: state.request + 1 }
+            : { enabled, request: state.request + 1, target }
+        ),
       }),
   };
 

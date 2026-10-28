@@ -1,5 +1,6 @@
 import {
   DesktopPreferences,
+  MacStartupTarget,
   defaultDesktopPreferences,
 } from "@calendar/core/desktop-bridge";
 import { it } from "@effect/vitest";
@@ -20,7 +21,10 @@ const Message = defineMessageUnion({
   Preferences: { preferences: DesktopPreferences },
   Read: {},
   Rejected: { message: Schema.String },
-  Startup: { enabled: Schema.Boolean },
+  Startup: {
+    enabled: Schema.Boolean,
+    target: Schema.optional(MacStartupTarget),
+  },
 });
 
 type UiMessage = typeof Message.Type;
@@ -41,7 +45,8 @@ const view = (state: Model, h: HtmlBuilder<UiMessage>) => {
       Message.Preferences({ preferences }),
     read: Message.Read(),
     rejected: (message: string) => Message.Rejected({ message }),
-    startup: (enabled: boolean) => Message.Startup({ enabled }),
+    startup: (enabled: boolean, target?: typeof MacStartupTarget.Type) =>
+      Message.Startup(target === undefined ? { enabled } : { enabled, target }),
   };
 
   return h.div(
@@ -58,6 +63,86 @@ const update = (model: Model, message: UiMessage) => ({
   model,
   outMessage: message,
 });
+
+it.effect.prop(
+  "Mac General renders both observed startup choices and disables menu startup by feature or full-window mode",
+  {
+    calendar: Schema.Boolean,
+    feature: Schema.Boolean,
+    menuBar: Schema.Boolean,
+  },
+  ({ calendar, menuBar, feature }) =>
+    Effect.sync(() => {
+      const model: Model = {
+        ...initialDesktop(),
+        availability: "available",
+        settings: RemoteDesktop.Success({
+          data: {
+            issues: [],
+            macStartup: { calendar, menuBar },
+            openAtLogin: calendar || menuBar,
+            preferences: { ...defaultDesktopPreferences(), menuBar: feature },
+            revision: 1,
+          },
+        }),
+      };
+
+      const control = Scene.expect(Scene.selector("#desktop-start-menu-bar"));
+      Scene.scene(
+        { update, view },
+        Scene.given(model),
+        Scene.expect(Scene.text("Start menu bar calendar")).toExist(),
+        Scene.expect(Scene.text("Open calendar window")).toExist(),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toHaveValue(
+          menuBar ? "on" : "off"
+        ),
+        Scene.expect(Scene.selector("#desktop-open-calendar")).toHaveValue(
+          calendar ? "on" : "off"
+        ),
+        calendar || !feature ? control.toBeDisabled() : control.toBeEnabled(),
+        Scene.change(
+          Scene.selector("#desktop-open-calendar"),
+          calendar ? "off" : "on"
+        ),
+        Scene.expectOutMessage(
+          Message.Startup({ enabled: !calendar, target: "calendar" })
+        ),
+        Scene.expect(Scene.selector("#desktop-open-calendar")).toHaveValue(
+          calendar ? "on" : "off"
+        )
+      );
+    })
+);
+
+it.effect(
+  "an eligible Mac menu-start change targets menu startup without an optimistic UI update",
+  () =>
+    Effect.sync(() => {
+      Scene.scene(
+        { update, view },
+        Scene.given({
+          ...initialDesktop(),
+          availability: "available",
+          settings: RemoteDesktop.Success({
+            data: {
+              issues: [],
+              macStartup: { calendar: false, menuBar: false },
+              openAtLogin: false,
+              preferences: defaultDesktopPreferences(),
+              revision: 1,
+            },
+          }),
+        }),
+        Scene.change(Scene.selector("#desktop-start-menu-bar"), "on"),
+        Scene.expectOutMessage(
+          Message.Startup({ enabled: true, target: "menuBar" })
+        ),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toHaveValue(
+          "off"
+        )
+      );
+    })
+);
 
 it.effect(
   "Open calendar sends one desired toggle while retaining the observed OS value",

@@ -36,6 +36,61 @@ const mounted = [
 ];
 
 it.effect(
+  "the hosted Mac General startup choices retain OS truth through a refused menu-start request",
+  () =>
+    Effect.sync(() => {
+      const observed = {
+        ...settings,
+        macStartup: { calendar: false, menuBar: false },
+      };
+
+      Scene.scene(
+        { update, view },
+        Scene.given({
+          ...fixtureModel(),
+          desktop: {
+            ...initialDesktop(),
+            availability: "available",
+            settings: RemoteDesktop.Success({ data: observed }),
+          },
+          route: SettingsRoute.make({ page: "general" }),
+        }),
+        ...mounted,
+        Scene.expect(Scene.text("Open calendar window")).toExist(),
+        Scene.change(Scene.selector("#desktop-start-menu-bar"), "on"),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toHaveValue(
+          "off"
+        ),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toBeDisabled(),
+        Scene.Command.resolve(
+          ApplyDesktopRequest,
+          Message.ReceivedDesktop({
+            notice: DesktopNotice.cases.Finished.make({
+              outcome: DesktopOutcome.cases.Ready.make({
+                error: Option.some(
+                  "macOS has not applied the login-item change."
+                ),
+                settings: { ...observed, revision: 2 },
+              }),
+              request: 1,
+            }),
+          })
+        ),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toHaveValue(
+          "off"
+        ),
+        Scene.expect(Scene.selector("#desktop-start-menu-bar")).toBeEnabled(),
+        Scene.expect(Scene.selector("#desktop-open-calendar")).toHaveValue(
+          "off"
+        ),
+        Scene.expect(
+          Scene.text("macOS has not applied the login-item change.")
+        ).toExist()
+      );
+    })
+);
+
+it.effect(
   "the hosted General slot keeps native startup on OS truth after a refused toggle",
   () =>
     Effect.sync(() => {

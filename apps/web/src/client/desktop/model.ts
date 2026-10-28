@@ -2,6 +2,7 @@ import {
   DesktopAction,
   DesktopPreferences,
   DesktopSettings,
+  MacStartupTarget,
 } from "@calendar/core/desktop-bridge";
 import { Option, Schema } from "effect";
 import { AsyncData } from "foldkit";
@@ -17,7 +18,11 @@ export const DesktopRequest = Schema.TaggedUnion({
     previewSound: Schema.optional(Schema.Boolean),
     request: Schema.Int,
   },
-  Startup: { enabled: Schema.Boolean, request: Schema.Int },
+  Startup: {
+    enabled: Schema.Boolean,
+    request: Schema.Int,
+    target: Schema.optional(MacStartupTarget),
+  },
 });
 
 export const DesktopOutcome = Schema.TaggedUnion({

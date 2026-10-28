@@ -67,7 +67,7 @@ export const runDesktopRequest = Effect.fn("Desktop.runBrowserRequest")(
                     )
                   ),
                 Startup: (value) =>
-                  setDesktopStartup(native, value.enabled).pipe(
+                  setDesktopStartup(native, value.enabled, value.target).pipe(
                     Effect.map((reply) =>
                       DesktopOutcome.cases.Ready.make({
                         error: Option.fromNullishOr(reply.error),

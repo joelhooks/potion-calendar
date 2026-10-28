@@ -5,6 +5,7 @@ import {
 import type {
   DesktopBridge,
   DesktopPreferencesValue,
+  MacStartupTarget,
   PromptSound,
 } from "@calendar/core/desktop-bridge";
 import { Effect, Schema } from "effect";
@@ -68,11 +69,18 @@ export const previewDesktopSound = Effect.fn("Desktop.previewBrowserSound")(
 );
 
 export const setDesktopStartup = Effect.fn("Desktop.setBrowserStartup")(
-  function* setDesktopStartup(bridge: DesktopBridge, enabled: boolean) {
+  function* setDesktopStartup(
+    bridge: DesktopBridge,
+    enabled: boolean,
+    target?: typeof MacStartupTarget.Type
+  ) {
     const reply = yield* Effect.tryPromise({
       catch: failure,
       // @effect-diagnostics-next-line asyncFunction:off -- macOS owns the startup result; the browser never stores an optimistic second startup truth.
-      try: async () => await bridge.setStartup({ enabled }),
+      try: async () =>
+        await bridge.setStartup(
+          target === undefined ? { enabled } : { enabled, target }
+        ),
     });
 
     return yield* Schema.decodeEffect(DesktopSettingsReply)(reply).pipe(

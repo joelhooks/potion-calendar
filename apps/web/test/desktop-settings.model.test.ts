@@ -24,6 +24,60 @@ const saved = (
   revision,
 });
 
+it.effect.prop(
+  "pending and stale startup replies cannot optimistically replace the latest observed Mac choices",
+  { calendar: Schema.Boolean, menuBar: Schema.Boolean },
+  ({ calendar, menuBar }) =>
+    Effect.sync(() => {
+      const observed = {
+        ...saved(2, calendar || menuBar),
+        macStartup: { calendar, menuBar },
+      };
+
+      const current = receiveDesktopNotice(
+        initialDesktop(),
+        DesktopNotice.cases.Settings.make({ settings: observed })
+      );
+
+      const pending = beginDesktopRequest(current);
+      expect(AsyncData.getData(pending.settings)).toEqual(
+        Option.some(observed)
+      );
+
+      const stale = receiveDesktopNotice(
+        pending,
+        DesktopNotice.cases.Settings.make({
+          settings: {
+            ...saved(1, true),
+            macStartup: { calendar: !calendar, menuBar: !menuBar },
+          },
+        })
+      );
+
+      expect(AsyncData.getData(stale.settings)).toEqual(Option.some(observed));
+
+      const refused = receiveDesktopNotice(
+        stale,
+        DesktopNotice.cases.Finished.make({
+          outcome: DesktopOutcome.cases.Ready.make({
+            error: Option.some("macOS has not applied the login-item change."),
+            settings: { ...observed, revision: 3 },
+          }),
+          request: pending.request,
+        })
+      );
+
+      expect(
+        AsyncData.getData(refused.settings).pipe(
+          Option.map((value) => value.macStartup)
+        )
+      ).toEqual(Option.some({ calendar, menuBar }));
+      expect(refused.error).toEqual(
+        Option.some("macOS has not applied the login-item change.")
+      );
+    })
+);
+
 const revisions = Arbitrary.schema(
   Schema.Int.check(Schema.isBetween({ maximum: 1_000_000, minimum: 1 }))
 );

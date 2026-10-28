@@ -49,6 +49,7 @@ it.effect(
                     ? RemoteDesktop.Success({
                         data: {
                           issues: [],
+                          macStartup: { calendar: false, menuBar: false },
                           openAtLogin: false,
                           preferences: defaultDesktopPreferences(),
                           revision: 1,

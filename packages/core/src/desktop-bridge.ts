@@ -549,8 +549,18 @@ export const DesktopPreferences = Schema.Struct({
   showTitle: Schema.Boolean,
 });
 
+export const MacStartupTarget = Schema.Literals(["calendar", "menuBar"]);
+
+export const MacStartupIntent = Schema.Struct({
+  calendar: Schema.Boolean,
+  menuBar: Schema.Boolean,
+});
+
+export const MacStartupProjection = MacStartupIntent;
+
 export const DesktopSettings = Schema.Struct({
   issues: Schema.Array(Schema.String),
+  macStartup: Schema.optional(MacStartupProjection),
   openAtLogin: Schema.Boolean,
   preferences: DesktopPreferences,
   revision: Schema.Int,
@@ -571,6 +581,7 @@ export const DesktopSettingsReply = Schema.Struct({
 
 export const StartupRequest = Schema.Struct({
   enabled: Schema.Boolean,
+  target: Schema.optional(MacStartupTarget),
 });
 
 export const MeetingJoinRequest = Schema.Struct({

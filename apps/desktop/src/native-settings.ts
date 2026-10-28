@@ -32,6 +32,7 @@ export const nativeSettingsPort = (
         }),
       try: () => app.getLoginItemSettings().openAtLogin,
     }),
+    macStartup: process.platform === "darwin",
     read: Effect.try({
       catch: (cause) =>
         new DesktopError({

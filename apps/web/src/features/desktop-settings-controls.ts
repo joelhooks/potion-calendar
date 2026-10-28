@@ -1,4 +1,7 @@
-import type { DesktopPreferencesValue } from "@calendar/core/desktop-bridge";
+import type {
+  DesktopPreferencesValue,
+  MacStartupTarget,
+} from "@calendar/core/desktop-bridge";
 import { Option } from "effect";
 import { AsyncData } from "foldkit";
 import type { Html, HtmlBuilder } from "foldkit/html";
@@ -12,7 +15,10 @@ export interface DesktopSettingsActions<Message> {
   ) => Message;
   readonly read: Message;
   readonly rejected: (message: string) => Message;
-  readonly startup: (enabled: boolean) => Message;
+  readonly startup: (
+    enabled: boolean,
+    target?: typeof MacStartupTarget.Type
+  ) => Message;
 }
 
 export const desktopBusy = (state: typeof DesktopUi.Type): boolean =>

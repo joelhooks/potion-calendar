@@ -559,7 +559,7 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       desktopWire.reply,
       (value) =>
         settings
-          .startup(value.enabled)
+          .startup(value.enabled, value.target)
           .pipe(Effect.tap((reply) => publishSettings(reply.settings)))
     );
 
@@ -661,7 +661,12 @@ export const makeDesktopRuntime = Effect.fn("Desktop.makeDesktopRuntime")(
       })
     );
 
-    return { done: host.done, intent };
+    return {
+      done: host.done,
+      intent,
+      reportStartupIssue: settings.reportStartupIssue,
+      startupSettings: settings.get,
+    };
   }
 );
 

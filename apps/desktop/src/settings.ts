@@ -1,10 +1,12 @@
 import {
   DesktopPreferences,
+  MacStartupIntent,
   defaultDesktopPreferences,
 } from "@calendar/core/desktop-bridge";
 import type {
   DesktopPreferencesValue,
   DesktopSettingsValue,
+  MacStartupTarget,
 } from "@calendar/core/desktop-bridge";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 
@@ -12,13 +14,20 @@ import { DesktopError } from "./config.js";
 
 export const StoredDesktopPreferences = Schema.fromJsonString(
   Schema.Struct({
+    macStartup: Schema.optional(MacStartupIntent),
     preferences: DesktopPreferences,
     version: Schema.Literal(1),
   })
 );
 
+const initialStoredPreferences = (): typeof StoredDesktopPreferences.Type => ({
+  preferences: defaultDesktopPreferences(),
+  version: 1,
+});
+
 export interface NativeSettingsPort {
   readonly login: Effect.Effect<boolean, DesktopError>;
+  readonly macStartup?: boolean;
   readonly read: Effect.Effect<Option.Option<string>, DesktopError>;
   readonly register: (
     accelerator: string,
@@ -54,21 +63,26 @@ export const makeNativeSettings = Effect.fn("Desktop.makeNativeSettings")(
     const saved = yield* port.read.pipe(
       Effect.flatMap((message) =>
         Option.match(message, {
-          onNone: () => Effect.succeed(defaultDesktopPreferences()),
-          onSome: (text) =>
-            Schema.decodeEffect(StoredDesktopPreferences)(text).pipe(
-              Effect.map((value) => value.preferences)
-            ),
+          onNone: () => Effect.succeed(initialStoredPreferences()),
+          onSome: Schema.decodeEffect(StoredDesktopPreferences),
         })
       ),
       Effect.catch(() =>
         Effect.logWarning("Desktop preferences could not be read").pipe(
-          Effect.as(defaultDesktopPreferences())
+          Effect.as(initialStoredPreferences())
         )
       )
     );
 
-    const preferences = yield* Ref.make(saved);
+    const preferences = yield* Ref.make(saved.preferences);
+
+    const startupIntent = yield* Ref.make(
+      saved.macStartup ??
+        MacStartupIntent.make({ calendar: true, menuBar: true })
+    );
+
+    const reportStartupIssue = (message: string) =>
+      Ref.update(issues, (values) => [...new Set([...values, message])]);
 
     const unregister = Effect.fn("Desktop.unregisterShortcuts")(
       function* unregister() {
@@ -114,7 +128,6 @@ export const makeNativeSettings = Effect.fn("Desktop.makeNativeSettings")(
       }
 
       yield* Ref.set(active, retained);
-
       const applied = { ...requested };
       const unavailable: string[] = [];
 
@@ -159,30 +172,47 @@ export const makeNativeSettings = Effect.fn("Desktop.makeNativeSettings")(
       return applied;
     }, Effect.uninterruptible);
 
-    yield* apply(saved);
+    yield* apply(saved.preferences);
 
     const observe = Effect.gen(function* currentSettings(): Effect.fn.Return<
       DesktopSettingsValue,
       DesktopError
     > {
-      return {
+      const openAtLogin = yield* port.login;
+      const intent = yield* Ref.get(startupIntent);
+
+      const current: DesktopSettingsValue = {
         issues: yield* Ref.get(issues),
-        openAtLogin: yield* port.login,
+        openAtLogin,
         preferences: yield* Ref.get(preferences),
         revision: yield* Ref.updateAndGet(revision, (value) => value + 1),
       };
+
+      return port.macStartup === true
+        ? {
+            ...current,
+            macStartup: {
+              calendar: openAtLogin && intent.calendar,
+              menuBar: openAtLogin && intent.menuBar,
+            },
+          }
+        : current;
     });
 
-    const save = Effect.fn("Desktop.savePreferences")(function* save(
-      requested: DesktopPreferencesValue
-    ) {
-      const openAtLogin = yield* port.login;
-      const applied = yield* apply(requested);
-
-      const message = yield* Schema.encodeEffect(StoredDesktopPreferences)({
-        preferences: applied,
+    const persist = Effect.gen(function* persistSettings() {
+      const stored: typeof StoredDesktopPreferences.Type = {
+        preferences: yield* Ref.get(preferences),
         version: 1,
-      }).pipe(
+      };
+
+      const current =
+        port.macStartup === true
+          ? { ...stored, macStartup: yield* Ref.get(startupIntent) }
+          : stored;
+
+      const message = yield* Schema.encodeEffect(StoredDesktopPreferences)(
+        current
+      ).pipe(
         Effect.mapError(
           (cause) =>
             new DesktopError({
@@ -192,50 +222,132 @@ export const makeNativeSettings = Effect.fn("Desktop.makeNativeSettings")(
         )
       );
 
-      const error = yield* port.write(message).pipe(
+      return yield* port.write(message).pipe(
         Effect.as<string | null>(null),
         Effect.orElseSucceed(
           () =>
             "Desktop preferences changed for this session but could not be saved."
         )
       );
+    });
 
-      const currentIssues = yield* Ref.get(issues);
+    const save = Effect.fn("Desktop.savePreferences")(function* save(
+      requested: DesktopPreferencesValue
+    ) {
+      const before = yield* observe;
+      yield* apply(requested);
 
-      const reported =
-        error === null ? currentIssues : [...currentIssues, error];
+      if (
+        before.preferences.menuBar &&
+        !requested.menuBar &&
+        before.macStartup?.menuBar === true &&
+        !before.macStartup.calendar
+      ) {
+        yield* port.setLogin(false);
 
-      yield* Ref.set(issues, reported);
+        if (yield* port.login) {
+          yield* reportStartupIssue(
+            "macOS has not applied the login-item change."
+          );
+        }
+      }
+
+      const error = yield* persist;
+
+      if (error !== null) {
+        yield* reportStartupIssue(error);
+      }
+
+      const current = yield* observe;
 
       return {
-        error: error ?? currentIssues.at(0) ?? null,
-        settings: {
-          issues: reported,
-          openAtLogin,
-          preferences: applied,
-          revision: yield* Ref.updateAndGet(revision, (value) => value + 1),
-        },
+        error: error ?? current.issues.at(0) ?? null,
+        settings: current,
       };
     }, Semaphore.withPermit(lock));
 
     const startup = Effect.fn("Desktop.setStartup")(function* startup(
-      enabled: boolean
+      enabled: boolean,
+      target: typeof MacStartupTarget.Type = "calendar"
     ) {
-      yield* port.setLogin(enabled);
-      const current = yield* observe;
+      const before = yield* observe;
 
-      return {
-        error:
-          current.openAtLogin === enabled
-            ? null
-            : "macOS has not applied the login-item change.",
-        settings: current,
-      };
+      if (port.macStartup !== true) {
+        if (target === "menuBar") {
+          return {
+            error: "Menu-bar startup is available only on macOS.",
+            settings: before,
+          };
+        }
+
+        yield* port.setLogin(enabled);
+        const current = yield* observe;
+
+        return {
+          error:
+            current.openAtLogin === enabled
+              ? null
+              : "macOS has not applied the login-item change.",
+          settings: current,
+        };
+      }
+
+      if (
+        target === "menuBar" &&
+        (!before.preferences.menuBar || before.macStartup?.calendar === true)
+      ) {
+        return {
+          error: "Menu-bar startup is disabled by the current settings.",
+          settings: before,
+        };
+      }
+
+      const effective =
+        before.macStartup ??
+        MacStartupIntent.make({ calendar: false, menuBar: false });
+
+      if (effective[target] === enabled) {
+        return { error: null, settings: before };
+      }
+
+      const remembered = yield* Ref.get(startupIntent);
+
+      const requested =
+        target === "calendar"
+          ? { ...remembered, calendar: enabled }
+          : { calendar: effective.calendar, menuBar: enabled };
+
+      const desiredLogin =
+        requested.calendar || (before.preferences.menuBar && requested.menuBar);
+
+      yield* port.setLogin(desiredLogin);
+      const observedLogin = yield* port.login;
+
+      if (observedLogin !== desiredLogin) {
+        yield* reportStartupIssue(
+          "macOS has not applied the login-item change."
+        );
+
+        return {
+          error: "macOS has not applied the login-item change.",
+          settings: yield* observe,
+        };
+      }
+
+      yield* Ref.set(startupIntent, requested);
+      const error = yield* persist;
+
+      if (error !== null) {
+        yield* reportStartupIssue(error);
+      }
+
+      return { error, settings: yield* observe };
     }, Semaphore.withPermit(lock));
 
     return {
       get: observe.pipe(Semaphore.withPermit(lock)),
       preferences: Ref.get(preferences),
+      reportStartupIssue,
       save,
       startup,
     };
