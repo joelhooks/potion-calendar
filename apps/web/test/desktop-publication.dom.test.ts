@@ -211,6 +211,7 @@ it.effect(
       expect(published.at(-1)?.events).toEqual([]);
       expect(published.at(-1)?.promptPreferences).toEqual({
         joinShortcut: settings.preferences.joinShortcut,
+        locale: "en-US",
         placement: { anchor: "topCenter", display: "cursor" },
         theme: "light",
         timeFormat: "12",

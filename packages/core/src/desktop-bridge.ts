@@ -1,4 +1,4 @@
-import { Effect, Option, Predicate, Schema } from "effect";
+import { Effect, Option, Predicate, Result, Schema } from "effect";
 import type { SchemaAST } from "effect";
 
 export const trayLocationByteLimit = 512;
@@ -394,8 +394,22 @@ export const PromptPlacement = Schema.Struct({
   display: Schema.Literals(["cursor", "primary"]),
 });
 
+export const PromptLocale = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    Result.getOrElse(
+      Result.try(
+        () => Intl.DateTimeFormat.supportedLocalesOf(value).length === 1
+      ),
+      () => false
+    )
+  )
+);
+
 export const PromptPreferences = Schema.Struct({
   joinShortcut: GlobalShortcut,
+  locale: Schema.optional(PromptLocale).pipe(
+    Schema.catchDecoding(() => Effect.succeedNone)
+  ),
   placement: Schema.optional(PromptPlacement).pipe(
     Schema.catchDecoding(() => Effect.succeedNone)
   ),

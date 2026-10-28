@@ -9,7 +9,7 @@ import type {
 } from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
 import { send, waitFor } from "@xstate/effect";
-import { Effect, Queue, Ref, Schema, Stream } from "effect";
+import { Deferred, Effect, Queue, Ref, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
 import { desktopAgendaReceiver } from "../src/agenda-receiver.js";
@@ -45,6 +45,7 @@ it.effect(
       });
 
       const received = yield* Ref.make<(typeof PromptView.Type)[]>([]);
+      const reveals = yield* Ref.make(0);
       const delivered = yield* Queue.unbounded<typeof PromptView.Type>();
 
       const prompt = yield* startPrompt(
@@ -52,6 +53,10 @@ it.effect(
           close: Effect.void,
           present: (events, presentation) =>
             Effect.gen(function* receivePromptView() {
+              if (presentation.reveal) {
+                yield* Ref.update(reveals, (count) => count + 1);
+              }
+
               const message = yield* Schema.encodeEffect(promptWire.view)(
                 nextPromptView(
                   { events: [], revision: (yield* Ref.get(received)).length },
@@ -129,6 +134,7 @@ it.effect(
           promptPreferences: {
             ...promptPreferences,
             joinShortcut: "Ctrl+Forged",
+            locale: "es-419",
             placement: { anchor: "topCenter", display: "primary" },
           },
         })
@@ -137,6 +143,7 @@ it.effect(
       expect(snapshot.promptPreferences).toEqual({
         ...promptPreferences,
         joinShortcut: "Ctrl+Forged",
+        locale: "es-419",
         placement: { anchor: "topCenter", display: "primary" },
       });
       expect(snapshot.events[0]?.attachments).toEqual(
@@ -148,6 +155,7 @@ it.effect(
       }).pipe(Effect.orDie);
       expect((yield* Queue.take(delivered)).preferences).toEqual({
         ...promptPreferences,
+        locale: "es-419",
         placement: { anchor: "topCenter", display: "primary" },
       });
 
@@ -168,6 +176,27 @@ it.effect(
           shortcut === "Ctrl+Unavailable" ? null : shortcut
         );
       }
+
+      for (const locale of ["fr-FR", "ja-JP", "es-419"]) {
+        receive(
+          true,
+          JSON.stringify({
+            ...snapshot,
+            promptPreferences: { ...snapshot.promptPreferences, locale },
+          })
+        );
+        const current = yield* Queue.take(accepted);
+        yield* send(host.actor, { snapshot: current, type: "Agenda" });
+        const view = yield* Queue.take(delivered);
+        expect(view.preferences?.locale).toBe(locale);
+        expect(view.preferences?.joinShortcut).toBeNull();
+        expect(view.preferences?.placement).toEqual(
+          snapshot.promptPreferences?.placement
+        );
+        expect(view.events).toEqual(snapshot.events);
+      }
+
+      expect(yield* Ref.get(reveals)).toBe(1);
 
       const off = yield* native.save({
         ...defaultDesktopPreferences(),
@@ -231,4 +260,81 @@ it.effect(
       expect(invalid.events).toEqual([promptMeeting]);
       expect(projectPromptPreferences(invalid, native)).toBeUndefined();
     })
+);
+
+it.effect(
+  "a locale-only publication during pending presentation reaches the latest child view without another reveal",
+  () =>
+    Effect.gen(function* pendingLocalePresentation() {
+      const loaded = yield* Deferred.make<boolean>();
+      const entered = yield* Queue.unbounded<string>();
+      const frames = yield* Ref.make<(typeof PromptView.Type)[]>([]);
+      const reveals = yield* Ref.make<boolean[]>([]);
+
+      const snapshot = {
+        events: [promptMeeting],
+        promptPreferences: { ...promptPreferences, locale: "fr-FR" },
+      };
+
+      const preferences = defaultDesktopPreferences();
+
+      const actor = yield* startPrompt(
+        {
+          close: Effect.void,
+          present: (events, presentation) =>
+            Effect.gen(function* delayedLocaleView() {
+              if (presentation.preferences?.locale === "fr-FR") {
+                yield* Queue.offer(entered, "fr-FR");
+                yield* Deferred.await(loaded);
+              }
+
+              const view = nextPromptView(
+                { events: [], revision: (yield* Ref.get(frames)).length },
+                events,
+                presentation
+              );
+
+              const decoded = yield* Schema.decodeEffect(promptWire.view)(
+                yield* Schema.encodeEffect(promptWire.view)(view).pipe(
+                  Effect.orDie
+                )
+              ).pipe(Effect.orDie);
+
+              yield* Ref.update(frames, (all) => [...all, decoded]);
+              yield* Ref.update(reveals, (all) => [
+                ...all,
+                presentation.reveal,
+              ]);
+            }),
+        },
+        { now: promptNow, preferences, snapshot }
+      );
+
+      expect(yield* Queue.take(entered)).toBe("fr-FR");
+
+      const latest = {
+        ...snapshot,
+        promptPreferences: { ...snapshot.promptPreferences, locale: "ja-JP" },
+      };
+
+      yield* send(actor, {
+        now: promptNow,
+        preferences,
+        snapshot: latest,
+        type: "Input",
+      });
+      yield* waitFor(
+        actor,
+        (s) => s.context.snapshot.promptPreferences?.locale === "ja-JP",
+        { timeout: "1 second" }
+      ).pipe(Effect.orDie);
+      yield* Deferred.succeed(loaded, true);
+      yield* waitFor(actor, (s) => s.matches("visible"), {
+        timeout: "1 second",
+      }).pipe(Effect.orDie);
+      const received = yield* Ref.get(frames);
+      expect(received.at(-1)?.preferences?.locale).toBe("ja-JP");
+      expect(received.at(-1)?.events).toEqual(snapshot.events);
+      expect(yield* Ref.get(reveals)).toEqual([true, false]);
+    }).pipe(Effect.scoped)
 );

@@ -10,10 +10,14 @@ import { vi } from "vitest";
 import { Message, update } from "../src/client/app.js";
 import { DesktopNotice } from "../src/client/desktop/model.js";
 import { EditingRuntime } from "../src/client/editing/runtime.js";
-import { SettingsChange } from "../src/client/settings/model.js";
+import {
+  SettingsChange,
+  normalizePreferences,
+} from "../src/client/settings/model.js";
 import { subscriptions } from "../src/client/subscriptions.js";
+import { resolvedAppLocale } from "../src/layout/app-locale.js";
 import { unusedBrowserLayers } from "./browser-runtime-fixture.js";
-import { upcomingFixture } from "./upcoming-fixture.js";
+import { upcomingFixture, upcomingSession } from "./upcoming-fixture.js";
 
 const unusedEditing = Effect.die(
   "Prompt preference publication must not edit events"
@@ -135,6 +139,7 @@ it.effect(
 
             expect(published.at(-1)?.promptPreferences).toEqual({
               joinShortcut: defaultDesktopPreferences().joinShortcut,
+              locale: resolvedAppLocale(model),
               placement: { anchor: "topCenter", display: "cursor" },
               theme: theme === "auto" ? "dark" : theme,
               timeFormat: timeFormat === "system" ? systemFormat : timeFormat,
@@ -168,6 +173,66 @@ it.effect(
         );
       }
 
+      const equivalent = Schema.toEquivalence(
+        subscriptions.desktopAgenda.dependenciesSchema
+      );
+
+      for (const locale of ["fr-FR", "ja-JP", "de-DE"]) {
+        const before = subscriptions.desktopAgenda.modelToDependencies(model);
+        ({ model } = update(
+          model,
+          Message.ReceivedSystemSettings({ dark: true, hour24: true, locale })
+        ));
+        const after = subscriptions.desktopAgenda.modelToDependencies(model);
+        expect(after.snapshot.events).toEqual(before.snapshot.events);
+        expect({
+          ...after.snapshot.promptPreferences,
+          locale: undefined,
+        }).toEqual({ ...before.snapshot.promptPreferences, locale: undefined });
+        expect(equivalent(before, after)).toBe(false);
+        yield* publish();
+        expect(published.at(-1)?.promptPreferences?.locale).toBe(locale);
+      }
+
+      ({ model } = update(
+        model,
+        Message.ReceivedPreferences({
+          person: upcomingSession.user.id,
+          preferences: normalizePreferences({
+            language: "es-LA",
+            version: 2,
+            visibility: {},
+          }),
+        })
+      ));
+      yield* publish();
+      expect(published.at(-1)?.promptPreferences?.locale).toBe("es-419");
+      const saved = subscriptions.desktopAgenda.modelToDependencies(model);
+      ({ model } = update(
+        model,
+        Message.ReceivedSystemSettings({
+          dark: true,
+          hour24: true,
+          locale: "ja-JP",
+        })
+      ));
+      const unchanged = subscriptions.desktopAgenda.modelToDependencies(model);
+      expect(equivalent(saved, unchanged)).toBe(true);
+      expect(unchanged.snapshot.promptPreferences?.locale).toBe("es-419");
+      const signingOut = update(model, Message.ClickedSignOut()).model;
+
+      const signedOut = update(
+        signingOut,
+        Message.ReceivedSession({ snapshot: null })
+      ).model;
+
+      const signedOutDependencies =
+        subscriptions.desktopAgenda.modelToDependencies(signedOut);
+
+      expect(signedOutDependencies.snapshot.events).toEqual([]);
+      expect(signedOutDependencies.snapshot.promptPreferences?.locale).toBe(
+        "ja-JP"
+      );
       expect(timer).not.toHaveBeenCalled();
     }).pipe(Effect.scoped, Effect.provide(domainFence))
 );

@@ -12,7 +12,16 @@ import {
 
 it.effect.prop(
   "versioned prompt preferences survive both wire boundaries without changing events or revision",
-  { preferences: Arbitrary.schema(PromptPreferences) },
+  {
+    preferences: Arbitrary.schema(
+      Schema.Struct({
+        ...PromptPreferences.fields,
+        locale: Schema.optional(
+          Schema.Literals(["en-US", "fr-FR", "es-419", "th-TH", "ja-JP"])
+        ),
+      })
+    ),
+  },
   ({ preferences }) =>
     Effect.gen(function* preferenceRoundTrip() {
       const agenda = { events: [], promptPreferences: preferences };
@@ -152,6 +161,89 @@ it.effect(
         });
 
         expect(decoded.placement).toEqual({ anchor: "topCenter", display });
+      }
+    })
+);
+
+it.effect(
+  "locale degrades independently and legacy wire bytes stay exact",
+  () =>
+    Effect.gen(function* nativeLocaleCodec() {
+      const preferences = {
+        joinShortcut: null,
+        placement: { anchor: "topCenter", display: "primary" },
+        theme: "dark",
+        timeFormat: "24",
+        version: 1,
+      } as const;
+
+      const agenda = { events: [], promptPreferences: preferences };
+      const view = { events: [], preferences, revision: 7 };
+
+      const legacyAgenda = yield* Schema.encodeEffect(desktopWire.agenda)(
+        agenda
+      );
+
+      const legacyView = yield* Schema.encodeEffect(promptWire.view)(view);
+      expect(legacyAgenda).toBe(JSON.stringify(agenda));
+      expect(legacyView).toBe(JSON.stringify(view));
+
+      for (const locale of [
+        undefined,
+        null,
+        "",
+        " en-US",
+        "en_US",
+        "zz-ZZ",
+        [],
+        {},
+        7,
+      ]) {
+        const decoded = yield* Schema.decodeUnknownEffect(AgendaSnapshot)({
+          ...agenda,
+          promptPreferences: { ...preferences, locale },
+        });
+
+        expect(decoded.promptPreferences).toEqual(preferences);
+        expect(yield* Schema.encodeEffect(desktopWire.agenda)(decoded)).toBe(
+          legacyAgenda
+        );
+
+        const child = yield* Schema.decodeUnknownEffect(PromptView)({
+          ...view,
+          preferences: { ...preferences, locale },
+        });
+
+        expect(yield* Schema.encodeEffect(promptWire.view)(child)).toBe(
+          legacyView
+        );
+      }
+
+      for (const locale of [
+        "en-US",
+        "fr-FR",
+        "es-419",
+        "th-TH",
+        "ja-JP",
+        "th-TH-u-ca-buddhist",
+      ]) {
+        const decoded = yield* Schema.decodeUnknownEffect(AgendaSnapshot)({
+          ...agenda,
+          promptPreferences: { ...preferences, locale },
+        });
+
+        expect(decoded.promptPreferences).toEqual({ ...preferences, locale });
+
+        const child = yield* Schema.decodeEffect(promptWire.view)(
+          yield* Schema.encodeEffect(promptWire.view)({
+            ...view,
+            preferences: decoded.promptPreferences,
+          })
+        );
+
+        expect(child.preferences?.locale).toBe(locale);
+        expect(child.events).toEqual([]);
+        expect(child.revision).toBe(7);
       }
     })
 );

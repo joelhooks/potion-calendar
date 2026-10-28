@@ -194,3 +194,80 @@ it.effect(
       }
     }).pipe(Effect.scoped)
 );
+
+it.effect(
+  "actual prompt locale timing preserves English actions, clock choice and legacy fallback",
+  () =>
+    Effect.gen(function* localePromptRecipients() {
+      const { present, calls } = yield* mountAttachmentPrompt([promptMeeting]);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          document.documentElement.style.removeProperty("color-scheme");
+        })
+      );
+      let revision = 1;
+
+      for (const locale of [
+        "fr-FR",
+        "ja-JP",
+        "es-419",
+        "th-TH-u-ca-buddhist",
+        undefined,
+        "",
+        "en_US",
+        null,
+      ]) {
+        for (const timeFormat of ["12", "24"] as const) {
+          for (const instant of [
+            0,
+            43_200_000,
+            54_300_000,
+            DateTime.toEpochMillis(DateTime.makeUnsafe("2026-03-08T10:01:00Z")),
+          ]) {
+            const event = {
+              ...promptMeeting,
+              end: instant + 60_000,
+              start: instant,
+            };
+
+            revision += 1;
+
+            const view = yield* Schema.decodeUnknownEffect(PromptView)({
+              events: [event],
+              preferences: { ...promptPreferences, locale, timeFormat },
+              revision,
+            });
+
+            const encoded = yield* Schema.encodeEffect(promptWire.view)(view);
+            present(yield* Schema.decodeEffect(promptWire.view)(encoded));
+            const acceptedLocale = view.preferences?.locale;
+
+            const options: Intl.DateTimeFormatOptions = {
+              hour: "numeric",
+              hourCycle: timeFormat === "12" ? "h12" : "h23",
+              minute: "2-digit",
+            };
+
+            if (acceptedLocale !== undefined) {
+              options.calendar = "gregory";
+            }
+
+            expect(document.querySelector("p")?.textContent).toBe(
+              new Intl.DateTimeFormat(acceptedLocale, options).format(instant)
+            );
+            expect(document.querySelector("h2")?.textContent).toBe(
+              promptMeeting.title
+            );
+            expect(attachmentButton("[data-prompt-join]").textContent).toBe(
+              "Join"
+            );
+            expect(view.events[0]?.start).toBe(instant);
+            expect(view.events[0]?.end).toBe(instant + 60_000);
+            expect(view.preferences?.timeFormat).toBe(timeFormat);
+          }
+        }
+      }
+
+      expect(calls).toEqual([]);
+    }).pipe(Effect.scoped)
+);

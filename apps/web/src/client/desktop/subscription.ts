@@ -5,6 +5,7 @@ import type {
 import { Effect, Option, Stream } from "effect";
 import { AsyncData } from "foldkit";
 
+import { resolvedAppLocale } from "../../layout/app-locale.js";
 import { resolvedTimeFormat } from "../../layout/time-format.js";
 import type { AppModel } from "../app.js";
 import { Message } from "../message.js";
@@ -21,6 +22,7 @@ const promptPreferences = (
   settings?: DesktopSettingsValue
 ): NonNullable<AgendaSnapshotValue["promptPreferences"]> => ({
   joinShortcut: settings?.preferences.joinShortcut ?? null,
+  locale: resolvedAppLocale(model),
   placement: { anchor: "topCenter", display: "cursor" },
   theme: resolvedTheme(model),
   timeFormat: resolvedTimeFormat(model),

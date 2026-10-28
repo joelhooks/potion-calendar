@@ -1,3 +1,4 @@
+import type { PromptPreferences } from "@calendar/core/desktop-bridge";
 import { Clock, Context, DateTime, Effect, Layer, Option, Ref } from "effect";
 import { Menu, Tray, nativeImage } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
@@ -6,6 +7,7 @@ import { previewLabel } from "./agenda.js";
 import { DesktopError } from "./config.js";
 import { NativeIntent } from "./native-host.js";
 import type { NativeIntentValue, NativeView } from "./native-host.js";
+import { nativeLocaleOptions } from "./native-locale.js";
 import {
   calendarDotPng,
   trayIconPng,
@@ -92,17 +94,29 @@ const templateIcon = <Image extends TrayBitmap>(
   return image;
 };
 
-const time = (value: number) =>
-  DateTime.formatLocal(DateTime.makeUnsafe(value), {
+const time = (
+  value: number,
+  preferences: typeof PromptPreferences.Type | undefined
+) => {
+  const timing: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
-  });
+    ...nativeLocaleOptions(preferences?.locale),
+  };
 
-const day = (value: number) =>
+  if (preferences?.locale !== undefined) {
+    timing.hourCycle = preferences.timeFormat === "12" ? "h12" : "h23";
+  }
+
+  return DateTime.formatLocal(DateTime.makeUnsafe(value), timing);
+};
+
+const day = (value: number, locale: string | undefined) =>
   DateTime.formatLocal(DateTime.makeUnsafe(value), {
     day: "numeric",
     month: "short",
     weekday: "short",
+    ...nativeLocaleOptions(locale),
   });
 
 const nativeTrayItem = <Image extends TrayBitmap>(
@@ -176,8 +190,15 @@ export const makeNativeTrayWith = Effect.fn("Desktop.makeNativeTray")(
           tray.setImage(image);
           tray.setToolTip("Potion Calendar");
 
-          const rows = trayMenuRows(currentView, { day, time }, intent).map(
-            (row) => nativeTrayItem(row, platform.createImage)
+          const preferences = currentView.agenda.promptPreferences;
+
+          const format = {
+            day: (value: number) => day(value, preferences?.locale),
+            time: (value: number) => time(value, preferences),
+          };
+
+          const rows = trayMenuRows(currentView, format, intent).map((row) =>
+            nativeTrayItem(row, platform.createImage)
           );
 
           rows.push(
@@ -217,7 +238,7 @@ export const makeNativeTrayWith = Effect.fn("Desktop.makeNativeTray")(
               currentView.agenda,
               currentView.preferences,
               currentView.now,
-              time
+              format.time
             )
           );
         },

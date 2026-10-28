@@ -13,6 +13,7 @@ import { DateTime } from "effect";
 import { initialTransition, transition } from "xstate";
 import type { EventFromLogic } from "xstate";
 
+import { nativeLocaleOptions } from "../native-locale.js";
 import { promptEmailUrl } from "../prompt-email.js";
 import { attachmentControls } from "./prompt-attachments.js";
 import { createPromptMeasurement } from "./prompt-measurement.js";
@@ -63,10 +64,10 @@ const card = (
     timing.hourCycle = preferences.timeFormat === "12" ? "h12" : "h23";
   }
 
-  time.textContent = DateTime.formatLocal(
-    DateTime.makeUnsafe(event.start),
-    timing
-  );
+  time.textContent = DateTime.formatLocal(DateTime.makeUnsafe(event.start), {
+    ...timing,
+    ...nativeLocaleOptions(preferences?.locale),
+  });
   body.append(heading, time);
   actions.className = "actions";
   article.append(body, attachmentControls(event, api), actions);

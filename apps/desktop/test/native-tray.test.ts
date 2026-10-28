@@ -1,8 +1,17 @@
-import type { AgendaEventValue } from "@calendar/core/desktop-bridge";
+import { desktopWire } from "@calendar/core/desktop-bridge";
+import type {
+  AgendaEventValue,
+  AgendaSnapshotValue,
+} from "@calendar/core/desktop-bridge";
 import { expect, it } from "@effect/vitest";
-import { DateTime, Effect } from "effect";
+import { send } from "@xstate/effect";
+import { DateTime, Effect, Queue, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
+import { desktopAgendaReceiver } from "../src/agenda-receiver.js";
+import { startNativeHost } from "../src/native-host.js";
+import type { NativeView } from "../src/native-host.js";
+import { nativeLocaleOptions } from "../src/native-locale.js";
 import { makeNativeTrayWith } from "../src/native-tray.js";
 import type { TrayHandle, TrayPlatform, TrayRow } from "../src/native-tray.js";
 import { trayIconPng } from "../src/tray-icon.js";
@@ -278,4 +287,233 @@ it.effect("an empty decoded native image fails before creating a tray", () =>
     expect(trays).toHaveLength(0);
     expect(yield* native.active).toBe(false);
   })
+);
+
+it.effect(
+  "HIGH a locale-only parent publication updates real tray date and preview without changing instants",
+  () =>
+    Effect.gen(function* localeRecipientHistory() {
+      yield* TestClock.setTime(localNoon);
+      const { native, trays, menus } = yield* harness(false);
+
+      const first = {
+        ...trayEvent("first", localNoon + 60_000),
+        end: localNoon + 3_600_000,
+      };
+
+      const second = {
+        ...trayEvent("second", localNoon + 86_400_000),
+        end: localNoon + 90_000_000,
+      };
+
+      const events = [first, second];
+
+      const preferences = {
+        ...trayView([]).preferences,
+        showTime: true,
+        showTitle: false,
+      };
+
+      const rendered = yield* Queue.unbounded<NativeView>();
+
+      const host = yield* startNativeHost(
+        {
+          intents: Stream.empty,
+          perform: () => Effect.void,
+          render: (view) =>
+            native
+              .render(view)
+              .pipe(Effect.andThen(Queue.offer(rendered, view)), Effect.asVoid),
+        },
+        { now: localNoon, preferences }
+      );
+
+      yield* Queue.take(rendered);
+      const accepted = yield* Queue.unbounded<AgendaSnapshotValue>();
+      let refused = 0;
+
+      const receive = desktopAgendaReceiver("https://calendar.example.test", {
+        accepted: (snapshot) => {
+          Queue.offerUnsafe(accepted, snapshot);
+        },
+        rejected: () => {
+          refused += 1;
+        },
+        trusted: (value: boolean) => value,
+      });
+
+      receive(false, JSON.stringify({ events }));
+      expect(yield* Queue.size(accepted)).toBe(0);
+      receive(
+        true,
+        yield* Schema.encodeEffect(desktopWire.agenda)({
+          events,
+          promptPreferences: {
+            joinShortcut: null,
+            locale: "en-US",
+            placement: { anchor: "topCenter", display: "cursor" },
+            theme: "dark",
+            timeFormat: "12",
+            version: 1,
+          },
+        })
+      );
+      const initial = yield* Queue.take(accepted);
+      yield* send(host.actor, { snapshot: initial, type: "Agenda" });
+      yield* Queue.take(rendered);
+
+      for (const timeFormat of ["12", "24"] as const) {
+        for (const locale of [
+          "fr-FR",
+          "ja-JP",
+          "es-419",
+          "th-TH-u-ca-islamic",
+          undefined,
+          "",
+          "en_US",
+        ]) {
+          const policy = {
+            joinShortcut: null,
+            locale,
+            placement: { anchor: "topCenter", display: "cursor" },
+            theme: "dark",
+            timeFormat,
+            version: 1,
+          } as const;
+
+          const message =
+            locale === "" || locale === "en_US"
+              ? JSON.stringify({ events, promptPreferences: policy })
+              : yield* Schema.encodeEffect(desktopWire.agenda)({
+                  events,
+                  promptPreferences: policy,
+                });
+
+          receive(true, message);
+          const snapshot = yield* Queue.take(accepted);
+          yield* send(host.actor, { snapshot, type: "Agenda" });
+          const view = yield* Queue.take(rendered);
+          const acceptedLocale = snapshot.promptPreferences?.locale;
+          const hourCycle = timeFormat === "12" ? "h12" : "h23";
+
+          const timeOptions: Intl.DateTimeFormatOptions = {
+            hour: "numeric",
+            minute: "2-digit",
+          };
+
+          const dateOptions: Intl.DateTimeFormatOptions = {
+            day: "numeric",
+            month: "short",
+            weekday: "short",
+          };
+
+          if (acceptedLocale !== undefined) {
+            timeOptions.calendar = "gregory";
+            timeOptions.hourCycle = hourCycle;
+            dateOptions.calendar = "gregory";
+          }
+
+          expect(trays.at(-1)?.titles.at(-1)).toBe(
+            new Intl.DateTimeFormat(acceptedLocale, timeOptions).format(
+              first.start
+            )
+          );
+          expect(
+            menus
+              .at(-1)
+              ?.rows.find(
+                (row) => row.id?.startsWith("tray-day-heading") === true
+              )?.label
+          ).toBe(
+            new Intl.DateTimeFormat(acceptedLocale, dateOptions).format(
+              second.start
+            )
+          );
+          expect(view.agenda.events).toEqual(events);
+          expect(view.preferences).toEqual(preferences);
+          expect(trays).toHaveLength(1);
+          expect(
+            menus
+              .at(-1)
+              ?.rows.slice(-3)
+              .map((row) => row.label)
+          ).toEqual([
+            "Open Potion Calendar",
+            "Settings…",
+            "Quit Potion Calendar",
+          ]);
+          expect(view.agenda.promptPreferences?.placement).toEqual(
+            policy.placement
+          );
+        }
+      }
+
+      expect(refused).toBe(0);
+    })
+);
+
+it.effect(
+  "native Gregorian presentation preserves local instants across DST-adjacent inputs",
+  () =>
+    Effect.gen(function* localeArithmeticBoundary() {
+      const { native, trays } = yield* harness(false);
+
+      for (const input of [
+        "2026-03-08T09:59:00Z",
+        "2026-03-08T10:01:00Z",
+        "2026-11-01T08:59:00Z",
+        "2026-11-01T09:01:00Z",
+      ]) {
+        const instant = DateTime.toEpochMillis(DateTime.makeUnsafe(input));
+        yield* TestClock.setTime(instant - 60_000);
+
+        const event = {
+          ...trayEvent("dst", instant),
+          end: instant + 3_600_000,
+        };
+
+        const view = {
+          ...trayView([event]),
+          agenda: {
+            events: [event],
+            promptPreferences: {
+              joinShortcut: null,
+              locale: "th-TH-u-ca-buddhist",
+              theme: "light",
+              timeFormat: "24",
+              version: 1,
+            },
+          },
+          now: instant - 60_000,
+          preferences: {
+            ...trayView([]).preferences,
+            showTime: true,
+            showTitle: false,
+          },
+        } as const;
+
+        yield* native.render(view);
+        expect(trays.at(-1)?.titles.at(-1)).toBe(
+          new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
+            calendar: "gregory",
+            hour: "numeric",
+            hourCycle: "h23",
+            minute: "2-digit",
+          }).format(instant)
+        );
+        expect(
+          new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
+            year: "numeric",
+            ...nativeLocaleOptions("th-TH-u-ca-buddhist"),
+          }).format(instant)
+        ).toBe(
+          new Intl.DateTimeFormat("th-TH", {
+            calendar: "gregory",
+            year: "numeric",
+          }).format(instant)
+        );
+        expect(view.agenda.events[0]?.start).toBe(instant);
+        expect(view.agenda.events[0]?.end).toBe(instant + 3_600_000);
+      }
+    })
 );
