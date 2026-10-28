@@ -22,7 +22,11 @@ import {
 
 import { DesktopError } from "./config.js";
 import type { PromptPresentation } from "./prompt-machine.js";
-import { resizePromptWindow, revealPromptWindow } from "./prompt-placement.js";
+import {
+  positionPromptWindow,
+  resizePromptWindow,
+  revealPromptWindow,
+} from "./prompt-placement.js";
 import { nextPromptView } from "./prompt-preferences.js";
 import { promptFallbackHeight, promptMeasuredHeight } from "./prompt-size.js";
 import {
@@ -32,6 +36,14 @@ import {
 import { previewWithSound, revealWithSound } from "./sound-machine.js";
 import { preparePromptSound } from "./sound-port.js";
 import type { PromptSoundPort } from "./sound-port.js";
+
+type PromptContent = typeof PromptView.Type &
+  Pick<PromptPresentation, "authority">;
+
+const acceptedPlacement = (content: PromptContent) =>
+  content.authority === undefined || content.authority.personId === null
+    ? undefined
+    : content.preferences?.placement;
 
 type PromptNavigationListener = (event: { preventDefault: () => void }) => void;
 
@@ -162,10 +174,23 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
     const soundRequest = yield* Ref.make(0);
     const windowLock = yield* Semaphore.make(1);
 
-    const view = yield* Ref.make<typeof PromptView.Type>({
+    const view = yield* Ref.make<PromptContent>({
       events: [],
       revision: 0,
     });
+
+    const currentRevision = (window: PromptNativeWindow, revision: number) => {
+      const latest = runSync(Ref.get(current));
+      const content = runSync(Ref.get(view));
+
+      return (
+        Option.isSome(latest) &&
+        latest.value === window &&
+        !window.isDestroyed() &&
+        content.revision === revision &&
+        content.events.length > 0
+      );
+    };
 
     const lifecycle = yield* startPromptWindowLifecycle();
     const pageUrl = new URL("prompt.html", import.meta.url);
@@ -295,7 +320,11 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
       }
 
       const bounds = window.value.getBounds();
-      const area = screen.getDisplayMatching(bounds).workArea;
+
+      const area =
+        acceptedPlacement(content)?.display === "primary"
+          ? screen.getPrimaryDisplay().workArea
+          : screen.getDisplayMatching(bounds).workArea;
 
       const height = promptMeasuredHeight(
         report.value,
@@ -307,6 +336,22 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
 
       if (height !== undefined) {
         resizePromptWindow(window.value, height, area);
+        const resized = window.value.getBounds();
+
+        if (
+          acceptedPlacement(content)?.display === "primary" &&
+          (resized.x < area.x ||
+            resized.y < area.y ||
+            (resized.width <= area.width
+              ? resized.x + resized.width > area.x + area.width
+              : resized.x !== area.x))
+        ) {
+          positionPromptWindow(
+            window.value,
+            screen,
+            acceptedPlacement(content)
+          );
+        }
       }
     };
 
@@ -440,11 +485,19 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
         events: readonly AgendaEventValue[],
         presentation: PromptPresentation
       ) {
-        const nextView = yield* Ref.updateAndGet(view, (previous) =>
-          nextPromptView(previous, events, presentation)
-        );
+        const previousView = yield* Ref.get(view);
+
+        const nextView = yield* Ref.updateAndGet(view, (previous) => ({
+          ...nextPromptView(previous, events, presentation),
+          authority: presentation.authority,
+        }));
 
         const window = yield* prepareWindow();
+
+        if (!currentRevision(window, nextView.revision)) {
+          return;
+        }
+
         const port = soundPort(window);
         yield* Effect.try({
           catch: (cause) =>
@@ -453,16 +506,28 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
               message: "Meeting prompt could not update",
             }),
           try: () => {
-            if (!window.isDestroyed()) {
-              const area = screen.getDisplayMatching(
-                window.getBounds()
-              ).workArea;
+            if (currentRevision(window, nextView.revision)) {
+              const placement = acceptedPlacement(nextView);
+
+              const area =
+                placement?.display === "primary"
+                  ? screen.getPrimaryDisplay().workArea
+                  : screen.getDisplayMatching(window.getBounds()).workArea;
 
               resizePromptWindow(
                 window,
                 promptFallbackHeight(events.length, area.height),
                 area
               );
+
+              if (
+                window.isVisible() &&
+                (acceptedPlacement(previousView)?.display ?? "cursor") !==
+                  (placement?.display ?? "cursor")
+              ) {
+                positionPromptWindow(window, screen, placement);
+              }
+
               const message = Schema.encodeOption(promptWire.view)(nextView);
 
               if (Option.isSome(message)) {
@@ -485,7 +550,7 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
           load: (sound) => preparePromptSound(port, request, sound),
           play: (sound) =>
             Effect.sync(() => {
-              if (!window.isDestroyed()) {
+              if (currentRevision(window, nextView.revision)) {
                 port.send(
                   PromptSoundRequest.cases.Play.make({ request, sound })
                 );
@@ -498,8 +563,8 @@ export const makePromptWindow = Effect.fn("Desktop.makePromptWindow")(
                 message: "Meeting prompt could not appear",
               }),
             try: () => {
-              if (!window.isDestroyed()) {
-                revealPromptWindow(window, screen);
+              if (currentRevision(window, nextView.revision)) {
+                revealPromptWindow(window, screen, acceptedPlacement(nextView));
               }
             },
           }),

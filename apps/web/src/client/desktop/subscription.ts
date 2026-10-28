@@ -21,6 +21,7 @@ const promptPreferences = (
   settings?: DesktopSettingsValue
 ): NonNullable<AgendaSnapshotValue["promptPreferences"]> => ({
   joinShortcut: settings?.preferences.joinShortcut ?? null,
+  placement: { anchor: "topCenter", display: "cursor" },
   theme: resolvedTheme(model),
   timeFormat: resolvedTimeFormat(model),
   version: 1,

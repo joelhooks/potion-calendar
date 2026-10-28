@@ -129,6 +129,7 @@ it.effect(
           promptPreferences: {
             ...promptPreferences,
             joinShortcut: "Ctrl+Forged",
+            placement: { anchor: "topCenter", display: "primary" },
           },
         })
       );
@@ -136,6 +137,7 @@ it.effect(
       expect(snapshot.promptPreferences).toEqual({
         ...promptPreferences,
         joinShortcut: "Ctrl+Forged",
+        placement: { anchor: "topCenter", display: "primary" },
       });
       expect(snapshot.events[0]?.attachments).toEqual(
         promptMeeting.attachments
@@ -144,9 +146,10 @@ it.effect(
       yield* waitFor(prompt, (s) => s.matches("visible"), {
         timeout: "1 second",
       }).pipe(Effect.orDie);
-      expect((yield* Queue.take(delivered)).preferences).toEqual(
-        promptPreferences
-      );
+      expect((yield* Queue.take(delivered)).preferences).toEqual({
+        ...promptPreferences,
+        placement: { anchor: "topCenter", display: "primary" },
+      });
 
       for (const shortcut of ["Ctrl+Alt+K", null, "Ctrl+Unavailable"]) {
         const reply = yield* native.save({

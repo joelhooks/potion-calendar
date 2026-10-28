@@ -23,6 +23,32 @@ export const PromptAdmissionPermit = Schema.Struct({
   main: Schema.optionalKey(PromptAdmissionAuthority),
 });
 
+export type PromptAuthority = typeof PromptAdmissionAuthority.Type;
+
+export const promptAuthority = (
+  snapshot: AgendaSnapshotValue
+): PromptAuthority | undefined => {
+  const agenda = snapshot.notificationAgenda;
+
+  return agenda === undefined
+    ? undefined
+    : {
+        lease: agenda.lease,
+        personId: agenda.personId,
+        revision: agenda.revision,
+      };
+};
+
+export const promptAuthorityIsCurrent = (
+  installed: PromptAuthority | undefined,
+  requested: PromptAuthority | undefined
+): boolean =>
+  installed === undefined ||
+  requested === undefined ||
+  (installed.lease === requested.lease &&
+    installed.personId === requested.personId &&
+    requested.revision >= installed.revision);
+
 export interface PromptAdmissionPermitValue {
   active: boolean;
   readonly main?: typeof PromptAdmissionAuthority.Type;
@@ -57,6 +83,7 @@ export const promptBatchIdentity = (
 export interface PromptContext {
   readonly now: number;
   readonly pending: readonly AgendaEventValue[];
+  readonly placementAuthority: PromptAuthority | undefined;
   readonly preferences: DesktopPreferencesValue;
   readonly remembered: ReadonlyMap<string, number>;
   readonly snapshot: AgendaSnapshotValue;
@@ -79,6 +106,7 @@ export type PromptInput = Pick<
 export const initialPrompt = (input: PromptInput): PromptContext => ({
   ...input,
   pending: [],
+  placementAuthority: promptAuthority(input.snapshot),
   remembered: new Map(),
   snoozed: new Map(),
   visible: [],

@@ -135,6 +135,7 @@ it.effect(
 
             expect(published.at(-1)?.promptPreferences).toEqual({
               joinShortcut: defaultDesktopPreferences().joinShortcut,
+              placement: { anchor: "topCenter", display: "cursor" },
               theme: theme === "auto" ? "dark" : theme,
               timeFormat: timeFormat === "system" ? systemFormat : timeFormat,
               version: 1,

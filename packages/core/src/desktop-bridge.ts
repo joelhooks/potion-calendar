@@ -389,8 +389,16 @@ export const GlobalShortcut = Schema.NullOr(
   )
 );
 
+export const PromptPlacement = Schema.Struct({
+  anchor: Schema.Literal("topCenter"),
+  display: Schema.Literals(["cursor", "primary"]),
+});
+
 export const PromptPreferences = Schema.Struct({
   joinShortcut: GlobalShortcut,
+  placement: Schema.optional(PromptPlacement).pipe(
+    Schema.catchDecoding(() => Effect.succeedNone)
+  ),
   theme: Schema.Literals(["light", "dark"]),
   timeFormat: Schema.Literals(["12", "24"]),
   version: Schema.Literal(1),

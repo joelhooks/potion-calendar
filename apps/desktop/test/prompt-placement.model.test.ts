@@ -130,6 +130,18 @@ it.effect.prop(
       };
 
       revealPromptWindow(f.window, displays);
+      const explicit = nativePlacement({ height: 140, width: 380, x: 0, y: 0 });
+      revealPromptWindow(
+        explicit.window,
+        {
+          ...displays,
+          getDisplayNearestPoint: () => ({ workArea: first }),
+        },
+        { anchor: "topCenter", display: "cursor" }
+      );
+      expect(explicit.calls).toEqual(f.calls);
+      expect(explicit.positions).toEqual(f.positions);
+      expect(explicit.window.getBounds()).toEqual(f.window.getBounds());
       expect(readPoints).toEqual([cursor]);
       expect(primaryReads).toBe(0);
       expect(f.calls.at(-1)).toBe("showInactive");

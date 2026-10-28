@@ -135,6 +135,10 @@ it.effect.prop(
       Schema.Array(
         Schema.Struct({
           joinShortcut: Schema.NullOr(Schema.Literals(["Ctrl+J", "Ctrl+K"])),
+          placement: Schema.Struct({
+            anchor: Schema.Literal("topCenter"),
+            display: Schema.Literals(["cursor", "primary"]),
+          }),
           theme: Schema.Literals(["light", "dark"]),
           timeFormat: Schema.Literals(["12", "24"]),
         })
@@ -186,7 +190,9 @@ it.effect.prop(
             s.context.preferences.joinShortcut === change.joinShortcut &&
             s.context.snapshot.promptPreferences?.theme === change.theme &&
             s.context.snapshot.promptPreferences.timeFormat ===
-              change.timeFormat,
+              change.timeFormat &&
+            s.context.snapshot.promptPreferences.placement?.display ===
+              change.placement.display,
           { timeout: "1 second" }
         ).pipe(Effect.orDie);
         expect((yield* Ref.get(views)).at(-1)?.preferences).toEqual({

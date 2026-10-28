@@ -91,3 +91,67 @@ it.effect.prop(
       );
     })
 );
+
+it.effect(
+  "placement degrades independently without discarding appearance and never accepts parent geometry",
+  () =>
+    Effect.gen(function* placementFallback() {
+      const preferences = {
+        joinShortcut: null,
+        theme: "dark",
+        timeFormat: "24",
+        version: 1,
+      } as const;
+
+      for (const placement of [
+        undefined,
+        null,
+        { anchor: "bottomRight", display: "primary" },
+        { anchor: "topCenter", display: "forged" },
+        { x: -999_999, y: 999_999 },
+      ]) {
+        const decoded = yield* Schema.decodeUnknownEffect(PromptPreferences)({
+          ...preferences,
+          placement,
+        });
+
+        expect(decoded.placement).toBeUndefined();
+        expect(decoded.theme).toBe("dark");
+        expect(decoded.timeFormat).toBe("24");
+        expect(
+          yield* Schema.encodeEffect(promptWire.view)({
+            events: [],
+            preferences: decoded,
+            revision: 7,
+          })
+        ).toBe(
+          yield* Schema.encodeEffect(promptWire.view)({
+            events: [],
+            preferences,
+            revision: 7,
+          })
+        );
+      }
+
+      for (const display of ["cursor", "primary"] as const) {
+        const decoded = yield* Schema.decodeUnknownEffect(PromptPreferences)({
+          ...preferences,
+          placement: {
+            anchor: "topCenter",
+            bounds: {
+              height: 999_999,
+              width: 999_999,
+              x: 999_999,
+              y: -999_999,
+            },
+            display,
+            displayId: 999_999,
+            x: -999_999,
+            y: 999_999,
+          },
+        });
+
+        expect(decoded.placement).toEqual({ anchor: "topCenter", display });
+      }
+    })
+);

@@ -1,3 +1,4 @@
+import type { PromptPlacement } from "@calendar/core/desktop-bridge";
 import type { BrowserWindow, Point, Rectangle } from "electron";
 
 export const promptTopMargin = 8;
@@ -22,7 +23,14 @@ export const promptPlacement = (area: Rectangle, size: WindowSize): Point => ({
   y: area.y + Math.min(promptTopMargin, Math.max(0, area.height - size.height)),
 });
 
-const revealArea = (displays: PromptPlacementScreen): Rectangle => {
+export const promptWorkArea = (
+  displays: PromptPlacementScreen,
+  placement?: typeof PromptPlacement.Type
+): Rectangle => {
+  if (placement?.display === "primary") {
+    return displays.getPrimaryDisplay().workArea;
+  }
+
   try {
     return displays.getDisplayNearestPoint(displays.getCursorScreenPoint())
       .workArea;
@@ -45,21 +53,30 @@ export const resizePromptWindow = (
   }
 };
 
+export const positionPromptWindow = (
+  window: Pick<PlacementWindow, "getBounds" | "setSize" | "setPosition">,
+  displays: PromptPlacementScreen,
+  placement?: typeof PromptPlacement.Type
+): void => {
+  const area = promptWorkArea(displays, placement);
+  const bounds = window.getBounds();
+  const height = Math.min(bounds.height, area.height);
+
+  if (height !== bounds.height) {
+    window.setSize(bounds.width, height);
+  }
+
+  const position = promptPlacement(area, { ...bounds, height });
+  window.setPosition(position.x, position.y);
+};
+
 export const revealPromptWindow = (
   window: PlacementWindow,
-  displays: PromptPlacementScreen
+  displays: PromptPlacementScreen,
+  placement?: typeof PromptPlacement.Type
 ): void => {
   if (!window.isVisible()) {
-    const area = revealArea(displays);
-    const bounds = window.getBounds();
-    const height = Math.min(bounds.height, area.height);
-
-    if (height !== bounds.height) {
-      window.setSize(bounds.width, height);
-    }
-
-    const position = promptPlacement(area, { ...bounds, height });
-    window.setPosition(position.x, position.y);
+    positionPromptWindow(window, displays, placement);
   }
 
   window.showInactive();

@@ -27,7 +27,9 @@ import {
   initialPrompt,
   presentedPrompts,
   promptBatchIdentity,
+  promptAuthority,
   promptIdentity,
+  promptAuthorityIsCurrent,
   PromptInputAcknowledgement,
   PromptAdmissionPermit,
   PromptAdmissionSuperseded,
@@ -36,12 +38,14 @@ import {
 } from "./prompt-model.js";
 import type {
   PromptAdmissionPermitValue,
+  PromptAuthority,
   PromptContext,
   PromptInput,
 } from "./prompt-model.js";
 import { projectPromptPreferences } from "./prompt-preferences.js";
 
 export interface PromptPresentation {
+  readonly authority?: PromptAuthority | undefined;
   readonly preferences?: typeof PromptPreferences.Type | undefined;
   readonly reveal: boolean;
   readonly sound: typeof PromptSound.Type;
@@ -50,16 +54,50 @@ export interface PromptPresentation {
 const reconciled = (
   context: PromptContext,
   input: Partial<PromptInput>,
-  presenting: boolean
+  presenting: boolean,
+  admitted = false
 ) => {
+  const requested = input.snapshot;
+
+  const authority =
+    requested === undefined
+      ? context.placementAuthority
+      : promptAuthority(requested);
+
+  const current =
+    admitted || promptAuthorityIsCurrent(context.placementAuthority, authority);
+
+  const snapshot =
+    requested === undefined || current
+      ? requested
+      : {
+          ...requested,
+          promptPreferences:
+            requested.promptPreferences === undefined
+              ? context.snapshot.promptPreferences
+              : {
+                  ...requested.promptPreferences,
+                  placement: context.snapshot.promptPreferences?.placement,
+                },
+        };
+
   const next = reconcilePrompts(
-    context,
-    input,
+    {
+      ...context,
+      placementAuthority: current ? authority : context.placementAuthority,
+    },
+    requested === undefined
+      ? input
+      : { ...input, snapshot: snapshot ?? requested },
     presenting ? context.pending : context.visible
   );
 
   return presenting &&
     next.preferences.promptSound === context.preferences.promptSound &&
+    JSON.stringify(next.placementAuthority) ===
+      JSON.stringify(context.placementAuthority) &&
+    JSON.stringify(next.snapshot.promptPreferences?.placement) ===
+      JSON.stringify(context.snapshot.promptPreferences?.placement) &&
     promptBatchIdentity(next.pending) === promptBatchIdentity(context.pending)
     ? { context: next }
     : { context: next, reenter: true, target: "#desktopPrompt.evaluating" };
@@ -74,7 +112,8 @@ const processedInput = (
     notice: typeof PromptInputAcknowledgement.Type & {
       readonly type: "InputProcessed";
     }
-  ) => void
+  ) => void,
+  admitted = false
 ) => {
   const next = reconciled(
     context,
@@ -83,7 +122,8 @@ const processedInput = (
       preferences: input.preferences,
       snapshot: input.snapshot,
     },
-    presenting
+    presenting,
+    admitted
   );
 
   const agenda = input.snapshot.notificationAgenda;
@@ -235,9 +275,16 @@ export const promptMachine = (work: PromptWork) => {
           event.snapshot.notificationAgenda,
           event.permit
         )
-          ? processedInput(context, event, false, event.attempt, (notice) => {
-              enqueue.emit(notice);
-            })
+          ? processedInput(
+              context,
+              event,
+              false,
+              event.attempt,
+              (notice) => {
+                enqueue.emit(notice);
+              },
+              true
+            )
           : {},
       Agenda: ({ context, event }) =>
         reconciled(context, { snapshot: event.snapshot }, false),
@@ -293,7 +340,7 @@ export const promptMachine = (work: PromptWork) => {
       presenting: {
         invoke: {
           input: ({ context }) => {
-            const authority = context.snapshot.notificationAgenda;
+            const authority = promptAuthority(context.snapshot);
 
             const reveal = context.pending.some(
               (event) =>
@@ -312,6 +359,7 @@ export const promptMachine = (work: PromptWork) => {
                   ? null
                   : { lease: authority.lease, personId: authority.personId },
               presentation: {
+                authority: context.placementAuthority,
                 preferences: projectPromptPreferences(
                   context.snapshot,
                   context.preferences
@@ -328,6 +376,7 @@ export const promptMachine = (work: PromptWork) => {
             },
             target:
               JSON.stringify({
+                authority: context.placementAuthority,
                 events: context.pending,
                 preferences: projectPromptPreferences(
                   context.snapshot,
@@ -335,6 +384,7 @@ export const promptMachine = (work: PromptWork) => {
                 ),
               }) ===
               JSON.stringify({
+                authority: event.output.presentation.authority,
                 events: event.output.events,
                 preferences: event.output.presentation.preferences,
               })
@@ -367,7 +417,8 @@ export const promptMachine = (work: PromptWork) => {
                   event.attempt,
                   (notice) => {
                     enqueue.emit(notice);
-                  }
+                  },
+                  true
                 )
               : {},
           Agenda: ({ context, event }) =>
