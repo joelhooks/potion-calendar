@@ -402,6 +402,33 @@ it.effect(
           })
         )(fixture.latest().options.data);
 
+        fixture.send({ data: { ...data, action: "show" } });
+        const clicked = yield* Queue.take(events);
+
+        const selected = update(
+          model,
+          Message.ObservedNotification({
+            event: clicked,
+            now: model.calendar.now,
+          })
+        );
+
+        expect(selected.model.calendar.selected).toEqual([
+          notification.candidate.key,
+        ]);
+        expect(selected.model.reminders).toBe(model.reminders);
+
+        const repeated = update(
+          selected.model,
+          Message.ObservedNotification({
+            event: clicked,
+            now: model.calendar.now,
+          })
+        );
+
+        expect(repeated.model).toBe(selected.model);
+        expect(repeated.commands ?? []).toEqual([]);
+
         fixture.send({ data: { ...data, action: "close" } });
         const event = yield* Queue.take(events);
         expect(NotificationEvent.guards.Closed(event)).toBe(true);

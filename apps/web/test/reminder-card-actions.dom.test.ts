@@ -14,6 +14,7 @@ import { MeetingPort } from "../src/client/meetings/port.js";
 import { CloseReminderNotifications } from "../src/client/reminders/commands.js";
 import {
   PermissionOutcome,
+  notificationTag,
   NotificationEvent,
   NotificationFailure,
   ReminderCardAction,
@@ -230,6 +231,72 @@ it.prop(
     expect(repeated.model.reminders.context.active).toEqual([]);
     expect(repeated.commands ?? []).toEqual([]);
   }
+);
+
+it.effect.each(["plain", "worker"] as const)(
+  "%s body selection leaves explicit Show, Dismiss and Snooze usable",
+  (path) =>
+    Effect.sync(() => {
+      const { model } = reminderCardScene("prompt", "light", 1440);
+      const [notification] = model.reminders.context.active;
+
+      if (notification === undefined) {
+        throw new Error("Missing managed card");
+      }
+
+      const event =
+        path === "plain"
+          ? NotificationEvent.cases.Clicked.make({ notification })
+          : NotificationEvent.cases.Action.make({
+              action: "show",
+              id: notification.id,
+              personId: notification.personId,
+              tag: notificationTag(
+                notification.personId,
+                notification.candidate.identity
+              ),
+            });
+
+      const selected = update(
+        model,
+        Message.ObservedNotification({ event, now: model.calendar.now })
+      ).model;
+
+      expect(selected.reminders).toBe(model.reminders);
+
+      for (const action of ["show", "dismiss"] as const) {
+        const result = update(
+          selected,
+          Message.ReminderCardAction({
+            action,
+            id: notification.id,
+            personId: notification.personId,
+          })
+        );
+
+        expect(result.model.reminders.context.active).toEqual([]);
+        expect(
+          (result.commands ?? []).filter(
+            (command) => command.name === "CloseReminderNotifications"
+          )
+        ).toHaveLength(1);
+      }
+
+      const snooze = update(
+        selected,
+        Message.RequestedReminderSnooze({
+          choice: 5,
+          id: notification.id,
+          personId: notification.personId,
+        })
+      );
+
+      expect(
+        (snooze.commands ?? []).filter(
+          (command) => command.name === "SampleReminderSnoozeClock"
+        )
+      ).toHaveLength(1);
+    })
 );
 
 it.effect(

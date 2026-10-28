@@ -214,10 +214,13 @@ it.effect.each([false, true])(
         native.dispatchEvent(new Event("click"));
         const event = yield* Queue.take(events);
         expect(NotificationEvent.guards.Clicked(event)).toBe(true);
+        const beforeClick = model.reminders;
         ({ model } = update(
           model,
           Message.ObservedNotification({ event, now: model.calendar.now })
         ));
+        expect(model.calendar.selected).toEqual([content.candidate.key]);
+        expect(model.reminders).toBe(beforeClick);
       }
 
       native.close();

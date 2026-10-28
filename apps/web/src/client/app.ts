@@ -158,6 +158,7 @@ import {
 } from "./phone-shell/model.js";
 import { afterPhoneShellMessage } from "./phone-shell/update.js";
 import { actOnReminderCard } from "./reminders/actions.js";
+import { selectBrowserReminder } from "./reminders/browser-click.js";
 import { withReminders } from "./reminders/integration.js";
 import { initialReminderState } from "./reminders/machine.js";
 import { NotificationEvent, ReminderState } from "./reminders/model.js";
@@ -1198,7 +1199,7 @@ const updateCore = (
 
       return event.notification.card === undefined
         ? selectReminderNotification(model, event.notification, dispatch)
-        : { model };
+        : selectBrowserReminder(model, event.notification, dispatch);
     },
     PageHidden: () => leaveEditing(model),
     PhoneShellClosed: () => ({

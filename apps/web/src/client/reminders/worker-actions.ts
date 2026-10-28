@@ -4,6 +4,7 @@ import type { AppModel, update } from "../app.js";
 import { Message } from "../message.js";
 import type { AppMessage } from "../message.js";
 import { actOnReminderCard } from "./actions.js";
+import { selectBrowserReminder } from "./browser-click.js";
 import { notificationTag } from "./model.js";
 import type { NotificationEvent } from "./model.js";
 import { selectReminderNotification } from "./selection.js";
@@ -43,6 +44,10 @@ export const actOnWorkerNotification = (
     return event.action === "show"
       ? selectReminderNotification(model, active, apply)
       : { model };
+  }
+
+  if (event.action === "show") {
+    return selectBrowserReminder(model, active, apply);
   }
 
   return actOnReminderCard(

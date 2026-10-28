@@ -109,6 +109,7 @@ it.effect(
         notification.candidate.key,
       ]);
       expect(selected.model.editing.view).toBe(editor);
+      expect(selected.model.reminders).toBe(model.reminders);
       expect(
         selected.commands?.some((command) => command.name === "ReadEvents")
       ).toBe(true);
@@ -172,6 +173,7 @@ it.effect(
       );
 
       expect(result.model.calendar.selected).toEqual([eventKey(futureEvent)]);
+      expect(result.model.reminders).toBe(model.reminders);
     })
 );
 
